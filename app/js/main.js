@@ -381,6 +381,16 @@ ${group("Dukungan", row("info", "Tentang aplikasi", "Ninokuu versi " + esc(windo
 const VIEWS = { home: vHome, search: vSearch, fav: vFav, more: vMore, detail: vDetail, reader: vReader };
 
 /* ---------- mulai ---------- */
+// Posisi miring hanya dicek dari ukuran layar fisik (screen.*), yang tidak berubah saat keyboard muncul.
+function checkOrientation() {
+  const sw = screen.width || 0, sh = screen.height || 0;
+  const type = screen.orientation?.type || (Math.abs(window.orientation || 0) === 90 ? "landscape" : sw > sh ? "landscape" : "portrait");
+  const phone = Math.min(sw, sh) > 0 && Math.min(sw, sh) < 600;
+  document.body.classList.toggle("landscape-phone", phone && type.startsWith("landscape"));
+}
+checkOrientation();
+screen.orientation?.addEventListener?.("change", checkOrientation);
+window.addEventListener("orientationchange", () => setTimeout(checkOrientation, 50));
 api.onAuth((s) => { if (!s) S.clearUserData(); });
 if (S.loggedIn()) { S.loadProfile().catch(() => {}); S.pull().catch(() => {}); }
 S.subscribe(() => { if (route.name === "fav") vFav(); });

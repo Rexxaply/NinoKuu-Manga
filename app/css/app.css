@@ -190,12 +190,11 @@ body[data-screen="reader"] { background: #0A0A0A; }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
 body[data-screen="reader"] #toast { bottom: calc(90px + env(safe-area-inset-bottom)); }
 
-/* HP diputar miring: minta kembali tegak (tablet bebas) */
+/* HP diputar miring: minta kembali tegak (tablet bebas). Ditentukan lewat ukuran LAYAR fisik di main.js,
+   bukan tinggi jendela, agar keyboard yang muncul tidak dikira posisi miring. */
 #rotate { display: none; }
-@media (orientation: landscape) and (max-height: 520px) and (max-width: 1000px) {
-  #rotate { position: fixed; inset: 0; z-index: 99; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; background: var(--bg); text-align: center; color: var(--mu); font-size: 13px; }
-  #rotate b { color: var(--tx); font-size: 17px; }
-}
+body.landscape-phone #rotate { position: fixed; inset: 0; z-index: 99; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; background: var(--bg); text-align: center; color: var(--mu); font-size: 13px; }
+body.landscape-phone #rotate b { color: var(--tx); font-size: 17px; }
 
 /* layar lebar (tablet): grid lebih banyak kolom */
 @media (min-width: 700px) {
