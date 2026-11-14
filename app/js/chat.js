@@ -226,7 +226,7 @@ export async function vDev(view, ctx) {
     const [stats, reps, restricted, bugs] = await Promise.all([
       dev ? api.rpc("dev_stats").catch(() => null) : null,
       api.rest("chat_reports?select=message_id,created_at&order=created_at.desc&limit=200").catch(() => []),
-      api.rest(`profiles?select=id,name,banned,muted_until&or=(banned.eq.true,muted_until.gt.${new Date().toISOString()})&limit=100`).catch(() => []),
+      api.rest(`profiles?select=id,name,banned,muted_until&or=${encodeURIComponent(`(banned.eq.true,muted_until.gt."${new Date().toISOString()}")`)}&limit=100`).catch(() => []),
       api.rest("bug_reports?select=*&resolved=eq.false&order=created_at.desc&limit=60").catch(() => []),
     ]);
     const KIND = { gambar: "Gambar tidak muncul / rusak", chapter: "Chapter hilang / tidak lengkap", urutan: "Urutan halaman salah", info: "Info komik salah", lainnya: "Lainnya" };
