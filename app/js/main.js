@@ -5,7 +5,7 @@ import { QUOTES } from "./assets.js";
 import { DOCS } from "./docs.js";
 import * as N from "./native.js";
 import { openFilter, activeCount, genreName, STATUS_NAME } from "./filters.js";
-import { vChat, vDev, roomFor, roomPreview, roomCount, miniMsg, bindSpoilers } from "./chat.js";
+import { vChat, vDev, roomFor, roomPreview, roomCount, miniMsg, bindSpoilers, watchAvatars, framesReady } from "./chat.js";
 import * as X from "./exp.js";
 import { esc, icon, $, $$, toast, ago, SOURCES, srcName, TYPES, typeName, cover, comicHref, readHref, greeting, errBox, loading, rankBadge } from "./ui.js";
 
@@ -74,6 +74,8 @@ async function render() {
   if (view.childElementCount) animate();
   await job;
   animate();
+  // chat & komentar mengatur gulirnya sendiri (langsung ke pesan terbaru)
+  if (["chat", "comments", "chcomments"].includes(route.name)) return;
   const y = scrollMem.get(route.key);
   requestAnimationFrame(() => window.scrollTo(0, y || 0));
 }
@@ -413,7 +415,7 @@ async function vDetail(src, id) {
     : `<a class="cm-empty" href="${commentsHref(src, id)}">${icon("msg", 20)}<span class="rc-mid g4"><b class="sm">Belum ada komentar</b><span class="mu xs">Jadilah yang pertama berkomentar tentang komik ini.</span></span></a>`}</div>
 </div><div style="height:calc(120px + env(safe-area-inset-bottom))"></div>
 <div class="rfab-wrap"><a class="rfab glass" href="${resumeCh ? readHref(src, id, resumeCh.id) : first ? readHref(src, id, first.id) : chaptersHref(src, id)}"><span class="rfab-ic">${icon("play", 18, 2)}</span><b class="redt">${resumeCh ? "Lanjut baca" : "Mulai baca"}</b><span class="grow">${resumeCh ? "Chapter " + esc(resumeCh.ch) : first ? "Chapter " + esc(first.ch) : ""}</span><span class="redt">${icon("chev", 20, 2)}</span></a></div>`;
-    bindSpoilers($("#cmprev"));
+    bindSpoilers($("#cmprev")); watchAvatars($("#cmprev"));
     onBarScroll();
   };
   let cmList = null, cmN = 0, lk = null, lkBusy = false;
@@ -423,7 +425,7 @@ async function vDetail(src, id) {
   window.addEventListener("scroll", onBarScroll, { passive: true });
   cleanup = () => window.removeEventListener("scroll", onBarScroll);
   const room = roomFor(src, id);
-  Promise.all([roomPreview(room, 3), roomCount(room).catch(() => 0)]).then(([l, n]) => { cmList = l; cmN = n; if (parse().name === "detail") { const y = window.scrollY; draw(); window.scrollTo(0, y); } })
+  Promise.all([roomPreview(room, 3), roomCount(room).catch(() => 0), framesReady()]).then(([l, n]) => { cmList = l; cmN = n; if (parse().name === "detail") { const y = window.scrollY; draw(); window.scrollTo(0, y); } })
     .catch(() => { cmList = []; if (parse().name === "detail") { const y = window.scrollY; draw(); window.scrollTo(0, y); } });
   setActs({
     back: () => back(),

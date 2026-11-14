@@ -334,7 +334,7 @@ const svgImg = async (inner, defs) => {
   const url = URL.createObjectURL(new Blob([`<svg xmlns="http://www.w3.org/2000/svg" viewBox="-52 -52 224 224" width="448" height="448">${defs}${inner}</svg>`], { type: "image/svg+xml" }));
   const im = await loadRaw(url, false); setTimeout(() => URL.revokeObjectURL(url), 2000); return im;
 };
-async function drawAvatar(c, ax, ay, AS, p, lv, F) {
+async function drawAvatar(c, ax, ay, AS, p, lv, F, opt = {}) {
   const k = AS / 116, cx = ax + AS / 2, cy = ay + AS / 2;
   const photo = p?.avatar_path ? await loadImg(api.publicUrl("avatars", p.avatar_path)) : null;
   let M = null; try { M = await import("./avatars.js"); } catch {}
@@ -371,9 +371,11 @@ async function drawAvatar(c, ax, ay, AS, p, lv, F) {
   const ri = (58 - Number(inner[0])) * k;
   const ig = c.createRadialGradient(ax + AS * .35, ay + AS * .3, 0, ax + AS * .35, ay + AS * .3, ri * 1.6); ig.addColorStop(0, inner[1]); ig.addColorStop(.78, "#05070D"); ig.addColorStop(1, "#05070D");
   circle(ri, ig);
-  if (photo) inside(ri);
+  if (opt.bare) { /* tengah dibiarkan gelap: foto/inisial dipasang di atasnya oleh chat */ }
+  else if (photo) inside(ri);
   else { c.save(); c.fillStyle = "#F7F2E6"; c.shadowColor = glow[1]; c.shadowBlur = Number(glow[0]) * k; c.font = `${Math.round(48 * k)}px "Instrument Serif", Georgia, serif`; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText((p?.name || "?").trim()[0]?.toUpperCase() || "?", cx, cy + 2 * k); c.restore(); }
   if (front) c.drawImage(front, sx, ay - 50 * k, sw, sw);
+  if (opt.bare) return;
   // medali level (segi enam) di kanan bawah
   const txt = String(lv.lv); c.font = `800 ${10.6 * k}px ${F}`;
   const mw = Math.max(29, c.measureText(txt).width / k + 8) * k, mh = 29 * k, mx = ax + 120 * k - mw, my = ay + 118 * k - mh;
@@ -382,6 +384,18 @@ async function drawAvatar(c, ax, ay, AS, p, lv, F) {
   const b = 1.9 * k; hex(mx + b, my + b, mw - 2 * b, mh - 2 * b);
   const mg = c.createRadialGradient(mx + mw * .4, my + mh * .3, 0, mx + mw * .4, my + mh * .3, mw * .8); mg.addColorStop(0, medal[0]); mg.addColorStop(.85, "#05070D"); mg.addColorStop(1, "#05070D"); c.fillStyle = mg; c.fill();
   c.fillStyle = "#FFF4D1"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText(txt, mx + mw / 2, my + mh / 2 + .5 * k); c.textAlign = "left"; c.textBaseline = "alphabetic";
+}
+// bingkai rank sebagai gambar siap pakai (untuk chat & komentar): digambar sekali per rank lalu disimpan,
+// jadi menggulir daftar panjang tetap ringan. Gambar 150×150 untuk avatar 40 px (2×), bingkai melebar ±17 px.
+const frameCache = new Map();
+export function frameImage(tier) {
+  if (!frameCache.has(tier)) frameCache.set(tier, (async () => {
+    const cv = document.createElement("canvas"); cv.width = cv.height = 150;
+    const c = cv.getContext("2d");
+    await drawAvatar(c, 34.5, 34.5, 80, null, { tier, lv: 1 }, "sans-serif", { bare: true });
+    return cv.toDataURL("image/png");
+  })().catch(() => null));
+  return frameCache.get(tier);
 }
 const rr = (c, x, y, w, h, r) => { c.beginPath(); c.roundRect ? c.roundRect(x, y, w, h, r) : c.rect(x, y, w, h); };
 function fit(c, text, max) { let t = String(text || ""); if (c.measureText(t).width <= max) return t; while (t && c.measureText(t + "…").width > max) t = t.slice(0, -1); return t + "…"; }

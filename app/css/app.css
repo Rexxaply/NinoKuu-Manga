@@ -775,7 +775,14 @@ body.nav-off .xp-pill.on { transform: none; }
 body.nk-lite .rk-tx { animation: none !important; background-position: 50% 0; }
 body.nk-lite .rk-b.t8::before, body.nk-lite .rk-b.t8::after, body.nk-lite .rk-t.t8::before, body.nk-lite .rk-t.t8::after { display: none; }
 @media (prefers-reduced-motion: reduce) { .rk-tx { animation: none !important; } .rk-b.t8::before, .rk-b.t8::after, .rk-t.t8::before, .rk-t.t8::after { display: none; } }
-/* avatar berbingkai kosmik di chat & komentar */
+/* avatar berbingkai rank di chat & komentar (gambar bingkai, berputar pelan; Mode Ringan: diam) */
 .m-avc { position: relative; width: 40px; height: 40px; flex: none; margin: 4px 6px 0 4px; }
 .cm .m-avc { margin: 4px 8px 0 4px; }
-.m-avc .av-img { border-radius: 50%; }
+.m-fr { position: absolute; left: -17.25px; top: -17.25px; width: 75px; height: 75px; max-width: none; pointer-events: none; animation: nk3rot 36s linear infinite; will-change: transform; }
+.m-avc.t6 .m-fr, .m-avc.t7 .m-fr { animation-duration: 26s; } .m-avc.t8 .m-fr { animation-duration: 18s; filter: drop-shadow(0 0 6px rgba(242, 179, 61, .45)); }
+.m-in { position: absolute; inset: 3px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; font: 400 16px var(--serif); color: #F7F2E6; }
+.m-in .av-img { border-radius: 50%; }
+body.nk-lite .m-fr { animation: none; filter: none; will-change: auto; }
+/* animasi bingkai di luar layar dijeda */
+
+.m-avc.off .m-fr { animation-play-state: paused; }
