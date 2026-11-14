@@ -119,6 +119,16 @@ export async function rest(path, { method = "GET", body, prefer, headers = {} } 
   const txt = await r.text();
   return txt ? JSON.parse(txt) : null;
 }
+// jumlah baris tanpa mengunduh isinya (header Content-Range dari PostgREST)
+export async function count(path) {
+  const t = (await accessToken()) || KEY;
+  let r;
+  try { r = await fetch(BASE + "/rest/v1/" + path, { method: "HEAD", headers: { apikey: KEY, Authorization: "Bearer " + t, Prefer: "count=exact", Range: "0-0" } }); }
+  catch { throw new ApiError(NET_MSG); }
+  if (!r.ok && r.status !== 206 && r.status !== 416) throw new ApiError("Gagal menghitung", r.status);
+  const n = Number((r.headers.get("content-range") || "").split("/")[1]);
+  return Number.isFinite(n) ? n : 0;
+}
 export const rpc = (fn, args = {}) => rest("rpc/" + fn, { method: "POST", body: args });
 
 /* ---------- Storage (gambar chat) ---------- */

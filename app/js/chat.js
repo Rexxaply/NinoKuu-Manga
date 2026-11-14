@@ -33,33 +33,51 @@ async function compress(file) {
   if (file.type === "image/gif") return { blob: file, ext: "gif" };
   try {
     const bmp = await createImageBitmap(file);
-    const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+    const k = Math.min(1, 1280 / Math.max(bmp.width, bmp.height));
     const c = document.createElement("canvas");
     c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
     c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
-    const blob = await new Promise((r) => c.toBlob(r, "image/webp", 0.82));
+    const blob = await new Promise((r) => c.toBlob(r, "image/webp", 0.78));
     if (blob && blob.size < file.size) return { blob, ext: "webp", w: c.width, h: c.height };
     return { blob: file, ext: file.type.split("/")[1].replace("jpeg", "jpg"), w: bmp.width, h: bmp.height };
   } catch { return { blob: file, ext: file.type.split("/")[1].replace("jpeg", "jpg") }; }
 }
 
-/* ---------- Chat publik ---------- */
-export async function vChat(view, ctx) {
+/* ---------- Ruang obrolan: chat publik, komentar komik, komentar chapter ---------- */
+// opt.room: "public" | "c:<sumber>:<id>" | "ch:<sumber>:<id>:<chapter>"
+export const roomFor = (src, id, chId) => (chId ? `ch:${src}:${id}:${chId}` : `c:${src}:${id}`);
+export async function roomPreview(room, n = 3) {
+  return ((await api.rest(`chat_feed?select=*&room=eq.${encodeURIComponent(room)}&order=id.desc&limit=${n}`)) || []).reverse();
+}
+export const roomCount = (room) => api.count(`chat_feed?select=id&room=eq.${encodeURIComponent(room)}`);
+// baris komentar ringkas (pratinjau di info komik)
+export function miniMsg(m) {
+  const lv = S.levelOf({ exp: m.exp, role: m.role }), t = lv.tier;
+  return `<div class="cm"><span class="m-av" style="background:${RING[t]}"><span>${esc((m.name || "?")[0].toUpperCase())}</span></span>
+    <span class="rc-mid g4"><span class="m-head">${esc(m.name)}${m.verified ? VB : ""}${m.role === "developer" ? `<span class="pill-dev">DEV</span>` : m.role === "moderator" ? `<span class="pill-mod">MOD</span>` : ""}<span class="m-rank" style="background:${RANK_BG[t]};color:${RANK_FG[t]}">${lv.rank}</span><span class="mu xs cm-t">${esc(ago(m.created_at))}</span></span>
+    ${m.body ? `<span class="cm-b">${bodyHtml(m)}</span>` : ""}${m.image_path ? `<span class="mu xs row g4">${icon("img", 14)}Gambar${m.image_spoiler ? " · spoiler" : ""}</span>` : ""}</span></div>`;
+}
+export function bindSpoilers(el) {
+  el.addEventListener("click", (e) => { const b = e.target.closest(".sp"); if (!b) return; e.preventDefault(); e.stopPropagation(); b.classList.toggle("open"); });
+}
+export async function vChat(view, ctx, opt = {}) {
   const { topbar, setActs, go, back, loading } = ctx;
+  const room = opt.room || "public", pub = room === "public";
+  const rq = `room=eq.${encodeURIComponent(room)}`;
   let msgs = [], pin = null, att = null, timer = null, menuId = null, sending = false, lastSent = 0, selHandler = null;
   const onSel = () => selHandler && selHandler();
   document.addEventListener("selectionchange", onSel);
   const me = api.userId();
-  view.innerHTML = `<div id="chatroot">${topbar("Chat publik")}<div class="chat" id="chat">${loading(6, "sk-lrow")}</div>
+  view.innerHTML = `<div id="chatroot">${topbar(esc(opt.title || "Chat publik"))}<div class="chat" id="chat">${loading(6, "sk-lrow")}</div>
   <div class="composer" id="comp"></div><div class="sheet-host" id="host"></div></div>`;
   const root = $("#chatroot");
   const load = async (full = true) => {
     const lastId = msgs.length ? msgs[msgs.length - 1].id : 0;
-    const q = full || !lastId ? "chat_feed?select=*&order=id.desc&limit=100" : `chat_feed?select=*&id=gt.${lastId}&order=id.desc&limit=100`;
+    const q = full || !lastId ? `chat_feed?select=*&${rq}&order=id.desc&limit=100` : `chat_feed?select=*&${rq}&id=gt.${lastId}&order=id.desc&limit=100`;
     const rows = await api.rest(q);
     const fresh = (rows || []).reverse();
     msgs = full ? fresh : msgs.concat(fresh);
-    if (full) pin = ((await api.rest("announcements?select=id,title,body,created_at&pinned=eq.true&order=created_at.desc&limit=1").catch(() => [])) || [])[0] || null;
+    if (full && pub) pin = ((await api.rest("announcements?select=id,title,body,created_at&pinned=eq.true&order=created_at.desc&limit=1").catch(() => [])) || [])[0] || null;
     return fresh.length;
   };
   const atBottom = () => { const el = document.scrollingElement; return el.scrollHeight - el.scrollTop - el.clientHeight < 140; };
@@ -67,7 +85,8 @@ export async function vChat(view, ctx) {
   const draw = () => {
     const staff = isStaff(), active = new Set(msgs.filter((m) => Date.now() - Date.parse(m.created_at) < 15 * 60e3).map((m) => m.user_id)).size;
     let prev = null;
-    $("#chat").innerHTML = `<div class="chat-info"><span class="online-dot"></span>${active || 1} pembaca aktif · Jaga obrolan tetap sopan, tandai spoiler.</div>
+    $("#chat").innerHTML = `${pub ? `<div class="chat-info"><span class="online-dot"></span>${active || 1} pembaca aktif · Jaga obrolan tetap sopan, tandai spoiler.</div>`
+      : `<a class="room-h" href="${esc(opt.backHref || "#/home")}">${opt.cover || ""}<span class="rc-mid g4"><b class="t1">${esc(opt.sub || "")}</b><span class="mu xs">${msgs.length ? msgs.length + (msgs.length >= 100 ? "+" : "") + " komentar" : "Belum ada komentar"} · tandai spoiler dengan ||teks||</span></span></a>`}
   ${pin ? `<div class="pin"><span class="pin-ic">${icon("mega", 18)}</span><span class="rc-mid g4"><span class="pin-cap">Pengumuman · Developer</span><b>${esc(pin.title)}</b>${pin.body ? `<span class="mu sm pre">${esc(pin.body)}</span>` : ""}</span>
       ${isDev() ? `<button class="x-btn" data-c="unpin" aria-label="Lepas sematan">${icon("x", 14, 2.2)}</button>` : ""}</div>` : ""}
   ${msgs.map((m) => {
@@ -83,7 +102,7 @@ export async function vChat(view, ctx) {
         ${hid && staff ? `<span class="m-hid">${icon("eye", 13)}Disembunyikan dari pengguna · hanya terlihat staf</span>` : ""}
         <span class="m-meta">${esc(ago(m.created_at))}<button class="m-dots" data-c="menu" data-id="${m.id}" aria-label="Opsi pesan">${icon("dots", 16)}</button></span>
       </div></div>`;
-    }).join("") || `<div class="empty"><span class="empty-ic">${icon("msg", 24)}</span><b>Belum ada pesan</b><span>Jadilah yang pertama menyapa pembaca lain.</span></div>`}
+    }).join("") || `<div class="empty"><span class="empty-ic">${icon("msg", 24)}</span><b>${pub ? "Belum ada pesan" : "Belum ada komentar"}</b><span>${pub ? "Jadilah yang pertama menyapa pembaca lain." : "Jadilah yang pertama berkomentar. Jangan lupa tandai spoiler."}</span></div>`}
   <div style="height:${att ? 200 : 130}px"></div>`;
   };
   const drawComposer = () => {
@@ -97,7 +116,7 @@ export async function vChat(view, ctx) {
     ${att ? `<div class="att glass"><img src="${att.url}" alt="Pratinjau gambar" class="${att.sp ? "blur" : ""}"><span class="rc-mid g4"><b class="t1 sm">${esc(att.name)}</b><span class="mu xs">${(att.size / 1048576).toFixed(1).replace(".", ",")} MB · maks 30 MB</span></span>
       <button class="att-sp ${att.sp ? "on" : ""}" data-c="attsp" aria-pressed="${att.sp}">${icon("eye", 14)}Spoiler</button><button class="x-btn" data-c="attx" aria-label="Hapus gambar">${icon("x", 15, 2.2)}</button></div>` : ""}
     <div class="comp-row glass"><label class="c-img" aria-label="Unggah gambar (maks 30 MB)">${icon("img", 21)}<input type="file" id="pick" accept="image/png,image/jpeg,image/webp,image/gif" hidden></label>
-      <input id="cin" maxlength="300" enterkeyhint="send" autocomplete="off" placeholder="${att ? "Tambahkan keterangan (opsional)…" : "Tulis pesan untuk semua pembaca…"}" aria-label="Pesan">
+      <input id="cin" maxlength="300" enterkeyhint="send" autocomplete="off" placeholder="${att ? "Tambahkan keterangan (opsional)…" : pub ? "Tulis pesan untuk semua pembaca…" : "Tulis komentar…"}" aria-label="Pesan">
       <button class="c-send" data-c="send" aria-label="Kirim" disabled>${icon("send", 19, 2)}</button></div>`;
     const inp = $("#cin"), send = $("[data-c=send]");
     const upd = () => {
@@ -133,7 +152,7 @@ export async function vChat(view, ctx) {
         image_path = `${me}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${c.ext}`;
         await api.upload("chat-images", image_path, new File([c.blob], "x." + c.ext, { type: c.blob.type || att.file.type }));
       }
-      await api.rest("chat_messages", { method: "POST", body: { body: text, image_path, image_spoiler: !!att?.sp }, prefer: "return=minimal" });
+      await api.rest("chat_messages", { method: "POST", body: { body: text, image_path, image_spoiler: !!att?.sp, room }, prefer: "return=minimal" });
       lastSent = Date.now(); inp.value = ""; att = null;
       await load(false); drawComposer(); draw(); toBottom(); toast("Terkirim", 1200);
     } catch (e) { toast(e.message, 4000); }
@@ -181,7 +200,7 @@ export async function vChat(view, ctx) {
     else if (a === "mban") { if (!confirm(`Blokir ${m.name}? Semua pesannya disembunyikan dan dia tidak bisa menulis di chat publik.`)) return; run(() => api.rpc("mod_restrict", { p_user: m.user_id, p_ban: true }), `${m.name} diblokir dari chat`); }
     else if (a === "unpin") run(() => api.rest(`announcements?id=eq.${pin.id}`, { method: "PATCH", body: { pinned: false }, prefer: "return=minimal" }), "Sematan dilepas");
   });
-  setActs({ back: () => back("#/home") });
+  setActs({ back: () => back(opt.backHref || "#/home") });
   try { await load(true); } catch (e) { $("#chat").innerHTML = `<div class="empty"><b>Gagal memuat chat</b><span>${esc(e.message)}</span></div>`; }
   draw(); drawComposer(); toBottom();
   // pesan baru diambil tiap 5 detik selama halaman chat terbuka (tiap 30 detik muat ulang penuh)
@@ -204,11 +223,13 @@ export async function vDev(view, ctx) {
   const tog = (key, on) => `<button class="switch ${on ? "on" : ""}" role="switch" aria-checked="${on}" data-d="tog" data-k="${key}"><span></span></button>`;
   let form = { title: "", body: "", pin: true, push: true };
   const draw = async () => {
-    const [stats, reps, restricted] = await Promise.all([
+    const [stats, reps, restricted, bugs] = await Promise.all([
       dev ? api.rpc("dev_stats").catch(() => null) : null,
       api.rest("chat_reports?select=message_id,created_at&order=created_at.desc&limit=200").catch(() => []),
       api.rest(`profiles?select=id,name,banned,muted_until&or=(banned.eq.true,muted_until.gt.${new Date().toISOString()})&limit=100`).catch(() => []),
+      api.rest("bug_reports?select=*&resolved=eq.false&order=created_at.desc&limit=60").catch(() => []),
     ]);
+    const KIND = { gambar: "Gambar tidak muncul / rusak", chapter: "Chapter hilang / tidak lengkap", urutan: "Urutan halaman salah", info: "Info komik salah", lainnya: "Lainnya" };
     const counts = {}; (reps || []).forEach((r) => { counts[r.message_id] = (counts[r.message_id] || 0) + 1; });
     const ids = Object.keys(counts);
     const repMsgs = ids.length ? (await api.rest(`chat_feed?select=*&id=in.(${ids.join(",")})`).catch(() => [])) : [];
@@ -218,7 +239,7 @@ export async function vDev(view, ctx) {
     <span class="mu xs">${dev ? (S.state.settings.asUser ? "Developer · sedang melihat sebagai pengguna biasa" : "Developer · Lv 99 · akses penuh") : "Moderator · moderasi chat"}</span></span></div>
   ${dev ? `<section class="col g10"><h2 class="cap m0">Statistik</h2><div class="stats">
       <div class="stat"><b>${nf(stats?.users)}</b><span class="mu xs">Pengguna terdaftar</span></div><div class="stat"><b>${nf(stats?.messages_today)}</b><span class="mu xs">Pesan chat hari ini</span></div>
-      <div class="stat"><b>${nf(stats?.reports_open)}</b><span class="mu xs">Laporan menunggu</span></div><div class="stat"><b>${nf(stats?.restricted)}</b><span class="mu xs">Pengguna dibatasi</span></div></div>
+      <div class="stat"><b>${nf(stats?.reports_open)}</b><span class="mu xs">Laporan chat</span></div><div class="stat"><b>${nf(stats?.bugs_open)}</b><span class="mu xs">Laporan komik</span></div></div>
     <div class="card row g10 sm"><span class="online-dot"></span><span class="grow">Keepalive terakhir ${stats?.last_keepalive ? esc(ago(stats.last_keepalive)) : "belum ada"} · cron ${stats?.last_cron ? esc(ago(stats.last_cron)) : "belum jalan"}</span><button class="btn ghost sm" data-d="cron">Jalankan cron</button></div></section>
   <section class="col g10"><h2 class="cap m0">Pengumuman</h2><div class="card col g12">
     <label class="fld">Judul<input id="at" maxlength="80" placeholder="Contoh: Maintenance server malam ini" value="${esc(form.title)}"></label>
@@ -227,11 +248,16 @@ export async function vDev(view, ctx) {
     <div class="row g12"><span class="col grow g4"><b class="sm">Kirim notifikasi ke semua</b><span class="mu xs">Masuk ke lonceng & notifikasi HP semua pengguna (lewat cron)</span></span>${tog("push", form.push)}</div>
     <button class="btn primary" data-d="ann">${icon("mega", 18)}Kirim pengumuman</button></div></section>` : ""}
   <section class="col g10"><h2 class="cap m0">Laporan chat · ${repMsgs.length}</h2>
-    ${repMsgs.length ? repMsgs.map((m) => `<div class="card col g10 ${m.hidden ? "" : "rep-open"}"><span class="row g8 xs"><b class="sm">${esc(m.name)}</b><span class="rep-n">${counts[m.id]} laporan</span><span class="mu" style="margin-left:auto">${m.hidden ? "Disembunyikan" : "Masih tampil"}</span></span>
+    ${repMsgs.length ? repMsgs.map((m) => `<div class="card col g10 ${m.hidden ? "" : "rep-open"}"><span class="row g8 xs"><b class="sm">${esc(m.name)}</b><span class="rep-n">${counts[m.id]} laporan</span>${m.room && m.room !== "public" ? `<span class="mu">${m.room.startsWith("ch:") ? "Komentar chapter" : "Komentar komik"}</span>` : ""}<span class="mu" style="margin-left:auto">${m.hidden ? "Disembunyikan" : "Masih tampil"}</span></span>
       <span class="sm">${esc(plain(m.body) || "Gambar")}</span>
       <div class="row g6 wrap"><button class="btn ghost sm" data-d="hide" data-id="${m.id}" data-h="${m.hidden}">${m.hidden ? "Tampilkan lagi" : "Sembunyikan"}</button><button class="btn ghost sm" data-d="del" data-id="${m.id}">Hapus</button>
         ${m.role === "developer" ? "" : `<button class="btn ghost sm" data-d="mute" data-u="${m.user_id}" data-n="${esc(m.name)}">Bisukan 1 jam</button><button class="btn ghost sm red" data-d="ban" data-u="${m.user_id}" data-n="${esc(m.name)}">Blokir</button>`}</div></div>`).join("")
       : `<div class="card center mu sm">Tidak ada laporan. Chat aman.</div>`}</section>
+  <section class="col g10"><h2 class="cap m0">Laporan komik · ${(bugs || []).length}</h2>
+    ${(bugs || []).length ? bugs.map((b) => `<div class="card col g8"><span class="row g8 xs"><span class="tag-s">${esc(b.source)}</span><span class="mu" style="margin-left:auto">${esc(ago(b.created_at))}</span></span>
+      <b class="sm">${esc(b.title || b.comic_id)}${b.chapter ? ` · Chapter ${esc(b.chapter)}` : ""}</b><span class="sm redt">${esc(KIND[b.kind] || b.kind)}</span>${b.note ? `<span class="sm mu pre">${esc(b.note)}</span>` : ""}
+      <div class="row g6 wrap"><a class="btn ghost sm" href="${b.chapter_id ? `#/r/${esc(b.source)}/${encodeURIComponent(b.comic_id)}/${encodeURIComponent(b.chapter_id)}` : `#/c/${esc(b.source)}/${encodeURIComponent(b.comic_id)}`}">${b.chapter_id ? "Buka chapter" : "Buka komik"}</a><button class="btn ghost sm" data-d="bugok" data-id="${b.id}">${icon("check", 15, 2.2)}Selesai</button></div></div>`).join("")
+      : `<div class="card center mu sm">Belum ada laporan masalah komik.</div>`}</section>
   <section class="col g10"><h2 class="cap m0">Pengguna dibatasi</h2>
     ${(restricted || []).length ? restricted.map((u) => `<div class="card row g12"><span class="rc-mid g4"><b class="sm">${esc(u.name)}</b><span class="xs ${u.banned ? "redt" : "gold"}">${u.banned ? "Diblokir dari chat" : u.muted_until ? "Dibisukan sampai " + new Date(u.muted_until).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "Dibatasi"}</span></span><button class="btn ghost sm" data-d="lift" data-u="${u.id}" data-n="${esc(u.name)}">Cabut</button></div>`).join("")
       : `<div class="card center mu sm">Belum ada yang dibisukan atau diblokir.</div>`}</section>
@@ -262,6 +288,7 @@ export async function vDev(view, ctx) {
     if (a === "del") { if (!confirm("Hapus pesan ini untuk semua?")) return; run(() => api.rest(`chat_messages?id=eq.${b.dataset.id}`, { method: "DELETE" }), "Pesan dihapus"); }
     if (a === "mute") run(() => api.rpc("mod_restrict", { p_user: b.dataset.u, p_mute_minutes: 60 }), `${b.dataset.n} dibisukan 1 jam`);
     if (a === "ban") { if (!confirm(`Blokir ${b.dataset.n} dari chat?`)) return; run(() => api.rpc("mod_restrict", { p_user: b.dataset.u, p_ban: true }), `${b.dataset.n} diblokir`); }
+    if (a === "bugok") run(() => api.rest(`bug_reports?id=eq.${b.dataset.id}`, { method: "PATCH", body: { resolved: true }, prefer: "return=minimal" }), "Laporan ditandai selesai");
     if (a === "lift") run(() => api.rpc("mod_restrict", { p_user: b.dataset.u, p_mute_minutes: 0, p_ban: false }), `Batasan ${b.dataset.n} dicabut`);
   });
   setActs({ back: () => back("#/more") });

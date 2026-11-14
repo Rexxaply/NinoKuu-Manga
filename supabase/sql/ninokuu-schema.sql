@@ -349,8 +349,10 @@ create trigger notifications_trim after insert on public.notifications
   for each row execute function public.trim_notifications();
 
 -- =====================================================================
--- 8. Chat publik: semua bisa membaca, hanya yang login bisa menulis.
+-- 8. Chat publik + komentar komik/chapter: semua bisa membaca, hanya yang login bisa menulis.
 --    Jeda 5 detik antar pesan, maks 300 karakter, gambar opsional (lihat bagian 9).
+--    room: 'public' = chat publik, 'c:<sumber>:<id komik>' = komentar komik,
+--          'ch:<sumber>:<id komik>:<id chapter>' = komentar chapter.
 -- =====================================================================
 create table if not exists public.chat_messages (
   id bigint generated always as identity primary key,
@@ -359,22 +361,30 @@ create table if not exists public.chat_messages (
   image_path text,
   image_spoiler boolean not null default false,
   hidden boolean not null default false,
+  room text not null default 'public',
   created_at timestamptz not null default now(),
   constraint chat_body_len check (char_length(body) <= 300),
   constraint chat_not_empty check (char_length(btrim(body)) > 0 or image_path is not null),
   constraint chat_image_path check (image_path is null or (char_length(image_path) <= 300 and image_path !~ '\.\.'))
 );
+-- pembaruan dari versi sebelum ada komentar komik/chapter
+alter table public.chat_messages add column if not exists room text not null default 'public';
+alter table public.chat_messages drop constraint if exists chat_room_fmt;
+alter table public.chat_messages add constraint chat_room_fmt
+  check (room = 'public' or (char_length(room) <= 300 and room ~ '^(c|ch):[a-z0-9]+:.+'));
 create index if not exists chat_recent_idx on public.chat_messages (created_at desc);
+create index if not exists chat_room_idx on public.chat_messages (room, id desc);
 create index if not exists chat_user_idx on public.chat_messages (user_id, created_at desc);
 alter table public.chat_messages enable row level security;
 revoke all on table public.chat_messages from anon, authenticated;
 grant select on table public.chat_messages to anon, authenticated;
-grant insert (body, image_path, image_spoiler) on table public.chat_messages to authenticated;
+grant insert (body, image_path, image_spoiler, room) on table public.chat_messages to authenticated;
 grant delete on table public.chat_messages to authenticated;
 
 drop policy if exists "chat dibaca publik" on public.chat_messages;
 create policy "chat dibaca publik" on public.chat_messages for select
-  using (created_at > now() - interval '30 days' and (not hidden or (select public.is_staff())));
+  using (created_at > now() - case when room = 'public' then interval '30 days' else interval '180 days' end
+         and (not hidden or (select public.is_staff())));
 drop policy if exists "chat ditulis yang login" on public.chat_messages;
 create policy "chat ditulis yang login" on public.chat_messages for insert to authenticated
   with check (
@@ -464,13 +474,14 @@ create trigger chat_reports_hide after insert on public.chat_reports
 -- Daftar chat siap tampil (nama + EXP pengirim). Mengikuti RLS pembaca.
 create or replace view public.chat_feed with (security_invoker = true) as
 select c.id, c.user_id, p.name, p.exp, c.body, c.image_path, c.image_spoiler, c.created_at,
-       p.role, p.verified, c.hidden
+       p.role, p.verified, c.hidden, c.room
 from public.chat_messages c
 join public.profiles p on p.id = c.user_id;
 revoke all on table public.chat_feed from anon, authenticated;
 grant select on table public.chat_feed to anon, authenticated;
 
--- Pembersihan berkala (dipanggil cron Edge Function): pesan lebih dari 30 hari dihapus.
+-- Pembersihan berkala (dipanggil cron Edge Function): chat publik lebih dari 30 hari dan
+-- komentar komik/chapter lebih dari 180 hari dihapus.
 -- File gambarnya dihapus oleh Edge Function lewat Storage API.
 create or replace function public.chat_cleanup(older_than interval default interval '30 days')
 returns setof text
@@ -478,7 +489,9 @@ language sql
 security definer
 set search_path = ''
 as $$
-  delete from public.chat_messages where created_at < pg_catalog.now() - older_than
+  delete from public.chat_messages
+  where (room = 'public' and created_at < pg_catalog.now() - older_than)
+     or (room <> 'public' and created_at < pg_catalog.now() - interval '180 days')
   returning image_path;
 $$;
 revoke all on function public.chat_cleanup(interval) from public, anon, authenticated;
@@ -583,6 +596,70 @@ create policy "pengumuman dihapus developer" on public.announcements for delete 
   using ((select public.is_dev()));
 
 -- Statistik ringkas untuk Panel developer.
+-- Laporan masalah komik/chapter dari pembaca (tombol "Laporkan"). Dibaca staf di Panel developer.
+create table if not exists public.bug_reports (
+  id bigint generated always as identity primary key,
+  user_id uuid default auth.uid() references auth.users (id) on delete set null,
+  source text not null,
+  comic_id text not null,
+  chapter_id text,
+  title text not null default '',
+  chapter text not null default '',
+  kind text not null,
+  note text not null default '',
+  resolved boolean not null default false,
+  created_at timestamptz not null default now(),
+  constraint bug_kind check (kind in ('gambar', 'chapter', 'urutan', 'info', 'lainnya')),
+  constraint bug_len check (char_length(source) <= 30 and char_length(comic_id) <= 300 and char_length(coalesce(chapter_id, '')) <= 300
+                            and char_length(title) <= 200 and char_length(chapter) <= 30 and char_length(note) <= 300)
+);
+create index if not exists bug_open_idx on public.bug_reports (resolved, created_at desc);
+alter table public.bug_reports enable row level security;
+revoke all on table public.bug_reports from anon, authenticated;
+grant insert (source, comic_id, chapter_id, title, chapter, kind, note) on table public.bug_reports to authenticated;
+grant select, delete on table public.bug_reports to authenticated;
+grant update (resolved) on table public.bug_reports to authenticated;
+drop policy if exists "laporan bug dibuat pelapor" on public.bug_reports;
+create policy "laporan bug dibuat pelapor" on public.bug_reports for insert to authenticated
+  with check ((select auth.uid()) = user_id);
+drop policy if exists "laporan bug dibaca staf" on public.bug_reports;
+create policy "laporan bug dibaca staf" on public.bug_reports for select to authenticated
+  using ((select public.is_staff()));
+drop policy if exists "laporan bug diubah staf" on public.bug_reports;
+create policy "laporan bug diubah staf" on public.bug_reports for update to authenticated
+  using ((select public.is_staff())) with check ((select public.is_staff()));
+drop policy if exists "laporan bug dihapus staf" on public.bug_reports;
+create policy "laporan bug dihapus staf" on public.bug_reports for delete to authenticated
+  using ((select public.is_staff()));
+
+-- Batas: 10 laporan per pengguna per hari, laporan sama untuk chapter yang sama tidak diulang.
+create or replace function public.bug_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  new.created_at := pg_catalog.now();
+  new.resolved := false;
+  new.note := btrim(new.note);
+  if (select count(*) from public.bug_reports b where b.user_id = new.user_id
+      and b.created_at > pg_catalog.now() - interval '1 day') >= 10 then
+    raise exception 'Batas laporan hari ini sudah tercapai, coba lagi besok' using errcode = 'P0001', hint = 'limit';
+  end if;
+  if exists (select 1 from public.bug_reports b where b.user_id = new.user_id and not b.resolved
+             and b.source = new.source and b.comic_id = new.comic_id
+             and b.chapter_id is not distinct from new.chapter_id and b.kind = new.kind) then
+    raise exception 'Kamu sudah melaporkan masalah ini, terima kasih' using errcode = 'P0001', hint = 'dup';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.bug_guard() from public, anon, authenticated;
+drop trigger if exists bug_reports_guard on public.bug_reports;
+create trigger bug_reports_guard before insert on public.bug_reports
+  for each row execute function public.bug_guard();
+
 create or replace function public.dev_stats()
 returns jsonb
 language plpgsql
@@ -605,6 +682,7 @@ begin
                      join public.chat_messages c on c.id = r.message_id where not c.hidden),
     'hidden', (select count(*) from public.chat_messages where hidden),
     'restricted', (select count(*) from public.profiles where banned or muted_until > pg_catalog.now()),
+    'bugs_open', (select count(*) from public.bug_reports where not resolved),
     'last_keepalive', ka,
     'last_cron', case when pg_catalog.to_regclass('public.server_state') is not null
                       then (select v ->> 'at' from public.server_state where k = 'cron') end);

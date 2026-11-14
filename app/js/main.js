@@ -3,7 +3,7 @@ import * as api from "./api.js";
 import * as S from "./store.js";
 import { QUOTES } from "./assets.js";
 import { DOCS } from "./docs.js";
-import { vChat, vDev } from "./chat.js";
+import { vChat, vDev, roomFor, roomPreview, roomCount, miniMsg, bindSpoilers } from "./chat.js";
 import { esc, icon, $, $$, toast, ago, SOURCES, srcName, TYPES, typeName, cover, comicHref, readHref, greeting, errBox, loading } from "./ui.js";
 
 const VERSION = window.NINOKUU_CONFIG?.VERSION || "1.0.0";
@@ -17,15 +17,15 @@ const detailCache = new Map();
 /* ---------- router ---------- */
 function parse() {
   const parts = (location.hash.replace(/^#\/?/, "") || "home").split("/").map(decodeURIComponent);
-  const map = { c: "detail", r: "reader", p: "page", ch: "chapters" };
+  const map = { c: "detail", r: "reader", p: "page", ch: "chapters", k: "comments", kc: "chcomments" };
   return { name: map[parts[0]] || parts[0], params: parts.slice(1) };
 }
 const TABS = ["home", "search", "fav", "more"];
-const DEPTH = { home: 0, search: 0, fav: 0, more: 0, detail: 1, page: 1, chat: 1, chapters: 2, reader: 3 };
+const DEPTH = { home: 0, search: 0, fav: 0, more: 0, detail: 1, page: 1, chat: 1, chapters: 2, comments: 2, reader: 3, chcomments: 4 };
 let prevName = "home", prevTab = "home";
 async function render() {
   if (cleanup) { try { cleanup(); } catch {} cleanup = null; }
-  closeNotif();
+  closeNotif(); closeSheet();
   scrollMem.set(route.key, window.scrollY);
   route = { ...parse(), key: location.hash || "#/home" };
   const owner = { detail: null, reader: null, chapters: null, chat: "home", page: "more" }[route.name];
@@ -59,6 +59,39 @@ view.addEventListener("click", (e) => {
 });
 const setActs = (a) => { acts = a; };
 const soon = (msg) => toast(typeof msg === "string" ? msg : "Fitur ini hadir di bagian berikutnya.");
+
+/* ---------- lembar bawah (laporan masalah) ---------- */
+let sheetEl = null;
+function closeSheet() { sheetEl?.remove(); sheetEl = null; }
+function openSheet(html, onClick) {
+  closeSheet();
+  sheetEl = document.createElement("div");
+  sheetEl.className = "sheet-host";
+  sheetEl.innerHTML = `<button class="pop-bg" data-s="close" aria-label="Tutup"></button><div class="sheet glass" role="dialog">${html}</div>`;
+  sheetEl.addEventListener("click", (e) => { const b = e.target.closest("[data-s]"); if (!b) return; if (b.dataset.s === "close") return closeSheet(); onClick(b, e); });
+  document.body.append(sheetEl);
+  return sheetEl;
+}
+const BUG_KINDS = [["gambar", "Gambar tidak muncul / rusak"], ["chapter", "Chapter hilang / tidak lengkap"], ["urutan", "Urutan halaman salah"], ["info", "Info komik salah"], ["lainnya", "Lainnya"]];
+function openReport(r) {
+  if (!S.loggedIn()) { toast("Masuk dulu untuk mengirim laporan (Lainnya → Masuk)."); return; }
+  let kind = r.chapter_id ? "gambar" : "info";
+  const el = openSheet(`<span class="sheet-ttl">Laporkan masalah</span><span class="sheet-prev">${esc(r.title)}${r.chapter ? ` · Chapter ${esc(r.chapter)}` : ""}</span>
+    <div class="col g4" role="radiogroup" aria-label="Jenis masalah">${BUG_KINDS.filter(([k]) => r.chapter_id || !["gambar", "urutan"].includes(k)).map(([k, n]) => `<button class="sh-row rk" role="radio" aria-checked="${k === kind}" data-s="kind" data-v="${k}"><span class="rk-dot"></span>${n}</button>`).join("")}</div>
+    <textarea id="bugnote" maxlength="300" rows="2" placeholder="Keterangan (opsional), mis. halaman 5 kosong"></textarea>
+    <div class="row g8"><button class="sh-cancel grow" data-s="close">Batal</button><button class="btn primary grow" data-s="send">Kirim laporan</button></div>`, async (b) => {
+    if (b.dataset.s === "kind") { kind = b.dataset.v; $$(".rk", el).forEach((x) => x.setAttribute("aria-checked", String(x.dataset.v === kind))); }
+    if (b.dataset.s === "send") {
+      b.disabled = true;
+      try {
+        await api.rest("bug_reports", { method: "POST", prefer: "return=minimal", body: { source: r.source, comic_id: r.comic_id, chapter_id: r.chapter_id || null, title: String(r.title || "").slice(0, 200), chapter: String(r.chapter ?? "").slice(0, 30), kind, note: $("#bugnote").value.trim().slice(0, 300) } });
+        closeSheet(); toast("Laporan terkirim. Terima kasih, developer akan memeriksanya.");
+      } catch (e) { b.disabled = false; toast(e.message, 4000); }
+    }
+  });
+}
+const commentsHref = (src, id, chId) => chId ? `#/kc/${src}/${encodeURIComponent(id)}/${encodeURIComponent(chId)}` : `#/k/${src}/${encodeURIComponent(id)}`;
+const dlSoon = () => toast("Unduhan chapter tersedia di aplikasi APK Ninokuu.");
 
 /* ---------- potongan tampilan bersama ---------- */
 const topbar = (title, right = "") => `<div class="topbar"><button class="icon-btn" data-act="back" aria-label="Kembali">${icon("back", 22)}</button><h1>${title}</h1>${right || '<span class="tb-sp"></span>'}</div>`;
@@ -293,8 +326,9 @@ async function vDetail(src, id) {
     const chRow = chRowFor(src, id, h, latest);
     const status = { ongoing: "Berlangsung", completed: "Tamat", hiatus: "Hiatus" }[m.status] || "";
     view.innerHTML = `
-<div class="hero"><div class="hero-bg" style="background-image:url('${esc(m.cover)}')"></div>
-  <div class="bar"><button class="icon-btn glass" data-act="back" aria-label="Kembali">${icon("back", 22)}</button></div>
+<div class="dbar" id="dbar"><button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 21, 2)}</button><span class="dbar-t">${esc(m.title)}</span>
+  <button class="r-round glass" data-act="dl" aria-label="Unduh chapter">${icon("down", 20, 2)}</button><button class="pill-btn glass" data-act="report">${icon("bug", 17)}Laporkan</button></div>
+<div class="hero has-bar"><div class="hero-bg" style="background-image:url('${esc(m.cover)}')"></div>
   <div class="hero-in">${cover(m.cover, m.title, "det")}
     <div class="hero-t"><span class="meta"><span class="tag-s">${esc(srcName(src))}</span>${type ? `<span>${esc(typeName(type))}</span>` : ""}</span><h1>${esc(m.title)}</h1>
       <span class="mu sm">${[status, m.author].filter(Boolean).map(esc).join(" · ")}</span>
@@ -309,12 +343,27 @@ async function vDetail(src, id) {
   ${m.desc ? `<p class="desc ${descOpen ? "open" : ""}" data-act="desc">${esc(m.desc)}</p>` : ""}
   <div class="sec-h mt24"><h2>Chapter</h2><a class="link-red" href="${chaptersHref(src, id)}">Lihat semua (${d.chapters.length})${icon("chev", 16, 2)}</a></div>
   <div class="ch-card">${preview.map((c) => chRow(c)).join("") || `<div class="empty"><b>Belum ada chapter</b></div>`}</div>
-</div><div class="pad-nav"></div>`;
+  <div class="sec-h mt24"><h2>Komentar${cmN ? ` <span class="mu cm-n">${cmN}</span>` : ""}</h2><a class="link-red" href="${commentsHref(src, id)}">${cmN ? "Lihat semua" : "Tulis komentar"}${icon("chev", 16, 2)}</a></div>
+  <div class="cm-card" id="cmprev">${cmList === null ? `<div class="mu sm cm-empty">Memuat komentar…</div>` : cmList.length ? cmList.map(miniMsg).join("") + `<a class="cm-more" href="${commentsHref(src, id)}">${icon("msg", 17)}Buka semua komentar</a>`
+    : `<a class="cm-empty" href="${commentsHref(src, id)}">${icon("msg", 20)}<span class="rc-mid g4"><b class="sm">Belum ada komentar</b><span class="mu xs">Jadilah yang pertama berkomentar tentang komik ini.</span></span></a>`}</div>
+</div><div style="height:calc(120px + env(safe-area-inset-bottom))"></div>
+<div class="rfab-wrap"><a class="rfab glass" href="${resumeCh ? readHref(src, id, resumeCh.id) : first ? readHref(src, id, first.id) : chaptersHref(src, id)}"><span class="rfab-ic">${icon("play", 18, 2)}</span><b class="redt">${resumeCh ? "Lanjut baca" : "Mulai baca"}</b><span class="grow">${resumeCh ? "Chapter " + esc(resumeCh.ch) : first ? "Chapter " + esc(first.ch) : ""}</span><span class="redt">${icon("chev", 20, 2)}</span></a></div>`;
+    bindSpoilers($("#cmprev"));
+    onBarScroll();
   };
+  let cmList = null, cmN = 0;
+  const onBarScroll = () => { const b = $("#dbar"); if (b) b.classList.toggle("solid", window.scrollY > 120); };
+  window.addEventListener("scroll", onBarScroll, { passive: true });
+  cleanup = () => window.removeEventListener("scroll", onBarScroll);
+  const room = roomFor(src, id);
+  Promise.all([roomPreview(room, 3), roomCount(room).catch(() => 0)]).then(([l, n]) => { cmList = l; cmN = n; if (parse().name === "detail") { const y = window.scrollY; draw(); window.scrollTo(0, y); } })
+    .catch(() => { cmList = []; if (parse().name === "detail") { const y = window.scrollY; draw(); window.scrollTo(0, y); } });
   setActs({
     back: () => back(),
     retry: () => vDetail(src, id),
     desc: (el) => { descOpen = !descOpen; el.classList.toggle("open", descOpen); },
+    dl: dlSoon,
+    report: () => openReport({ source: src, comic_id: id, title: m.title }),
     fav: async () => {
       try { const on = await S.toggleLib(meta); if (on) S.updateLibMeta(src, id, { type, latest: latest?.ch ?? null }); toast(on ? "Ditambahkan ke koleksi" : "Dihapus dari koleksi"); }
       catch (e) { toast(e.message); }
@@ -356,8 +405,9 @@ function chRowFor(src, id, h, latest) {
   };
 }
 async function vChapters(src, id) {
-  view.innerHTML = topbar("Daftar chapter") + `<div class="px">${loading(8, "sk-lrow")}</div>`;
-  setActs({ back: () => back(comicHref(src, id)), retry: () => vChapters(src, id) });
+  const dlBtn = `<button class="icon-btn" data-act="dl" aria-label="Unduh chapter">${icon("down", 21, 2)}</button>`;
+  view.innerHTML = topbar("Daftar chapter", dlBtn) + `<div class="px">${loading(8, "sk-lrow")}</div>`;
+  setActs({ back: () => back(comicHref(src, id)), retry: () => vChapters(src, id), dl: dlSoon });
   let d;
   try { d = cachedDetail(src, id) || (await getDetail(src, id)); } catch (e) { view.innerHTML = topbar("Daftar chapter") + errBox(e); return; }
   if (parse().name !== "chapters") return;
@@ -365,13 +415,16 @@ async function vChapters(src, id) {
   const row = chRowFor(src, id, h, latest);
   const STEP = 60;
   let q = "", asc = false, shown = STEP, io = null;
-  view.innerHTML = topbar("Daftar chapter") + `<div class="px">
-  <div class="sec-h"><b class="b15">${esc(d.manga.title)}</b><span class="mu sm">${d.chapters.length} chapter</span></div>
+  view.innerHTML = topbar("Daftar chapter", dlBtn) + `<div class="px">
+  <div class="ch-top" id="chtop"></div>
+  <div class="sec-h"><b class="b15">${esc(d.manga.title)}</b><span class="mu sm">${d.chapters.length} chapter tersedia</span></div>
   ${h?.chapter_id ? `<div class="row sb resume-line"><span>Terakhir dibuka · Chapter ${esc(h.chapter)}</span><button class="link-red" data-act="find">Temukan ↓</button></div>` : ""}
-  <div class="row g8"><label class="search box grow"><span class="mu">${icon("search", 18)}</span><span class="sr">Cari chapter</span><input id="chq" inputmode="decimal" placeholder="Cari nomor chapter…"></label>
-    <button class="sq-btn lg" data-act="sort" aria-label="Urutkan">${icon("sort", 18, 2)}</button></div>
   <div class="mu xs info" id="chinfo"></div>
-  <div id="chl" class="rows"></div><div id="chsent" style="height:1px"></div></div><div class="pad-nav"></div>`;
+  <div id="chl" class="rows"></div><div id="chsent" style="height:1px"></div></div><div class="pad-nav"></div>
+  <div class="fade-b" aria-hidden="true"></div>
+  <div class="chbar glass" id="chbar"><span class="mu">${icon("search", 20)}</span><label class="grow row"><span class="sr">Cari chapter</span><input id="chq" type="text" inputmode="decimal" enterkeyhint="search" autocomplete="off" placeholder="Cari chapter…"></label>
+    <button class="chx" data-act="clr" aria-label="Hapus pencarian" hidden>${icon("x", 18, 2)}</button><span class="vdiv" aria-hidden="true"></span>
+    <button class="chsort" data-act="sort" id="chsort">${icon("sort", 18)}<span>Terbaru</span></button></div>`;
   const list = () => {
     const base = asc ? d.chapters : d.chapters.slice().reverse();
     return base.filter((c) => matchCh(c, q));
@@ -380,16 +433,29 @@ async function vChapters(src, id) {
     const l = list();
     $("#chl").innerHTML = l.slice(0, shown).map((c) => row(c, true)).join("") || `<div class="empty"><span class="empty-ic">${icon("search", 22)}</span><b>Maaf, chapter tidak tersedia</b><span>Coba nomor chapter lain.</span></div>`;
     $("#chinfo").textContent = (q ? `${l.length} hasil · ` : "") + (asc ? "Urut dari chapter pertama" : "Urut dari chapter terbaru") + (l.length > shown ? ` · menampilkan ${shown} dari ${l.length}` : "");
+    $("#chsort span").textContent = asc ? "Terlama" : "Terbaru";
+    $(".chx").hidden = !q;
   };
   // tampilkan bertahap (60 per gulir) agar ratusan chapter tetap ringan
   io = new IntersectionObserver((e) => { if (e[0].isIntersecting && list().length > shown) { shown += STEP; draw(); } }, { rootMargin: "600px" });
   io.observe($("#chsent"));
-  cleanup = () => io.disconnect();
   const inp = $("#chq");
   inp.addEventListener("input", () => { q = inp.value.trim(); shown = STEP; draw(); });
+  // kolom cari: di bawah saat diam; diketuk → pindah ke atas (tidak tertutup keyboard), gulir daftar → kembali ke bawah
+  const setFoc = (on) => { document.body.classList.toggle("chfoc", on); if (on) window.scrollTo(0, 0); };
+  inp.addEventListener("pointerdown", (e) => { if (document.activeElement !== inp) { e.preventDefault(); setFoc(true); setTimeout(() => { try { inp.focus({ preventScroll: true }); } catch { inp.focus(); } }, 30); } });
+  inp.addEventListener("focus", () => setFoc(true));
+  inp.addEventListener("blur", () => setFoc(false));
+  inp.addEventListener("keydown", (e) => { if (e.key === "Enter") inp.blur(); });
+  const drop = () => { if (document.activeElement === inp) inp.blur(); };
+  window.addEventListener("touchmove", drop, { passive: true });
+  window.addEventListener("wheel", drop, { passive: true });
+  cleanup = () => { io.disconnect(); window.removeEventListener("touchmove", drop); window.removeEventListener("wheel", drop); document.body.classList.remove("chfoc"); };
   setActs({
     back: () => back(comicHref(src, id)),
-    sort: () => { asc = !asc; shown = STEP; draw(); },
+    sort: () => { asc = !asc; shown = STEP; draw(); window.scrollTo({ top: 0, behavior: "smooth" }); },
+    clr: () => { inp.value = ""; q = ""; shown = STEP; draw(); inp.focus({ preventScroll: true }); },
+    dl: dlSoon,
     find: () => {
       const l = list(), i = l.findIndex((c) => c.id === h.chapter_id);
       if (i < 0) return;
@@ -419,12 +485,13 @@ async function vReader(src, id, chId) {
   const imgs = p.images.map((im, i) => `<img class="r-img" data-i="${i + 1}" src="${esc(api.pageUrl(im.p))}" alt="Halaman ${i + 1}" ${i > 2 ? 'loading="lazy"' : ""} decoding="async" referrerpolicy="no-referrer" draggable="false">`);
   const mainLabel = next ? `Lanjut ke Chapter ${esc(next.ch)}` : "Kembali ke info komik";
   view.innerHTML = `<div class="reader ui ${slide ? "slide" : ""}" id="rd">
-  ${slide ? `<div class="r-slides" id="rbox" dir="${rtl ? "rtl" : "ltr"}">${imgs.map((im) => `<div class="r-slide">${im}</div>`).join("")}<div class="r-slide r-endslide"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span></div></div>`
-    : `<div class="r-scroll" id="rbox"><div class="r-pages" id="rpages">${imgs.join("")}<div class="r-endtxt"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span></div></div></div>`}
+  ${slide ? `<div class="r-slides" id="rbox" dir="${rtl ? "rtl" : "ltr"}">${imgs.map((im) => `<div class="r-slide">${im}</div>`).join("")}<div class="r-slide r-endslide"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span><a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini</a></div></div>`
+    : `<div class="r-scroll" id="rbox"><div class="r-pages" id="rpages">${imgs.join("")}<div class="r-endtxt"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span><a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini<span class="cm-n" id="rcmn"></span></a></div></div></div>`}
   <div class="r-zoom glass" id="rzoom" hidden>${icon("zoom", 15)}<span id="rzt"></span> · geser untuk melihat, ketuk 2× untuk normal</div>
   <div class="r-top">
     <button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 22, 2)}</button>
     <div class="r-pill glass"><b class="t1">${esc(d.manga.title)}</b><span class="mu xs">Chapter ${esc(ch.ch)}</span></div>
+    <a class="r-round glass" href="${commentsHref(src, id, chId)}" aria-label="Komentar chapter">${icon("msg", 20)}</a>
     <button class="r-round glass" data-act="menu" aria-label="Pengaturan mode baca" aria-expanded="false">${icon("dots", 22)}</button>
   </div>
   <div class="r-menu-bg" data-act="closeMenu" hidden></div>
@@ -432,6 +499,7 @@ async function vReader(src, id, chId) {
     <span class="cap">Mode baca</span>
     ${[["scroll", "Scroll (webtoon)", "Gulir ke bawah, halaman tersambung", "scroll"], ["slide", "Slide (halaman)", "Geser per halaman", "slides"]].map(([k, n, dsc, ic]) =>
       `<button class="r-mode ${st.readMode === k ? "on" : ""}" role="radio" aria-checked="${st.readMode === k}" data-act="rmode" data-v="${k}"><span class="${st.readMode === k ? "redt" : "mu"}">${icon(ic, 20)}</span><span class="col grow"><b>${n}</b><span class="mu xs">${dsc}</span></span>${st.readMode === k ? `<span class="redt">${icon("check", 18, 2.4)}</span>` : ""}</button>`).join("")}
+    <button class="r-mode" data-act="rreport"><span class="redt">${icon("bug", 20)}</span><span class="col grow"><b>Laporkan masalah chapter</b><span class="mu xs">Gambar rusak, halaman hilang, dll.</span></span></button>
     ${slide ? `<span class="cap mt4">Arah geser</span><div class="seg s3">${[["rtl", "Kanan ke kiri"], ["ltr", "Kiri ke kanan"]].map(([k, n]) => `<button role="tab" aria-selected="${(rtl ? "rtl" : "ltr") === k}" data-act="rdir" data-v="${k}">${n}</button>`).join("")}</div>` : ""}
   </div>
   <div class="r-bottom">
@@ -506,14 +574,29 @@ async function vReader(src, id, chId) {
     retry: () => vReader(src, id, chId),
     menu: () => menu($(".r-menu").hidden), closeMenu: () => menu(false),
     rmode: (el) => { S.setSetting("readMode", el.dataset.v); vReader(src, id, chId); },
+    rreport: () => { menu(false); openReport({ source: src, comic_id: id, title: d.manga.title, chapter_id: chId, chapter: ch.ch }); },
     rdir: (el) => { S.setSetting("readDir", el.dataset.v); vReader(src, id, chId); },
     prev: () => prev && go(readHref(src, id, prev.id)),
     main: () => go(next ? readHref(src, id, next.id) : comicHref(src, id)),
     next: () => go(next ? readHref(src, id, next.id) : comicHref(src, id)),
   });
   cleanup = () => { clearTimeout(tapT); S.flushHistory(); };
+  roomCount(roomFor(src, id, chId)).then((n) => { const el = $("#rcmn"); if (el && n) el.textContent = n; }).catch(() => {});
   const h = S.histItem(src, id);
   if (h?.chapter_id === chId && h.page > 1) setTimeout(() => goPage(h.page), 350);
+}
+
+/* ---------- Komentar komik / chapter (logika sama dengan chat publik) ---------- */
+async function vComments(src, id, chId) {
+  let d = cachedDetail(src, id);
+  if (!d) { try { d = await getDetail(src, id); } catch {} }
+  const ch = chId && d?.chapters.find((c) => c.id === chId);
+  const title = d?.manga.title || "Komik";
+  cleanup = await vChat(view, ctx(), {
+    room: roomFor(src, id, chId), title: chId ? `Komentar Chapter ${ch?.ch ?? ""}`.trim() : "Komentar",
+    sub: chId ? `${title} · Chapter ${ch?.ch ?? ""}` : title, cover: cover(d?.manga.cover, title, "rm"),
+    backHref: chId ? readHref(src, id, chId) : comicHref(src, id),
+  });
 }
 
 /* ---------- Favorit ---------- */
@@ -748,7 +831,7 @@ async function vPage(name) {
 }
 
 const ctx = () => ({ topbar, setActs, go, back, loading });
-const VIEWS = { chat: async () => { cleanup = await vChat(view, ctx()); }, chapters: vChapters, home: vHome, search: vSearch, fav: vFav, more: vMore, detail: vDetail, reader: vReader, page: vPage };
+const VIEWS = { chat: async () => { cleanup = await vChat(view, ctx()); }, comments: (s, i) => vComments(s, i), chcomments: (s, i, c) => vComments(s, i, c), chapters: vChapters, home: vHome, search: vSearch, fav: vFav, more: vMore, detail: vDetail, reader: vReader, page: vPage };
 
 /* ---------- mulai ---------- */
 const applyGfx = () => document.body.classList.toggle("nk-lite", S.state.settings.gfx === "Ringan");
