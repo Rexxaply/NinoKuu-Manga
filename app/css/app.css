@@ -736,12 +736,7 @@ body.nav-off .xp-pill.on { transform: none; }
 .r-endtxt { height: auto; min-height: 240px; padding: 28px 0 calc(170px + env(safe-area-inset-bottom)); }
 #ehist > h2.cap { margin: 18px 4px 8px; } #ehist > h2.cap:first-child { margin-top: 2px; }
 #ehist > .group + p { margin-top: 14px; }
-/* rekap: judul di tengah & lebih besar; nama tidak menempel ke bingkai avatar */
-.rc-card .rc-kick, .rc-card .rc-title { align-self: center; text-align: center; }
-.rc-card .rc-kick { margin-top: 10px; font-size: 11.5px; }
-.rc-card .rc-title { font-size: 42px; }
-.rc-card .rc-range { align-self: center; justify-content: center; font-size: 15px; }
-.rc-card .rc-range::after { content: ""; width: 34px; height: 4px; border-radius: 2px; background: linear-gradient(90deg, var(--red), var(--gold)); }
+/* rekap: nama tidak menempel ke bingkai avatar */
 .rc-card > .row:first-child { padding: 12px 0 0 10px; gap: 26px; align-items: flex-start; }
 .rc-card > .row:first-child > .col { padding-top: 4px; }
 .lv-chip { white-space: nowrap; }

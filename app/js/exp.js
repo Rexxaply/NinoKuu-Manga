@@ -412,17 +412,17 @@ export async function drawRecap(data, days) {
   let px = nx; px += pill(px, avy + 86, `Lv. ${lv.lv}`, "rgba(242,179,61,.18)", "#F2B33D") + 12; pill(px, avy + 86, lv.rank.toUpperCase(), "rgba(224,36,43,.22)", "#FF8A8E");
   c.font = f(800, 30); const sTxt = `🔥 ${st?.streak ?? 0} hari`, sw = c.measureText(sTxt).width + 44;
   px = X + CW - 56 - sw; rr(c, px, Y + 44, sw, 56, 28); c.fillStyle = "rgba(255,120,60,.16)"; c.fill(); c.strokeStyle = "rgba(255,140,80,.5)"; c.lineWidth = 2; c.stroke(); c.fillStyle = "#FFB27A"; c.fillText(sTxt, px + 22, Y + 82);
-  // judul (di tengah, lebih besar)
-  c.textAlign = "center";
-  c.fillStyle = "#A3ACBD"; c.font = f(800, 30); c.fillText(`NINOKUU  ·  ${days} HARI TERAKHIR`, W / 2, 438);
-  c.fillStyle = "#fff"; c.font = f(800, 118); c.fillText(`Rekap ${days} Hari`, W / 2, 548);
-  c.font = f(700, 40); const rt = range(data.from, data.to), rw = c.measureText(rt).width;
-  g = c.createLinearGradient(W / 2 - rw / 2 - 74, 0, W / 2 - rw / 2 - 18, 0); g.addColorStop(0, "#F2B33D"); g.addColorStop(1, "#E0242B");
-  c.fillStyle = g; rr(c, W / 2 - rw / 2 - 74, 588, 56, 8, 4); c.fill(); rr(c, W / 2 + rw / 2 + 18, 588, 56, 8, 4); c.fill();
-  c.fillStyle = "#F2B33D"; c.fillText(rt, W / 2, 606);
-  c.textAlign = "left";
+  // judul (rata kiri, sama dengan kartu di aplikasi)
+  c.fillStyle = "#A3ACBD"; c.font = f(800, 30);
+  if ("letterSpacing" in c) c.letterSpacing = "7px";
+  c.fillText(`NINOKUU  ·  ${days} HARI TERAKHIR`, ax, 418);
+  if ("letterSpacing" in c) c.letterSpacing = "0px";
+  c.fillStyle = "#fff"; c.font = f(800, 108); c.fillText(`Rekap ${days} Hari`, ax - 4, 530);
+  g = c.createLinearGradient(ax, 0, ax + 96, 0); g.addColorStop(0, "#F2B33D"); g.addColorStop(1, "#E0242B");
+  c.fillStyle = g; rr(c, ax, 591, 96, 10, 5); c.fill();
+  c.fillStyle = "#F2B33D"; c.font = f(700, 42); c.fillText(range(data.from, data.to), ax + 124, 611);
   // angka besar
-  let y = 650; rr(c, ax, y, bw, 210, 34); c.fillStyle = "rgba(255,255,255,.05)"; c.fill(); c.strokeStyle = "rgba(255,255,255,.08)"; c.stroke();
+  let y = 660; rr(c, ax, y, bw, 206, 34); c.fillStyle = "rgba(255,255,255,.05)"; c.fill(); c.strokeStyle = "rgba(255,255,255,.08)"; c.stroke();
   c.fillStyle = "rgba(255,255,255,.1)"; c.fillRect(ax + bw / 2, y + 36, 2, 148);
   const big = (x, v, lab, sub, col) => { c.fillStyle = col; c.font = f(800, 100); c.fillText(num(v), x, y + 106); c.fillStyle = "#F2F4F8"; c.font = f(800, 30); c.fillText(lab, x, y + 150); c.fillStyle = "#A3ACBD"; c.font = f(500, 28); c.fillText(sub, x, y + 184); };
   big(ax + 40, data.chapters, "CHAPTER", "dibaca sampai habis", "#F2B33D"); big(ax + bw / 2 + 40, data.series, "SERIES", "judul berbeda", "#FF6B70");
