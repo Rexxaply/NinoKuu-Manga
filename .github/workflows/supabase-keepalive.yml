@@ -9,8 +9,8 @@ on:
     - cron: "17 2 */2 * *"   # tiap 2 hari, 09.17 WIB
   workflow_dispatch: {}
 
-permissions:
-  contents: write
+# Default: token tanpa izin apa pun. Hanya job yang butuh menulis yang diberi izin.
+permissions: {}
 
 concurrency:
   group: supabase-keepalive
@@ -20,6 +20,7 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions: {}
     steps:
       - name: Ping database Supabase
         env:
@@ -28,31 +29,48 @@ jobs:
         run: |
           if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
             echo "::warning::Secret SUPABASE_URL / SUPABASE_ANON_KEY belum diisi. Ping dilewati."
+            echo "⚠️ Secret SUPABASE_URL / SUPABASE_ANON_KEY belum diisi — ping dilewati. Lihat README." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           URL="${SUPABASE_URL%/}"
           ok=0
           for i in 1 2 3; do
-            code=$(curl -sS -o /tmp/out.txt -w '%{http_code}' -X POST "$URL/rest/v1/rpc/keepalive_ping" \
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 -X POST "$URL/rest/v1/rpc/keepalive_ping" \
               -H "apikey: $SUPABASE_ANON_KEY" \
-              -H "Content-Type: application/json" -d '{}' || echo 000)
-            echo "Percobaan $i → HTTP $code"; cat /tmp/out.txt; echo
+              -H "Content-Type: application/json" -d '{}') || true
+            [ -n "$code" ] || code=000
+            echo "Percobaan $i → HTTP $code"
             if [ "$code" = "200" ]; then ok=1; break; fi
             sleep 20   # proyek yang baru bangun bisa butuh waktu
           done
           if [ "$ok" != "1" ]; then
-            echo "::error::Ping gagal. Cek apakah keepalive.sql sudah dijalankan, atau proyek sudah terlanjur dijeda (pulihkan di dashboard Supabase)."
+            case "$code" in
+              404) hint="keepalive.sql belum dijalankan di Supabase." ;;
+              401|403) hint="Kunci SUPABASE_ANON_KEY salah atau terpotong." ;;
+              000) hint="Tidak bisa terhubung: cek SUPABASE_URL atau proyek sedang dijeda (Restore di dashboard)." ;;
+              *) hint="Cek dashboard Supabase." ;;
+            esac
+            echo "::error::Ping gagal (HTTP $code). $hint"
             exit 1
           fi
 
   keep-schedule-alive:
+    # Hanya di branch utama, agar dispatch dari branch lain tidak membuat commit di sana.
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 1
+          persist-credentials: false
       - name: Commit kosong bila repo sepi > 45 hari
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
         run: |
           last=$(git log -1 --format=%ct)
           now=$(date +%s)
@@ -62,4 +80,4 @@ jobs:
           git config user.name "ninokuu-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit --allow-empty -m "chore: keepalive (jadwal GitHub Actions tetap aktif)"
-          git push
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "HEAD:refs/heads/${BRANCH}"

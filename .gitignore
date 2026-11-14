@@ -1,0 +1,34 @@
+# Rahasia & kunci — jangan pernah di-commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+!apk/*.keystore.enc
+google-services.json
+*firebase-adminsdk*.json
+service-account*.json
+
+# Supabase lokal
+supabase/.temp/
+supabase/.branches/
+
+# Build & dependensi
+node_modules/
+dist/
+build/
+www/
+android/app/build/
+android/.gradle/
+*.apk
+*.aab
+
+# Sistem / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log

@@ -19,6 +19,8 @@ Pasang sekali saja:
 
 Catatan:
 - Ping hanya memanggil fungsi `keepalive_ping()` yang mengubah satu kolom waktu. Tidak ada data pengguna yang disentuh.
+- Dari luar, tabel `keepalive` hanya bisa dibaca. Hak tulis dicabut dan RLS aktif.
+- Log workflow hanya menampilkan kode HTTP, bukan isi respons.
 - Workflow juga membuat commit kosong `chore: keepalive` bila repo tidak ada commit lebih dari 45 hari,
   karena GitHub mematikan jadwal otomatis di repo yang sepi sekitar 60 hari.
 - Kalau proyek sudah terlanjur dijeda, pulihkan dulu lewat tombol **Restore** di dashboard Supabase.
