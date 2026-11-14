@@ -489,15 +489,29 @@ async function vChapters(src, id) {
   const inp = $("#chq");
   inp.addEventListener("input", () => { q = inp.value.trim(); shown = STEP; draw(); });
   // kolom cari: di bawah saat diam; diketuk → pindah ke atas (tidak tertutup keyboard), gulir daftar → kembali ke bawah
-  const setFoc = (on) => { document.body.classList.toggle("chfoc", on); if (on) window.scrollTo(0, 0); };
-  inp.addEventListener("pointerdown", (e) => { if (document.activeElement !== inp) { e.preventDefault(); setFoc(true); setTimeout(() => { try { inp.focus({ preventScroll: true }); } catch { inp.focus(); } }, 30); } });
-  inp.addEventListener("focus", () => setFoc(true));
+  // Ketukan pertama: tahan fokus sampai jari diangkat (klik selesai di kolom), baru kolom pindah ke atas.
+  // Klik nyasar ke daftar tepat setelah kolom pindah diabaikan, supaya tidak membuka chapter.
+  let guardUntil = 0;
+  const setFoc = (on) => { document.body.classList.toggle("chfoc", on); if (on) { guardUntil = Date.now() + 450; window.scrollTo(0, 0); } };
+  const guard = (e) => { if (Date.now() < guardUntil && !e.target.closest("#chbar")) { e.preventDefault(); e.stopPropagation(); } };
+  document.addEventListener("click", guard, true);
+  inp.addEventListener("pointerdown", (e) => { if (document.activeElement !== inp) e.preventDefault(); });
+  inp.addEventListener("click", () => { if (document.activeElement === inp) return; setFoc(true); try { inp.focus({ preventScroll: true }); } catch { inp.focus(); } });
+  inp.addEventListener("focus", () => { if (!document.body.classList.contains("chfoc")) setFoc(true); });
   inp.addEventListener("blur", () => setFoc(false));
   inp.addEventListener("keydown", (e) => { if (e.key === "Enter") inp.blur(); });
-  const drop = () => { if (document.activeElement === inp) inp.blur(); };
+  // gulir daftar (bukan sentuhan kecil) → tutup keyboard, kolom kembali ke bawah
+  let ty = null;
+  const tstart = (e) => { ty = e.touches?.[0]?.clientY ?? null; };
+  const drop = (e) => {
+    if (document.activeElement !== inp || Date.now() < guardUntil || e.target.closest?.("#chbar")) return;
+    if (e.type === "touchmove" && ty !== null && Math.abs((e.touches?.[0]?.clientY ?? ty) - ty) < 12) return;
+    inp.blur();
+  };
+  window.addEventListener("touchstart", tstart, { passive: true });
   window.addEventListener("touchmove", drop, { passive: true });
   window.addEventListener("wheel", drop, { passive: true });
-  cleanup = () => { io.disconnect(); window.removeEventListener("touchmove", drop); window.removeEventListener("wheel", drop); document.body.classList.remove("chfoc"); };
+  cleanup = () => { io.disconnect(); window.removeEventListener("touchstart", tstart); window.removeEventListener("touchmove", drop); window.removeEventListener("wheel", drop); document.removeEventListener("click", guard, true); document.body.classList.remove("chfoc"); };
   setActs({
     back: () => backTo(comicHref(src, id)),
     sort: () => { asc = !asc; shown = STEP; draw(); window.scrollTo({ top: 0, behavior: "smooth" }); },
