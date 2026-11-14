@@ -7,6 +7,12 @@ export const isApp = (() => { try { return !!CAP()?.isNativePlatform?.(); } catc
 const plugin = (n) => (isApp ? CAP()?.Plugins?.[n] || null : null);
 const CFG = window.NINOKUU_CONFIG || {};
 export const BUILD = Number(CFG.BUILD || 0);
+// versi mayor.minor.patch dari berkas VERSION di repo (sama untuk web, APK, dan rilis GitHub)
+export const VERSION = String(CFG.VERSION || "0.0.0");
+const vp = (v) => String(v).split(".").map((n) => parseInt(n, 10) || 0);
+export function cmpVersion(a, b) { const x = vp(a), y = vp(b); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0) ? 1 : -1; return 0; }
+// jenis pembaruan: mayor (perubahan besar), minor (fitur baru), patch (perbaikan)
+export function updateKind(from, to) { const x = vp(from), y = vp(to); return y[0] !== x[0] ? "mayor" : y[1] !== x[1] ? "minor" : "patch"; }
 export const REPO = CFG.REPO || "Rexxaply/NinoKuu-Manga";
 export const WEB_URL = CFG.WEB_URL || `https://${REPO.split("/")[0].toLowerCase()}.github.io/${REPO.split("/")[1]}/`;
 export const APK_URL = `https://github.com/${REPO}/releases/download/apk-terbaru/ninokuu.apk`;
@@ -260,10 +266,15 @@ export async function latestBuild() {
   if (!isApp) return null;
   try {
     const j = await nget(`https://api.github.com/repos/${REPO}/releases/tags/apk-terbaru`, { headers: { Accept: "application/vnd.github+json" } });
-    const n = Number(String(j?.name || "").match(/build (\d+)/i)?.[1] || 0);
+    const name = String(j?.name || "");
+    const n = Number(name.match(/build (\d+)/i)?.[1] || 0);
+    const version = name.match(/v(\d+\.\d+\.\d+)/i)?.[1] || null;
     // catatan rilis: baris "Yang baru" dari pesan commit (tanpa baris atribusi)
     const notes = String(j?.body || "").split(/\r?\n/).map((x) => x.trim())
       .filter((x) => x && !/^(Co-Authored-By|Claude-Session|Dibangun otomatis|Unduh |Pembaruan bisa)/i.test(x)).slice(0, 12);
-    return n ? { build: n, url: APK_URL, notes, at: j?.published_at || null } : null;
+    if (!version && !n) return null;
+    // rilis lama tanpa nomor versi dibandingkan lewat nomor build
+    const newer = version ? cmpVersion(version, VERSION) > 0 : n > BUILD;
+    return { version, build: n, newer, kind: version ? updateKind(VERSION, version) : "patch", url: APK_URL, notes, at: j?.published_at || null };
   } catch { return null; }
 }

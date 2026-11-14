@@ -5,7 +5,7 @@ name: Deploy PWA
 on:
   push:
     branches: [main]
-    paths: ["app/**", ".github/workflows/pages.yml"]
+    paths: ["app/**", "VERSION", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions: {}
@@ -48,7 +48,8 @@ jobs:
               part = key.split(".")[1]; part += "=" * (-len(part) % 4)
               if json.loads(base64.urlsafe_b64decode(part)).get("role") != "anon":
                   raise SystemExit("::error::SUPABASE_ANON_KEY bukan kunci anon.")
-          ver = re.search(r'VERSION:\s*"([^"]+)"', open("app/config.js").read()).group(1)
+          ver = open("VERSION").read().strip()
+          if not re.match(r"^\d+\.\d+\.\d+$", ver): raise SystemExit("::error::Isi berkas VERSION harus mayor.minor.patch, mis. 1.2.3")
           open("app/config.js", "w").write("window.NINOKUU_CONFIG = " + json.dumps({"SUPABASE_URL": url, "SUPABASE_ANON_KEY": key, "VERSION": ver, "REPO": os.environ["GITHUB_REPOSITORY"]}) + ";\n")
           PY
           echo "config.js siap (versi $(grep -o '"VERSION": "[^"]*"' app/config.js))"

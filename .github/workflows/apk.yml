@@ -10,7 +10,9 @@ name: Build APK
 on:
   push:
     branches: [main]
-    paths: ["app/**", "apk/**", ".github/workflows/apk.yml"]
+    # APK baru dibangun saat berkas VERSION berubah (rilis), atau manual dari tab Actions.
+    # Perubahan web biasa langsung tayang di versi web tanpa menunggu rilis APK.
+    paths: ["VERSION", "apk/**", ".github/workflows/apk.yml"]
   workflow_dispatch:
 
 permissions: {}
@@ -92,7 +94,8 @@ jobs:
           if key.startswith("eyJ"):
               part = key.split(".")[1]; part += "=" * (-len(part) % 4)
               if json.loads(base64.urlsafe_b64decode(part)).get("role") != "anon": raise SystemExit("::error::SUPABASE_ANON_KEY bukan kunci anon.")
-          ver = re.search(r'VERSION:\s*"([^"]+)"', open("../app/config.js").read()).group(1)
+          ver = open("../VERSION").read().strip()
+          if not re.match(r"^\d+\.\d+\.\d+$", ver): raise SystemExit("::error::Isi berkas VERSION harus mayor.minor.patch, mis. 1.2.3")
           owner, name = os.environ["REPO"].split("/")
           cfg = {"SUPABASE_URL": url, "SUPABASE_ANON_KEY": key, "VERSION": ver, "BUILD": int(os.environ["BUILD"]), "REPO": os.environ["REPO"],
                  "WEB_URL": f"https://{owner.lower()}.github.io/{name}/"}
@@ -167,7 +170,12 @@ jobs:
               }
           }
           GRADLE
-          sed -i -E "s/versionCode [0-9]+/versionCode ${{ github.run_number }}/; s/versionName \"[^\"]*\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
+          # versionName = isi VERSION (mis. 1.2.3); versionCode = 1.002.003 → 1002003 (selalu naik bila versi naik)
+          V=$(tr -d ' \n\r' < ../VERSION)
+          IFS=. read -r MA MI PA <<< "$V"
+          CODE=$((MA * 1000000 + MI * 1000 + PA))
+          echo "APP_VERSION=$V" >> "$GITHUB_ENV"
+          sed -i -E "s/versionCode [0-9]+/versionCode $CODE/; s/versionName \"[^\"]*\"/versionName \"$V\"/" android/app/build.gradle
           grep -n "versionCode\|versionName" android/app/build.gradle
 
       - name: Build APK
@@ -201,6 +209,6 @@ jobs:
             echo "Unduh ninokuu.apk lalu pasang di HP Android. Pembaruan bisa dipasang langsung menimpa versi lama."; } > "$RUNNER_TEMP/notes.md"
           gh release delete apk-terbaru --repo "${{ github.repository }}" --yes --cleanup-tag || true
           gh release create apk-terbaru ninokuu.apk --repo "${{ github.repository }}" --target "${{ github.sha }}" \
-            --title "Ninokuu APK (build ${{ github.run_number }})" --latest --notes-file "$RUNNER_TEMP/notes.md"
+            --title "Ninokuu v$APP_VERSION (build ${{ github.run_number }})" --latest --notes-file "$RUNNER_TEMP/notes.md"
           echo "### APK siap" >> "$GITHUB_STEP_SUMMARY"
           echo "https://github.com/${{ github.repository }}/releases/download/apk-terbaru/ninokuu.apk" >> "$GITHUB_STEP_SUMMARY"

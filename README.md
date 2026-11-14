@@ -86,3 +86,16 @@ Nama paket diambil dari `google-services.json` (atau variabel `APP_ID`).
 Khusus APK (`app/js/native.js`): Shinigami & WestManga dibuka langsung lewat jaringan HP, notifikasi Firebase
 (`register_device`), HP mengecek chapter baru komik berlonceng dari dua sumber itu lalu melapor ke server
 (`report_chapters`), tombol kembali Android, dan pemberitahuan versi APK baru.
+
+## Versi & rilis
+
+Versi aplikasi ada di berkas `VERSION` (format **mayor.minor.patch**, mis. `1.2.3`) dan dipakai bersama oleh web,
+APK (versionName; versionCode = mayor×1.000.000 + minor×1.000 + patch), judul rilis GitHub, dan pengecek pembaruan di aplikasi.
+
+- **patch** (1.1.0 → 1.1.1): perbaikan bug tanpa fitur baru
+- **minor** (1.1.1 → 1.2.0): fitur baru, data lama tetap aman
+- **mayor** (1.2.0 → 2.0.0): perubahan besar
+
+Mengubah `VERSION` lalu push ke `main` = rilis APK baru (workflow Build APK). Perubahan di `app/` tanpa menaikkan versi
+langsung tayang di versi web saja. Aplikasi menampilkan "Pembaruan tersedia" (dengan jenisnya) saat dibuka bila versi di
+Release `apk-terbaru` lebih baru.

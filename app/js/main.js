@@ -9,6 +9,7 @@ import { vChat, vDev, roomFor, roomPreview, roomCount, miniMsg, bindSpoilers } f
 import { esc, icon, $, $$, toast, ago, SOURCES, srcName, TYPES, typeName, cover, comicHref, readHref, greeting, errBox, loading } from "./ui.js";
 
 const VERSION = window.NINOKUU_CONFIG?.VERSION || "1.0.0";
+const KIND_NAME = { mayor: "Pembaruan besar", minor: "Fitur baru", patch: "Perbaikan" };
 const view = $("#view");
 const nav = $("#nav");
 let route = { name: "home", params: [], key: "" };
@@ -847,14 +848,14 @@ ${group("Bacaanmu", mrow("star", "Level &amp; Rank", user ? `${lv.rank} · Lv ${
   ${seg([{ id: "scroll", name: "Scroll (webtoon)" }, { id: "slide", name: "Slide (halaman)" }], st.readMode, "rmode", "s2")}
   ${st.readMode === "slide" ? `<span class="mu sm">Arah geser</span>${seg([{ id: "rtl", name: "Kanan ke kiri" }, { id: "ltr", name: "Kiri ke kanan" }], st.readDir === "ltr" ? "ltr" : "rtl", "dir", "s2")}` : ""}
   <span class="mu xs lh">${st.readMode === "slide" ? "Geser per halaman. Kanan ke kiri cocok untuk manga Jepang." : "Gulir ke bawah, halaman tersambung. Cocok untuk manhwa dan manhua."}</span></div></section>
-${N.isApp ? group("Aplikasi", `<span id="updrow"></span>` + mrow("bell", "Notifikasi HP", `<span id="pushst">Memeriksa…</span>`, "pushset") + mrow("info", "Versi aplikasi", `Build ${N.BUILD || "-"} · ketuk untuk cek pembaruan`, "checkupd"))
+${N.isApp ? group("Aplikasi", `<span id="updrow"></span>` + mrow("bell", "Notifikasi HP", `<span id="pushst">Memeriksa…</span>`, "pushset") + mrow("info", "Versi aplikasi", `v${esc(VERSION)} · ketuk untuk cek pembaruan`, "checkupd"))
   : group("Aplikasi Android", mrow("down", "Pasang aplikasi Android (APK)", "Baca Shinigami &amp; WestManga, notifikasi chapter baru di HP", "getapk"))}
 ${group("Data &amp; penyimpanan", mrow("cloud", "Backup data offline", "Simpan koleksi, riwayat, dan pengaturan ke file", "backup") + mrow("restore", "Pulihkan data", "Dari file backup", "restore") + mrow("trash", "Bersihkan cache", "Gambar sampul &amp; halaman yang tersimpan", "cache"))}
 ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord Ninokuu", "discord") + mrow("info", "Tentang aplikasi", "Versi " + esc(VERSION), "about") + mrow("shield", "Kebijakan privasi", "", "privacy") + mrow("doc", "Ketentuan pengguna", "", "terms") + mrow("heart", "Dukung di Trakteer", "Traktir pengembang", "trakteer"))}
 <p class="mu xs center mt18">Ninokuu versi ${esc(VERSION)}</p><div class="pad-nav"></div>`;
   if (N.isApp) {
     refreshPushStatus();
-    N.latestBuild().then((r) => { const el = $("#updrow"); if (el && r && r.build > N.BUILD) el.outerHTML = mrow("refresh", `<span class="gold">Versi baru tersedia</span>`, `Build ${r.build} · ketuk untuk mengunduh`, "update"); });
+    N.latestBuild().then((r) => { const el = $("#updrow"); if (el && r?.newer) el.outerHTML = mrow("refresh", `<span class="gold">Versi baru tersedia</span>`, `v${esc(r.version || "")} · ${KIND_NAME[r.kind] || "Pembaruan"} · ketuk untuk melihat`, "update"); });
   }
   const form = $("#auth");
   if (form) form.addEventListener("submit", async (e) => {
@@ -938,12 +939,12 @@ function setKeyboard(h, phase) {
 
 // Pembaruan APK: peringatan saat aplikasi dibuka bila ada build baru, dan cek manual dari Lainnya.
 function showUpdate(r) {
-  openSheet(`<span class="sheet-ttl">Pembaruan tersedia</span>
-    <span class="sheet-prev">Build ${r.build} · kamu memakai build ${N.BUILD || "-"}</span>
+  openSheet(`<span class="sheet-ttl">Pembaruan tersedia <span class="kind-pill ${r.kind}">${KIND_NAME[r.kind] || "Pembaruan"}</span></span>
+    <span class="sheet-prev">${r.version ? `Versi ${esc(r.version)} · kamu memakai ${esc(VERSION)}` : `Build ${r.build} · kamu memakai build ${N.BUILD || "-"}`}</span>
     ${r.notes?.length ? `<div class="upd-notes"><b class="xs gold">Yang baru</b>${r.notes.map((x) => `<span>${esc(x.replace(/^[-•*]\s*/, ""))}</span>`).join("")}</div>` : ""}
     <span class="mu xs upd-hint">Unduh lalu pasang menimpa aplikasi ini. Login, favorit, dan riwayat tetap aman.</span>
     <div class="row g8"><button class="sh-cancel grow" data-s="later">Nanti</button><button class="btn primary grow" data-s="get">${icon("down", 17, 2)}Perbarui sekarang</button></div>`, (b) => {
-    if (b.dataset.s === "later") { try { sessionStorage.setItem("ninokuu:updLater", String(r.build)); } catch {} closeSheet(); }
+    if (b.dataset.s === "later") { try { sessionStorage.setItem("ninokuu:updLater", String(r.version || r.build)); } catch {} closeSheet(); }
     if (b.dataset.s === "get") { window.open(r.url, "_blank"); closeSheet(); }
   });
 }
@@ -951,10 +952,10 @@ async function checkUpdate(manual) {
   if (manual) toast("Memeriksa pembaruan…", 1500);
   const r = await N.latestBuild();
   if (!r) { if (manual) toast("Tidak bisa memeriksa pembaruan. Periksa koneksi internet."); return; }
-  if (r.build > N.BUILD) {
+  if (r.newer) {
     let later = ""; try { later = sessionStorage.getItem("ninokuu:updLater") || ""; } catch {}
-    if (manual || later !== String(r.build)) showUpdate(r);
-  } else if (manual) toast(`Kamu sudah memakai versi terbaru (build ${N.BUILD}).`);
+    if (manual || later !== String(r.version || r.build)) showUpdate(r);
+  } else if (manual) toast(`Kamu sudah memakai versi terbaru (v${VERSION}).`);
 }
 
 function startApp() {

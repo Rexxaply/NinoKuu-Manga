@@ -11,7 +11,7 @@
 // kalau satu sumber rusak, isi secret KOMIKU_SITE / KIRYUU_SITE / SHNGM_SITE / WEST_SITE dengan domain barunya.
 import { createClient } from "npm:@supabase/supabase-js@2.76.1";
 
-const VERSION = "1.1.2";
+const VERSION = "1.2.0";
 const NAME = "ninokuu-api";
 const SOURCES = ["komiku", "kiryuu", "shinigami", "westmanga"] as const;
 type Source = typeof SOURCES[number];
@@ -681,7 +681,11 @@ async function pushAnnouncements() {
     const { data: users } = await admin.from("profiles").select("id").eq("banned", false).limit(100000);
     const ids = (users || []).map((u: any) => u.id as string);
     for (let i = 0; i < ids.length; i += 500) {
-      await admin.from("notifications").insert(ids.slice(i, i + 500).map((u: string) => ({ user_id: u, title: String(a.title).slice(0, 200), body: String(a.body || "Pengumuman dari Developer").slice(0, 500) })));
+      // announcement_id: notifikasi ikut terhapus bila pengumuman ditarik developer
+      const rows = ids.slice(i, i + 500).map((u: string) => ({ user_id: u, title: String(a.title).slice(0, 200), body: String(a.body || "Pengumuman dari Developer").slice(0, 500), announcement_id: a.id }));
+      const { error } = await admin.from("notifications").insert(rows);
+      // skema lama (belum ada kolom announcement_id) → simpan tanpa kolom itu
+      if (error && /announcement_id/.test(error.message)) await admin.from("notifications").insert(rows.map(({ announcement_id: _x, ...r }: any) => r));
     }
     const tokens = (await tokensOf(ids)).slice(0, PUSH_MAX);
     const r = await pushTokens(tokens, { title: a.title, body: a.body || "Pengumuman dari Developer", url: "ninokuu://chat", tag: `ann:${a.id}` });

@@ -579,10 +579,12 @@ create table if not exists public.announcements (
   constraint announcements_len check (char_length(btrim(title)) between 1 and 80 and char_length(body) <= 500)
 );
 create index if not exists announcements_recent_idx on public.announcements (created_at desc);
+-- sematan bisa berakhir otomatis (null = sampai dilepas developer)
+alter table public.announcements add column if not exists pinned_until timestamptz;
 alter table public.announcements enable row level security;
 revoke all on table public.announcements from anon, authenticated;
 grant select on table public.announcements to anon, authenticated;
-grant insert (title, body, pinned, push), update (title, body, pinned), delete on table public.announcements to authenticated;
+grant insert (title, body, pinned, push, pinned_until), update (title, body, pinned, pinned_until), delete on table public.announcements to authenticated;
 drop policy if exists "pengumuman dibaca publik" on public.announcements;
 create policy "pengumuman dibaca publik" on public.announcements for select using (true);
 drop policy if exists "pengumuman dibuat developer" on public.announcements;
@@ -594,6 +596,14 @@ create policy "pengumuman diubah developer" on public.announcements for update t
 drop policy if exists "pengumuman dihapus developer" on public.announcements;
 create policy "pengumuman dihapus developer" on public.announcements for delete to authenticated
   using ((select public.is_dev()));
+
+-- notifikasi lonceng dari pengumuman ikut terhapus saat pengumuman ditarik (dihapus)
+alter table public.notifications add column if not exists announcement_id bigint;
+do $$ begin
+  alter table public.notifications add constraint notifications_announcement_fk
+    foreign key (announcement_id) references public.announcements (id) on delete cascade;
+exception when duplicate_object then null; end $$;
+create index if not exists notifications_ann_idx on public.notifications (announcement_id) where announcement_id is not null;
 
 -- Statistik ringkas untuk Panel developer.
 -- Laporan masalah komik/chapter dari pembaca (tombol "Laporkan"). Dibaca staf di Panel developer.

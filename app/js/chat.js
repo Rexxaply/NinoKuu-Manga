@@ -43,6 +43,16 @@ async function compress(file) {
   } catch { return { blob: file, ext: file.type.split("/")[1].replace("jpeg", "jpg") }; }
 }
 
+/* ---------- pengumuman tersemat di chat publik ---------- */
+// hanya yang disematkan dan belum lewat masa sematnya; pengguna bisa menyembunyikan untuk dirinya sendiri
+async function activePin() {
+  const now = encodeURIComponent(`(pinned_until.is.null,pinned_until.gt."${new Date().toISOString()}")`);
+  const rows = await api.rest(`announcements?select=id,title,body,created_at,pinned_until&pinned=eq.true&or=${now}&order=created_at.desc&limit=3`)
+    .catch(() => api.rest("announcements?select=id,title,body,created_at&pinned=eq.true&order=created_at.desc&limit=3").catch(() => []));
+  const hidden = api.lsGet("annHidden", []);
+  return (rows || []).find((a) => !hidden.includes(a.id)) || null;
+}
+
 /* ---------- Ruang obrolan: chat publik, komentar komik, komentar chapter ---------- */
 // opt.room: "public" | "c:<sumber>:<id>" | "ch:<sumber>:<id>:<chapter>"
 export const roomFor = (src, id, chId) => (chId ? `ch:${src}:${id}:${chId}` : `c:${src}:${id}`);
@@ -79,7 +89,7 @@ export async function vChat(view, ctx, opt = {}) {
     msgs = full ? fresh : msgs.concat(fresh);
     // tandai chat publik sudah dilihat (titik merah di ikon chat Beranda hilang)
     if (pub && msgs.length) api.lsSet("chatSeen", Math.max(Number(api.lsGet("chatSeen", 0)), msgs[msgs.length - 1].id));
-    if (full && pub) pin = ((await api.rest("announcements?select=id,title,body,created_at&pinned=eq.true&order=created_at.desc&limit=1").catch(() => [])) || [])[0] || null;
+    if (full && pub) pin = await activePin();
     return fresh.length;
   };
   const atBottom = () => { const el = document.scrollingElement; return el.scrollHeight - el.scrollTop - el.clientHeight < 140; };
@@ -89,8 +99,8 @@ export async function vChat(view, ctx, opt = {}) {
     let prev = null;
     $("#chat").innerHTML = `${pub ? `<div class="chat-info"><span class="online-dot"></span>${active || 1} pembaca aktif · Jaga obrolan tetap sopan, tandai spoiler.</div>`
       : `<a class="room-h" href="${esc(opt.backHref || "#/home")}">${opt.cover || ""}<span class="rc-mid g4"><b class="t1">${esc(opt.sub || "")}</b><span class="mu xs">${msgs.length ? msgs.length + (msgs.length >= 100 ? "+" : "") + " komentar" : "Belum ada komentar"} · tandai spoiler dengan ||teks||</span></span></a>`}
-  ${pin ? `<div class="pin"><span class="pin-ic">${icon("mega", 18)}</span><span class="rc-mid g4"><span class="pin-cap">Pengumuman · Developer</span><b>${esc(pin.title)}</b>${pin.body ? `<span class="mu sm pre">${esc(pin.body)}</span>` : ""}</span>
-      ${isDev() ? `<button class="x-btn" data-c="unpin" aria-label="Lepas sematan">${icon("x", 14, 2.2)}</button>` : ""}</div>` : ""}
+  ${pin ? `<div class="pin" data-c="pinx"><span class="pin-ic">${icon("mega", 18)}</span><span class="rc-mid g4"><span class="pin-cap">Pengumuman · Developer · ${esc(ago(pin.created_at))}</span><b>${esc(pin.title)}</b>${pin.body ? `<span class="mu sm pre pin-body">${esc(pin.body)}</span>` : ""}</span>
+      <button class="x-btn" data-c="${isDev() ? "unpin" : "pinhide"}" aria-label="${isDev() ? "Lepas pengumuman untuk semua pengguna" : "Sembunyikan pengumuman"}">${icon("x", 14, 2.2)}</button></div>` : ""}
   ${msgs.map((m) => {
       const mine = m.user_id === me, head = !prev || prev.user_id !== m.user_id; prev = m;
       const lv = S.levelOf({ exp: m.exp, role: m.role }), t = lv.tier;
@@ -200,7 +210,9 @@ export async function vChat(view, ctx, opt = {}) {
     else if (a === "mhide") run(() => api.rpc("mod_set_hidden", { p_message: m.id, p_hidden: !m.hidden }), m.hidden ? "Pesan ditampilkan lagi" : "Pesan disembunyikan dari semua pengguna");
     else if (a === "mmute") run(() => api.rpc("mod_restrict", { p_user: m.user_id, p_mute_minutes: 60 }), `${m.name} dibisukan 1 jam`);
     else if (a === "mban") { if (!confirm(`Blokir ${m.name}? Semua pesannya disembunyikan dan dia tidak bisa menulis di chat publik.`)) return; run(() => api.rpc("mod_restrict", { p_user: m.user_id, p_ban: true }), `${m.name} diblokir dari chat`); }
-    else if (a === "unpin") run(() => api.rest(`announcements?id=eq.${pin.id}`, { method: "PATCH", body: { pinned: false }, prefer: "return=minimal" }), "Sematan dilepas");
+    else if (a === "pinx") b.classList.toggle("open");
+    else if (a === "unpin") { if (!confirm("Lepas pengumuman ini dari chat publik untuk semua pengguna?")) return; run(() => api.rest(`announcements?id=eq.${pin.id}`, { method: "PATCH", body: { pinned: false }, prefer: "return=minimal" }), "Pengumuman dilepas dari chat untuk semua pengguna"); }
+    else if (a === "pinhide") { api.lsSet("annHidden", [...api.lsGet("annHidden", []), pin.id].slice(-50)); pin = null; draw(); toast("Pengumuman disembunyikan"); }
   });
   setActs({ back: () => back(opt.backHref || "#/home") });
   // keyboard muncul → tetap lihat pesan terakhir
@@ -250,6 +262,18 @@ function storageHtml(s) {
     <button class="btn ghost sm" data-d="clean" data-k="${k}">Bersihkan</button></div>`).join("")}</div></section>`;
 }
 
+// kartu pengumuman di Panel developer: status sematan & notifikasi, lepas/sematkan, tarik
+function annCard(a) {
+  const live = a.pinned && (!a.pinned_until || Date.parse(a.pinned_until) > Date.now());
+  const until = a.pinned_until ? new Date(a.pinned_until).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+  return `<div class="card col g8 ann-c"><span class="row g8 xs"><b class="sm grow t1">${esc(a.title)}</b><span class="mu">${esc(ago(a.created_at))}</span></span>
+    ${a.body ? `<span class="sm mu pre">${esc(a.body)}</span>` : ""}
+    <span class="row g6 wrap xs"><span class="st-chip ${live ? "on" : ""}">${live ? `Tersemat${until ? " · sampai " + esc(until) : ""}` : a.pinned ? "Masa sematan habis" : "Tidak disematkan"}</span>
+      <span class="st-chip">${a.push ? (a.pushed_at ? "Notifikasi terkirim " + esc(ago(a.pushed_at)) : "Notifikasi menunggu cron") : "Tanpa notifikasi"}</span></span>
+    <div class="row g6 wrap"><button class="btn ghost sm" data-d="annpin" data-id="${a.id}" data-on="${live}">${live ? "Lepas dari chat" : "Sematkan lagi"}</button>
+      <button class="btn ghost sm red" data-d="anndel" data-id="${a.id}">Tarik pengumuman</button></div></div>`;
+}
+
 /* ---------- Panel developer ---------- */
 export async function vDev(view, ctx) {
   const { topbar, setActs, back, loading } = ctx;
@@ -258,7 +282,7 @@ export async function vDev(view, ctx) {
   view.innerHTML = `<div id="devroot">${topbar("Panel developer")}<div class="px col g20" id="dev">${loading(4, "sk-lrow")}</div><div class="pad-nav"></div></div>`;
   const root = $("#devroot");
   const tog = (key, on) => `<button class="switch ${on ? "on" : ""}" role="switch" aria-checked="${on}" data-d="tog" data-k="${key}"><span></span></button>`;
-  let form = { title: "", body: "", pin: true, push: true };
+  let form = { title: "", body: "", pin: true, push: false, days: 3 };
   let nf = (n) => Number(n || 0).toLocaleString("id-ID");
   const draw = async () => {
     const [stats, reps, restricted, bugs, sto] = await Promise.all([
@@ -268,6 +292,7 @@ export async function vDev(view, ctx) {
       api.rest("bug_reports?select=*&resolved=eq.false&order=created_at.desc&limit=60").catch(() => []),
       dev ? api.rpc("dev_storage").catch((e) => ({ error: e.message })) : null,
     ]);
+    const anns = dev ? (await api.rest("announcements?select=*&order=created_at.desc&limit=10").catch(() => [])) || [] : [];
     const KIND = { gambar: "Gambar tidak muncul / rusak", chapter: "Chapter hilang / tidak lengkap", urutan: "Urutan halaman salah", info: "Info komik salah", lainnya: "Lainnya" };
     const counts = {}; (reps || []).forEach((r) => { counts[r.message_id] = (counts[r.message_id] || 0) + 1; });
     const ids = Object.keys(counts);
@@ -284,9 +309,12 @@ export async function vDev(view, ctx) {
   <section class="col g10"><h2 class="cap m0">Pengumuman</h2><div class="card col g12">
     <label class="fld">Judul<input id="at" maxlength="80" placeholder="Contoh: Maintenance server malam ini" value="${esc(form.title)}"></label>
     <label class="fld">Isi (opsional)<textarea id="ab" maxlength="500" rows="3" placeholder="Detail singkat untuk pembaca">${esc(form.body)}</textarea></label>
-    <div class="row g12"><span class="col grow g4"><b class="sm">Sematkan di chat publik</b><span class="mu xs">Tampil paling atas di Chat publik</span></span>${tog("pin", form.pin)}</div>
-    <div class="row g12"><span class="col grow g4"><b class="sm">Kirim notifikasi ke semua</b><span class="mu xs">Masuk ke lonceng & notifikasi HP semua pengguna (lewat cron)</span></span>${tog("push", form.push)}</div>
-    <button class="btn primary" data-d="ann">${icon("mega", 18)}Kirim pengumuman</button></div></section>` : ""}
+    <div class="row g12"><span class="col grow g4"><b class="sm">Sematkan di chat publik</b><span class="mu xs">Menempel di atas Chat publik</span></span>${tog("pin", form.pin)}</div>
+    ${form.pin ? `<div class="row g12"><span class="col grow g4"><b class="sm">Lama disematkan</b><span class="mu xs">Setelah itu hilang sendiri dari chat</span></span>
+      <select class="sel" data-d="days">${[[1, "1 hari"], [3, "3 hari"], [7, "7 hari"], [0, "Sampai dilepas"]].map(([v, l]) => `<option value="${v}" ${form.days === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>` : ""}
+    <div class="row g12"><span class="col grow g4"><b class="sm">Kirim notifikasi ke semua</b><span class="mu xs">Sekali saja ke lonceng & HP semua pengguna (lewat cron). Matikan untuk info kecil.</span></span>${tog("push", form.push)}</div>
+    <button class="btn primary" data-d="ann">${icon("mega", 18)}Kirim pengumuman</button></div>
+    ${anns.length ? `<span class="cap m0 mt8">Pengumuman terakhir</span>${anns.map(annCard).join("")}` : ""}</section>` : ""}
   <section class="col g10"><h2 class="cap m0">Laporan chat · ${repMsgs.length}</h2>
     ${repMsgs.length ? repMsgs.map((m) => `<div class="card col g10 ${m.hidden ? "" : "rep-open"}"><span class="row g8 xs"><b class="sm">${esc(m.name)}</b><span class="rep-n">${counts[m.id]} laporan</span>${m.room && m.room !== "public" ? `<span class="mu">${m.room.startsWith("ch:") ? "Komentar chapter" : "Komentar komik"}</span>` : ""}<span class="mu" style="margin-left:auto">${m.hidden ? "Disembunyikan" : "Masih tampil"}</span></span>
       <span class="sm">${esc(plain(m.body) || "Gambar")}</span>
@@ -306,6 +334,7 @@ export async function vDev(view, ctx) {
     <button class="mrow" data-d="test"><span class="mrow-ic">${icon("bell", 18)}</span><span class="rc-mid"><b>Kirim tes notifikasi ke HP ini</b><span class="mu sm">Butuh aplikasi APK dengan izin notifikasi</span></span></button></div>
     <p class="mu xs lh m0">Peran Developer hanya bisa diberikan dari SQL Editor Supabase. Semua aksi di halaman ini dicek ulang oleh server.</p></section>` : ""}`;
   };
+  root.addEventListener("change", (e) => { if (e.target.dataset?.d === "days") form.days = Number(e.target.value); });
   root.addEventListener("input", (e) => { if (e.target.id === "at") form.title = e.target.value; if (e.target.id === "ab") form.body = e.target.value; });
   root.addEventListener("click", async (e) => {
     const b = e.target.closest("[data-d]"); if (!b) return;
@@ -315,11 +344,18 @@ export async function vDev(view, ctx) {
       const k = b.dataset.k;
       if (k === "asUser") { S.setSetting("asUser", !S.state.settings.asUser); return draw(); }
       form[k] = !form[k]; b.classList.toggle("on", form[k]); b.setAttribute("aria-checked", form[k]);
+      if (k === "pin") return draw();
     }
     if (a === "ann") {
       const t = form.title.trim(); if (!t) return toast("Isi judul pengumuman dulu");
       if (!confirm(`Kirim pengumuman “${t}”${form.push ? " ke semua pengguna" : ""}?`)) return;
-      run(async () => { await api.rest("announcements", { method: "POST", body: { title: t, body: form.body.trim(), pinned: form.pin, push: form.push }, prefer: "return=minimal" }); form = { title: "", body: "", pin: true, push: true }; },
+      run(async () => {
+        const body = { title: t, body: form.body.trim(), pinned: form.pin, push: form.push };
+        if (form.pin && form.days) body.pinned_until = new Date(Date.now() + form.days * 864e5).toISOString();
+        try { await api.rest("announcements", { method: "POST", body, prefer: "return=minimal" }); }
+        catch (e) { if (!/pinned_until/.test(e.message)) throw e; delete body.pinned_until; await api.rest("announcements", { method: "POST", body, prefer: "return=minimal" }); }
+        form = { title: "", body: "", pin: true, push: false, days: 3 };
+      },
         form.push ? "Pengumuman terkirim · notifikasi dikirim pada jalan cron berikutnya" : "Pengumuman terkirim");
     }
     if (a === "cron") run(async () => { b.disabled = true; await api.call("run_cron"); }, "Cron selesai dijalankan");
@@ -339,6 +375,15 @@ export async function vDev(view, ctx) {
         if (imgs.length) await api.removeFiles("chat-images", imgs);
         toast(`${nf(r?.deleted)} data dibersihkan${imgs.length ? ` · ${nf(imgs.length)} file gambar dihapus` : ""}`, 3500);
       });
+    }
+    if (a === "annpin") {
+      const on = b.dataset.on !== "true";
+      run(() => api.rest(`announcements?id=eq.${b.dataset.id}`, { method: "PATCH", prefer: "return=minimal", body: on ? { pinned: true, pinned_until: new Date(Date.now() + 3 * 864e5).toISOString() } : { pinned: false } }),
+        on ? "Disematkan lagi selama 3 hari" : "Dilepas dari chat untuk semua pengguna");
+    }
+    if (a === "anndel") {
+      if (!confirm("Tarik pengumuman ini?\n\nPengumuman hilang dari Chat publik dan dari lonceng semua pengguna. Notifikasi yang sudah masuk ke HP tidak bisa ditarik.")) return;
+      run(() => api.rest(`announcements?id=eq.${b.dataset.id}`, { method: "DELETE" }), "Pengumuman ditarik");
     }
     if (a === "bugok") run(() => api.rest(`bug_reports?id=eq.${b.dataset.id}`, { method: "PATCH", body: { resolved: true }, prefer: "return=minimal" }), "Laporan ditandai selesai");
     if (a === "lift") run(() => api.rpc("mod_restrict", { p_user: b.dataset.u, p_mute_minutes: 0, p_ban: false }), `Batasan ${b.dataset.n} dicabut`);
