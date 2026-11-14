@@ -26,6 +26,23 @@ dan "Admin" dicadangkan untuk akun resmi.
 Semua tabel memakai RLS. Hak bawaan `anon`/`authenticated` dicabut lalu diberikan seperlunya;
 EXP, notifikasi, dan status sembunyi pesan hanya diubah oleh trigger/fungsi di server.
 
+## Edge Function `ninokuu-api`
+
+[`supabase/functions/ninokuu-api/index.ts`](supabase/functions/ninokuu-api/index.ts) — jelajah, detail, dan halaman chapter
+dari Komiku, Kiryuu, Shinigami, WestManga; proxy gambar bertanda tangan; cron tiap 15 menit untuk notifikasi chapter
+baru (FCM), pengumuman developer, dan pembersihan chat/notifikasi lama. Deploy lewat dashboard (Via Editor), matikan
+**Verify JWT**, lalu buat Cron `*/15 * * * *` dengan body `{"action":"cron"}`. Detail di panduan instalasi Langkah 7.
+
+| action | login | isi |
+|---|---|---|
+| `browse` | tidak | `source`, `page`, `q`, `sort` (`update`/`popular`), `type`, `limit` |
+| `detail` | tidak | `source`, `comic_id` |
+| `pages` | tidak | `source`, `chapter_id` → gambar via `?img=…&sig=…` |
+| `cron` | — | dipanggil Supabase Cron |
+| `report_chapters` | ya | APK melaporkan chapter Shinigami/WestManga |
+| `test_push` | ya | tes notifikasi ke HP sendiri |
+| `run_cron` | developer | jalankan cron sekarang |
+
 ## Menjaga Supabase tetap aktif (paket gratis)
 
 Supabase paket gratis menjeda proyek setelah 7 hari tanpa aktivitas. Repo ini punya

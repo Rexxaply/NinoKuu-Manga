@@ -482,6 +482,7 @@ as $$
   returning image_path;
 $$;
 revoke all on function public.chat_cleanup(interval) from public, anon, authenticated;
+grant execute on function public.chat_cleanup(interval) to service_role;
 
 -- =====================================================================
 -- 9. Alat staf (moderator & developer). Semua dicek di server, bukan hanya di aplikasi.
@@ -604,11 +605,45 @@ begin
                      join public.chat_messages c on c.id = r.message_id where not c.hidden),
     'hidden', (select count(*) from public.chat_messages where hidden),
     'restricted', (select count(*) from public.profiles where banned or muted_until > pg_catalog.now()),
-    'last_keepalive', ka);
+    'last_keepalive', ka,
+    'last_cron', case when pg_catalog.to_regclass('public.server_state') is not null
+                      then (select v ->> 'at' from public.server_state where k = 'cron') end);
 end;
 $$;
 revoke all on function public.dev_stats() from public, anon;
 grant execute on function public.dev_stats() to authenticated;
+
+-- Penanda pengumuman yang notifikasinya sudah dikirim Edge Function.
+alter table public.announcements add column if not exists pushed_at timestamptz;
+
+-- =====================================================================
+-- 9b. Data kerja server (hanya dipakai Edge Function ninokuu-api lewat kunci server;
+--     tanpa policy = tidak bisa dibaca atau diubah dari aplikasi).
+-- =====================================================================
+-- Chapter terbaru yang terakhir dilihat per komik, dasar notifikasi chapter baru.
+create table if not exists public.comic_state (
+  source text not null,
+  comic_id text not null,
+  title text not null default '',
+  cover text,
+  last_chapter text,
+  last_num numeric,
+  checked_at timestamptz,
+  last_error text,
+  primary key (source, comic_id)
+);
+create index if not exists comic_state_checked_idx on public.comic_state (checked_at nulls first);
+alter table public.comic_state enable row level security;
+revoke all on table public.comic_state from anon, authenticated;
+
+-- Catatan kecil server (waktu jalan cron terakhir, dll.).
+create table if not exists public.server_state (
+  k text primary key,
+  v jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+alter table public.server_state enable row level security;
+revoke all on table public.server_state from anon, authenticated;
 
 -- =====================================================================
 -- 10. Penyimpanan gambar chat: bucket publik "chat-images", maks 30 MB per file,
