@@ -795,3 +795,5 @@ body.nk-lite .m-fr { animation: none; filter: none; will-change: auto; }
 /* pesan sendiri: avatar di kanan */
 .mine > .m-avc { margin: 4px 4px 0 6px; }
 .mine > .m-av { margin-left: 2px; }
+/* label rank ukuran sedang (daftar Tangga rank) */
+.rk-b.md { align-self: flex-start; font-size: 12px; padding: 3px 11px; border-radius: 10px; }

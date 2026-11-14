@@ -4,7 +4,7 @@
 import * as api from "./api.js";
 import * as S from "./store.js";
 import * as N from "./native.js";
-import { esc, icon, $, $$, toast, rankBadge, rankText } from "./ui.js";
+import { esc, icon, $, $$, toast, rankBadge } from "./ui.js";
 
 // login beruntun ke-n: minggu 1 = 10…40, tiap minggu kotak +10, mulai minggu ke-5 sama dengan minggu ke-4
 export const slotOf = (n) => ((n - 1) % 7) + 1;
@@ -169,7 +169,7 @@ function ladderHtml(lv, L) {
   <div class="lad-row" id="ladRow">${chips.join("")}</div>
   <h2 class="cap">Tangga rank</h2>
   <div class="group">${L.RANK_INFO.map(([n, a, b, c, t], i) => `<div class="rank-row ${i === lv.ri ? "cur" : ""} ${i > lv.ri ? "lock" : ""}">${L.avatarHtml(S.state.profile, lv, 46, { tier: t, ini: S.state.profile?.name || n, noMedal: true })}
-      <span class="rc-mid">${rankText(n, t)}<span class="mu xs">Lv ${a}–${b} · mulai ${num(totalFor(a))} EXP</span></span><span class="xs b ${i === lv.ri ? "gold" : i < lv.ri ? "ok" : "mu"}">${i === lv.ri ? "RANK-MU" : i < lv.ri ? "Terlewati" : "Terkunci"}</span></div>`).join("")}</div>`;
+      <span class="rc-mid g4">${rankBadge({ rank: n, tier: t }, "md")}<span class="mu xs">Lv ${a}–${b} · mulai ${num(totalFor(a))} EXP</span></span><span class="xs b ${i === lv.ri ? "gold" : i < lv.ri ? "ok" : "mu"}">${i === lv.ri ? "RANK-MU" : i < lv.ri ? "Terlewati" : "Terkunci"}</span></div>`).join("")}</div>`;
 }
 
 const dayLabel = (iso) => {
