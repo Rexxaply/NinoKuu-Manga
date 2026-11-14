@@ -246,10 +246,10 @@ async function openNotif() {
   closeNotif();
   const wrap = document.createElement("div");
   wrap.id = "notif";
+  // isi panel saja yang diganti saat data datang/berubah → animasi muncul tidak terulang (tidak berkedip)
   const draw = () => {
     const unread = notifs.some((x) => !readSet.has(x.id));
-    wrap.innerHTML = `<button class="pop-bg" data-n="close" aria-label="Tutup notifikasi"></button>
-  <div class="pop glass" role="dialog" aria-label="Notifikasi">
+    const inner = `
     <div class="pop-h"><span class="cap m0">Notifikasi</span>${unread ? `<button class="link-red sm" data-n="readall">Tandai dibaca</button>` : ""}</div>
     <div class="pop-list">${!S.loggedIn() ? `<p class="pop-empty">Masuk untuk menerima notifikasi chapter baru dari komik yang loncengnya kamu nyalakan.<br><a class="gold b" href="#/more">Masuk</a></p>`
       : notifs.length ? notifs.map((x) => `<button class="pop-i ${readSet.has(x.id) ? "" : "unread"}" data-n="open" data-id="${x.id}">
@@ -257,7 +257,10 @@ async function openNotif() {
           <span class="rc-mid g1"><span class="t1 pop-t">${esc(x.title)}</span><span class="t1 mu xs">${esc(x.body || "")} · ${esc(ago(x.created_at))}</span></span>
           ${readSet.has(x.id) ? "" : `<span class="dot" aria-label="Belum dibaca"></span>`}</button>`).join("")
       : `<p class="pop-empty">Belum ada notifikasi. Nyalakan lonceng di info komik.</p>`}</div>
-    <div class="pop-f"><span class="mu xs">Maks 30 · 7 hari</span>${notifs.length ? `<button class="mu xs b" data-n="clear">Hapus semua</button>` : ""}</div></div>`;
+    <div class="pop-f"><span class="mu xs">Maks 30 · 7 hari</span>${notifs.length ? `<button class="mu xs b" data-n="clear">Hapus semua</button>` : ""}</div>`;
+    const pop = wrap.querySelector(".pop");
+    if (pop) { if (pop.innerHTML !== inner) pop.innerHTML = inner; return; }
+    wrap.innerHTML = `<button class="pop-bg" data-n="close" aria-label="Tutup notifikasi"></button><div class="pop glass" role="dialog" aria-label="Notifikasi">${inner}</div>`;
   };
   draw();
   document.body.appendChild(wrap);
@@ -278,7 +281,11 @@ async function openNotif() {
   });
   if (S.loggedIn()) { await loadNotifs(); if (document.getElementById("notif")) draw(); }
 }
-function closeNotif() { document.getElementById("notif")?.remove(); $("[data-act=bell]")?.setAttribute("aria-expanded", "false"); }
+function closeNotif() {
+  const el = document.getElementById("notif");
+  if (el && !el.classList.contains("out")) { el.id = ""; el.classList.add("out"); setTimeout(() => el.remove(), 160); }
+  $("[data-act=bell]")?.setAttribute("aria-expanded", "false");
+}
 
 /* ---------- Pencarian (hasil muncul sambil mengetik) ---------- */
 let sState = { q: "", src: "komiku", type: "", status: "", genres: [] };

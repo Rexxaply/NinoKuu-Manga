@@ -797,3 +797,60 @@ body.nk-lite .m-fr { animation: none; filter: none; will-change: auto; }
 .mine > .m-av { margin-left: 2px; }
 /* label rank ukuran sedang (daftar Tangga rank) */
 .rk-b.md { align-self: flex-start; font-size: 12px; padding: 3px 11px; border-radius: 10px; }
+
+/* ===== chat: pembatas tanggal & "Pesan Baru" (ala Discord), tombol lompat ===== */
+.ch-sep { display: flex; align-items: center; gap: 14px; margin: 14px 4px 6px; font-size: 12.5px; font-weight: 700; color: var(--mu); }
+.ch-sep::before, .ch-sep::after { content: ""; flex: 1; height: 1px; background: rgba(163, 172, 189, .35); }
+.ch-sep.new { color: #FF7A7F; text-transform: uppercase; letter-spacing: .06em; font-size: 12px; }
+.ch-sep.new::before, .ch-sep.new::after { background: rgba(224, 36, 43, .55); }
+.ch-jump { position: fixed; z-index: 6; left: 50%; transform: translateX(-50%); top: calc(70px + env(safe-area-inset-top)); display: flex; align-items: center; gap: 8px;
+  max-width: calc(100% - 28px); padding: 8px 8px 8px 12px; border-radius: 18px; font-size: 12.5px; font-weight: 600; color: #fff;
+  background: rgba(150, 22, 28, .96); border: 1px solid rgba(255, 122, 127, .5); box-shadow: 0 8px 22px rgba(0, 0, 0, .4); }
+.ch-jump svg { transform: rotate(-90deg); flex: none; } .ch-jump span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ch-jump b { flex: none; padding: 3px 10px; border-radius: 12px; background: rgba(255, 255, 255, .18); font-size: 12px; }
+.ch-down { position: fixed; z-index: 6; right: 16px; bottom: calc(96px + var(--kb, 0px) + env(safe-area-inset-bottom)); width: 44px; height: 44px; border-radius: 22px;
+  display: grid; place-items: center; color: #fff; background: rgba(28, 37, 51, .97); border: 1px solid var(--line); box-shadow: 0 8px 22px rgba(0, 0, 0, .45); }
+.ch-jump[hidden], .ch-down[hidden] { display: none; }
+/* panel yang muncul beranimasi (notifikasi, menu pembaca): latar padat. Efek kaca (backdrop-filter) di WebView Android
+   baru aktif setelah animasi, sehingga panel sempat tembus pandang dan isi di belakangnya terlihat (glitch). */
+.pop, .pop.glass, .r-menu, .r-menu.glass, .sheet, .sheet.glass { background: rgba(18, 24, 36, .98); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.pop-bg { animation: fadeIn .15s ease-out; }
+
+/* ===== efek rank tinggi diperkuat: glow jelas & animasi mulus ===== */
+.t6.rk-b, .t6.rk-t { --rg: rgba(196, 155, 255, .65); } .t7.rk-b, .t7.rk-t { --rg: rgba(255, 141, 187, .65); } .t8.rk-b, .t8.rk-t { --rg: rgba(247, 193, 78, .75); }
+.rk-b.t6, .rk-b.t7 { border-color: var(--rc); box-shadow: 0 0 10px var(--rg), inset 0 0 8px var(--rb); }
+.t6 > .rk-tx, .t7 > .rk-tx { background: linear-gradient(100deg, var(--rc) 0 34%, #fff 46%, #fff 54%, var(--rc) 66% 100%); background-size: 300% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: rkShim2 2.6s ease-in-out infinite; filter: drop-shadow(0 0 4px var(--rg)); }
+@keyframes rkShim2 { 0% { background-position: 100% 0; } 100% { background-position: 0% 0; } }
+.rk-b.t6::before, .rk-b.t7::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; box-shadow: inset 0 0 12px var(--rg); opacity: .25; animation: rkPulse 2.4s ease-in-out infinite; }
+@keyframes rkPulse { 50% { opacity: 1; } }
+.rk-b.t8 { border-color: #F7C14E; box-shadow: 0 0 14px var(--rg), inset 0 0 10px rgba(247, 193, 78, .25); }
+.t8 > .rk-tx { filter: drop-shadow(0 0 5px rgba(247, 193, 78, .65)); animation-duration: 2.2s; animation-timing-function: cubic-bezier(.45, 0, .55, 1); }
+.rk-b.t8::before { animation-timing-function: cubic-bezier(.45, 0, .55, 1); }
+/* bintang emas: digeser lewat posisi latar (mulus, tanpa menghitung ulang tata letak) */
+.rk-b.t8::after, .rk-t.t8::after { left: 0; right: 0; top: 0; bottom: 0; width: auto; height: auto; clip-path: none; transform: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M5 0 6 4 10 5 6 6 5 10 4 6 0 5 4 4Z' fill='%23FFF4C9'/%3E%3Ccircle cx='5' cy='5' r='1.4' fill='white'/%3E%3C/svg%3E") no-repeat;
+  background-size: 9px 9px; background-position: -6% 10%; animation: rkStar2 3.2s linear infinite; }
+.rk-t.t8::after { top: -6px; bottom: auto; height: 12px; }
+@keyframes rkStar2 { 0% { background-position: -6% 10%; opacity: 0; } 10% { opacity: 1; } 30% { opacity: .4; } 50% { opacity: 1; } 70% { opacity: .45; } 88% { opacity: 1; } 100% { background-position: 106% 10%; opacity: 0; } }
+body.nk-lite .rk-b.t6::before, body.nk-lite .rk-b.t7::before { display: none; }
+@media (prefers-reduced-motion: reduce) { .rk-b.t6::before, .rk-b.t7::before { display: none; } }
+/* rekap: tombol Mingguan/Bulanan rata tengah; grafik dengan tanggal */
+.seg .seg-2l { justify-content: center; gap: 1px; padding: 6px 4px; line-height: 1.2; }
+.rc-chart { height: auto; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 3px; align-items: end; padding: 4px 0 0; }
+.rc-chart.w { gap: 8px; }
+.rc-col { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+.rc-bar { position: relative; width: 100%; height: 70px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 2px; }
+.rc-chart.w .rc-bar { height: 92px; }
+.rc-bar i { display: block; width: 100%; border-radius: 4px; background: rgba(255, 255, 255, .1); }
+.rc-chart.w .rc-bar i { width: 72%; border-radius: 6px; }
+.rc-bar i.on { background: linear-gradient(0deg, var(--red), var(--gold)); }
+.rc-bar em { flex: none; font-style: normal; font-size: 11px; line-height: 1.2; font-weight: 800; color: var(--gold); }
+.rc-bar i { flex: 0 1 auto; min-height: 3px; }
+.rc-col small { height: 26px; font-size: 10px; line-height: 1.25; text-align: center; color: var(--mu); white-space: nowrap; }
+.rc-chart.w .rc-col small { font-size: 10.5px; }
+.rc-chart.m .rc-col small { overflow: visible; width: 0; display: flex; justify-content: center; }
+.rc-chart.m .rc-col:first-child small { justify-content: flex-start; } .rc-chart.m .rc-col:last-child small { justify-content: flex-end; }
+/* notifikasi ditutup: memudar halus, tidak bisa disentuh lagi */
+.out { pointer-events: none; } .out .pop, .out .pop-bg { transition: opacity .15s; opacity: 0; }

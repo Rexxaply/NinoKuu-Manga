@@ -89,10 +89,11 @@ function dailyHtml(st, phase, res) {
 </div>`;
 }
 export async function openDaily(force = false) {
-  if (dailyOpen || !S.loggedIn()) return;
-  const st = await loadStatus(true);
-  if (!st || (st.claimed && !force)) return;
+  // ditandai sejak awal: dua pemicu yang hampir bersamaan tidak membuka dua popup bertumpuk
+  if (dailyOpen || !S.loggedIn() || document.querySelector(".dl-host")) return;
   dailyOpen = true;
+  const st = await loadStatus(true).catch(() => null);
+  if (!st || (st.claimed && !force) || !S.loggedIn()) { dailyOpen = false; return; }
   seen.set(st.today);
   const host = document.createElement("div");
   host.className = "dl-host";
@@ -251,6 +252,13 @@ export async function vLevel(view, L, tab = "sum") {
 }
 
 /* ---------- Rekap bacaan ---------- */
+// label tanggal grafik: 7 hari → "Sen\n9"; 30 hari → "9/11" tiap 5 hari (tidak berdesakan)
+const DAYN = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+const chartLabel = (from, i, n) => {
+  const d = new Date(Date.UTC(...from.split("-").map((x, k) => Number(x) - (k === 1 ? 1 : 0))) + i * 864e5);
+  if (n <= 7) return `${DAYN[d.getUTCDay()]}\n${d.getUTCDate()}`;
+  return i % 5 === 0 || i === n - 1 ? `${d.getUTCDate()}/${d.getUTCMonth() + 1}` : "";
+};
 const MON = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
 const range = (a, b) => { const x = new Date(a + "T00:00:00Z"), y = new Date(b + "T00:00:00Z");
   return x.getUTCMonth() === y.getUTCMonth() ? `${x.getUTCDate()}–${y.getUTCDate()} ${MON[y.getUTCMonth()]} ${y.getUTCFullYear()}` : `${x.getUTCDate()} ${MON[x.getUTCMonth()]} – ${y.getUTCDate()} ${MON[y.getUTCMonth()]} ${y.getUTCFullYear()}`; };
@@ -273,7 +281,8 @@ export async function vRecap(view, L) {
     <b class="rc-title">Rekap ${days} Hari</b>
     <span class="rc-range"><i></i>${range(data.from, data.to)}</span>
     <div class="rc-big"><span><b class="gold">${num(data.chapters)}</b><small>CHAPTER</small><em>dibaca sampai habis</em></span><span><b class="redt">${num(data.series)}</b><small>SERIES</small><em>judul berbeda</em></span></div>
-    <div class="rc-chart" aria-label="Chapter per hari">${(data.per_day || []).map((n) => `<i style="height:${n ? Math.max(8, (n / maxD) * 100) : 3}%" class="${n ? "on" : ""}"></i>`).join("")}</div>
+    <div class="rc-chart ${days === 7 ? "w" : "m"}" aria-label="Chapter per hari">${(data.per_day || []).map((n, i, a) => { const L = chartLabel(data.from, i, a.length);
+      return `<span class="rc-col"><span class="rc-bar">${days === 7 && n ? `<em>${n}</em>` : ""}<i style="height:${n ? Math.max(8, (n / maxD) * 100) : 3}%" class="${n ? "on" : ""}"></i></span><small>${L ? L.replace("\n", "<br>") : ""}</small></span>`; }).join("")}</div>
     ${data.top?.length ? `<span class="rc-sub">Paling sering dibaca</span><div class="rc-top">${data.top.map((t, i) => `<a class="rc-tc" href="#/c/${esc(t.source)}/${encodeURIComponent(t.comic_id)}">
       <span class="rc-cv">${t.cover ? `<img src="${esc(t.cover)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}<i>${i + 1}</i></span>
       <span class="t2 xs b">${esc(t.title || t.comic_id)}</span><span class="mu xs">${num(t.n)} chapter</span></a>`).join("")}</div>` : `<span class="mu sm">Belum ada chapter yang dibaca sampai habis di periode ini.</span>`}
@@ -451,12 +460,20 @@ export async function drawRecap(data, days) {
   const big = (x, v, lab, sub, col) => { c.fillStyle = col; c.font = f(800, 104); c.fillText(num(v), x, y + 108); c.fillStyle = "#F2F4F8"; c.font = f(800, 30); sp(3); c.fillText(lab, x, y + 152); sp(0); c.fillStyle = "#A3ACBD"; c.font = f(500, 29); c.fillText(sub, x, y + 188); };
   big(ax + 40, data.chapters, "CHAPTER", "dibaca sampai habis", "#F2B33D"); big(ax + bw / 2 + 40, data.series, "SERIES", "judul berbeda", "#FF6B70");
   // grafik per hari
-  c.fillStyle = "#A3ACBD"; c.font = f(700, 30); c.fillText("Chapter per hari", ax, 912);
-  y = 930; const pd = data.per_day || [], mx = Math.max(1, ...pd), gw = bw / Math.max(1, pd.length), gh = 120;
-  pd.forEach((n, i) => { const h = n ? Math.max(10, (n / mx) * gh) : 6; g = c.createLinearGradient(0, y + gh - h, 0, y + gh); g.addColorStop(0, n ? "#F2B33D" : "rgba(255,255,255,.12)"); g.addColorStop(1, n ? "#E0242B" : "rgba(255,255,255,.12)"); c.fillStyle = g; rr(c, ax + i * gw + gw * 0.18, y + gh - h, gw * 0.64, h, Math.min(10, gw * 0.3)); c.fill(); });
+  c.fillStyle = "#A3ACBD"; c.font = f(700, 30); c.fillText("Chapter per hari", ax, 908);
+  y = 930; const pd = data.per_day || [], mx = Math.max(1, ...pd), gw = bw / Math.max(1, pd.length), gh = 150;
+  const gb = pd.length <= 7 ? gh - 30 : gh;   // ruang untuk angka di atas batang
+  pd.forEach((n, i) => { const h = n ? Math.max(10, (n / mx) * gb) : 6; g = c.createLinearGradient(0, y + gh - h, 0, y + gh); g.addColorStop(0, n ? "#F2B33D" : "rgba(255,255,255,.12)"); g.addColorStop(1, n ? "#E0242B" : "rgba(255,255,255,.12)"); c.fillStyle = g; rr(c, ax + i * gw + gw * 0.18, y + gh - h, gw * 0.64, h, Math.min(10, gw * 0.3)); c.fill(); });
+  // tanggal di bawah batang
+  c.textAlign = "center"; c.fillStyle = "#A3ACBD";
+  pd.forEach((n, i) => { const L = chartLabel(data.from, i, pd.length); if (!L) return; const cx = Math.min(ax + bw - 22, Math.max(ax + 22, ax + i * gw + gw / 2));
+    if (pd.length <= 7) { const [a, b2] = L.split("\n"); c.font = f(600, 22); c.fillText(a, cx, y + gh + 30); c.font = f(800, 24); c.fillStyle = "#F2F4F8"; c.fillText(b2, cx, y + gh + 58); c.fillStyle = "#A3ACBD";
+      if (n) { c.font = f(800, 22); c.fillStyle = "#F2B33D"; c.fillText(String(n), cx, y + gh - Math.max(10, (n / mx) * gb) - 8); c.fillStyle = "#A3ACBD"; } }
+    else { c.font = f(600, 22); c.fillText(L, cx, y + gh + 32); } });
+  c.textAlign = "left";
   // judul teratas
-  c.fillStyle = "#A3ACBD"; c.font = f(700, 30); c.fillText("Paling sering dibaca", ax, 1104);
-  y = 1126; const cw = (bw - 40) / 3, chh = 240;
+  c.fillStyle = "#A3ACBD"; c.font = f(700, 30); c.fillText("Paling sering dibaca", ax, 1196);
+  y = 1216; const cw = (bw - 40) / 3, chh = 180;
   if (data.top?.length) {
     const covers = await Promise.all(data.top.map((t) => loadImg(t.cover)));
     data.top.forEach((t, i) => {
@@ -470,7 +487,7 @@ export async function drawRecap(data, days) {
     });
   } else { c.fillStyle = "#A3ACBD"; c.font = f(500, 28); c.fillText("Belum ada chapter yang selesai dibaca di periode ini.", ax, y + 40); }
   // statistik kecil
-  y = 1484; rr(c, ax, y, bw, 150, 30); c.fillStyle = "rgba(255,255,255,.05)"; c.fill();
+  y = 1508; rr(c, ax, y, bw, 150, 30); c.fillStyle = "rgba(255,255,255,.05)"; c.fill();
   const minis = [[num(data.exp), "EXP", "#F2B33D"], [num(data.likes), "Like", "#6FC3F2"], [num(data.saved), "Koleksi", "#FF6B70"], [`${data.active}/${days}`, "Hari aktif", "#5DD39E"]];
   minis.forEach(([v, n, col], i) => { const cx = ax + (bw / 4) * (i + 0.5); c.textAlign = "center"; c.fillStyle = col; c.font = f(800, 46); c.fillText(v, cx, y + 80); c.fillStyle = "#A3ACBD"; c.font = f(500, 28); c.fillText(n, cx, y + 120); });
   c.textAlign = "left";

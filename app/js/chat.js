@@ -37,6 +37,9 @@ function bodyHtml(m) {
 // animasi bingkai hanya berjalan saat avatar terlihat di layar
 const avIO = "IntersectionObserver" in window ? new IntersectionObserver((es) => es.forEach((e) => e.target.classList.toggle("off", !e.isIntersecting)), { rootMargin: "120px 0px" }) : null;
 export const watchAvatars = (root) => { if (avIO) root.querySelectorAll(".m-avc:not([data-w])").forEach((el) => { el.dataset.w = "1"; el.classList.add("off"); avIO.observe(el); }); };
+// pembatas tanggal (WIB), contoh: 15 November 2026
+const dayKey = (iso) => new Date(Date.parse(iso) + 7 * 3600e3).toISOString().slice(0, 10);
+const dayLabel = (iso) => new Date(iso).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Jakarta" });
 const avPhoto = (m) => (m.avatar_path ? `<img class="av-img" src="${esc(api.publicUrl("avatars", m.avatar_path))}" alt="" loading="lazy" decoding="async" onerror="this.remove()">` : "");
 const chatAv = (m, lv) => {
   const ini = esc((m.name || "?")[0].toUpperCase()), ph = avPhoto(m), fr = FR[lv.tier];
@@ -102,6 +105,8 @@ export async function vChat(view, ctx, opt = {}) {
   const room = opt.room || "public", pub = room === "public";
   const rq = `room=eq.${encodeURIComponent(room)}`;
   let msgs = [], pin = null, att = null, timer = null, menuId = null, sending = false, lastSent = 0, selHandler = null;
+  const seenKey = pub ? "chatSeen" : "seen:" + room;
+  let seenAtOpen = null, newFrom = 0, newCount = 0, stick = true;
   const onSel = () => selHandler && selHandler();
   document.addEventListener("selectionchange", onSel);
   const me = api.userId();
@@ -114,13 +119,25 @@ export async function vChat(view, ctx, opt = {}) {
     const rows = await api.rest(q);
     const fresh = (rows || []).reverse();
     msgs = full ? fresh : msgs.concat(fresh);
-    // tandai chat publik sudah dilihat (titik merah di ikon chat Beranda hilang)
-    if (pub && msgs.length) api.lsSet("chatSeen", Math.max(Number(api.lsGet("chatSeen", 0)), msgs[msgs.length - 1].id));
+    // pesan terakhir yang pernah dilihat (dipakai untuk pembatas "Pesan Baru"); chat publik juga mematikan titik merah di Beranda
+    if (seenAtOpen === null) {
+      seenAtOpen = Number(api.lsGet(seenKey, 0)) || 0;
+      const first = seenAtOpen ? msgs.find((m) => m.id > seenAtOpen && m.user_id !== me) : null;
+      newFrom = first ? first.id : 0;
+      newCount = first ? msgs.filter((m) => m.id >= first.id && m.user_id !== me).length : 0;
+    }
+    if (msgs.length) api.lsSet(seenKey, Math.max(Number(api.lsGet(seenKey, 0)) || 0, msgs[msgs.length - 1].id));
     if (full && pub) pin = await activePin();
     return fresh.length;
   };
   const atBottom = () => { const el = document.scrollingElement; return el.scrollHeight - el.scrollTop - el.clientHeight < 140; };
-  const toBottom = () => requestAnimationFrame(() => window.scrollTo(0, document.scrollingElement.scrollHeight));
+  // menempel di paling bawah sampai pengguna menggulir ke atas (gambar/avatar yang dimuat belakangan tidak menggeser posisi)
+  const toBottom = () => { stick = true; requestAnimationFrame(() => { window.scrollTo(0, document.scrollingElement.scrollHeight); floatBtns(); }); };
+  const floatBtns = () => {
+    const dn = $("#chDown"), jp = $("#chJump"), dv = $("#newDiv");
+    if (dn) dn.hidden = stick || atBottom();
+    if (jp) jp.hidden = !dv || dv.getBoundingClientRect().top > 70;
+  };
   const draw = () => {
     const staff = isStaff(), active = new Set(msgs.filter((m) => Date.now() - Date.parse(m.created_at) < 15 * 60e3).map((m) => m.user_id)).size;
     let prev = null;
@@ -129,10 +146,12 @@ export async function vChat(view, ctx, opt = {}) {
   ${pin ? `<div class="pin" data-c="pinx"><span class="pin-ic">${icon("mega", 18)}</span><span class="rc-mid g4"><span class="pin-cap">Pengumuman · Developer · ${esc(ago(pin.created_at))}</span><b>${esc(pin.title)}</b>${pin.body ? `<span class="mu sm pre pin-body">${esc(pin.body)}</span>` : ""}</span>
       <button class="x-btn" data-c="${isDev() ? "unpin" : "pinhide"}" aria-label="${isDev() ? "Lepas pengumuman untuk semua pengguna" : "Sembunyikan pengumuman selama 24 jam"}">${icon("x", 14, 2.2)}</button></div>` : ""}
   ${msgs.map((m) => {
-      const mine = m.user_id === me, head = !prev || prev.user_id !== m.user_id; prev = m;
+      const day = dayKey(m.created_at), newDay = !prev || dayKey(prev.created_at) !== day, isNew = newFrom && m.id === newFrom;
+      const mine = m.user_id === me, head = !prev || prev.user_id !== m.user_id || newDay || isNew; prev = m;
+      const sep = (newDay ? `<div class="ch-sep"><span>${esc(dayLabel(m.created_at))}</span></div>` : "") + (isNew ? `<div class="ch-sep new" id="newDiv"><span>Pesan Baru</span></div>` : "");
       const lv = S.levelOf({ exp: m.exp, role: m.role }), t = lv.tier;
       const hid = m.hidden;
-      return `<div class="msg ${mine ? "mine" : ""}">
+      return `${sep}<div class="msg ${mine ? "mine" : ""}">
       ${head ? chatAv(m, lv) : `<span class="m-avc"></span>`}
       <div class="m-col">
         ${head ? `<span class="m-head">${esc(mine ? "Kamu" : m.name)}${m.verified ? VB : ""}${m.role === "developer" ? `<span class="pill-dev">DEV</span>` : m.role === "moderator" ? `<span class="pill-mod">MOD</span>` : ""}${rankBadge(lv, "sm")}</span>` : ""}
@@ -142,8 +161,13 @@ export async function vChat(view, ctx, opt = {}) {
         <span class="m-meta">${esc(ago(m.created_at))}<button class="m-dots" data-c="menu" data-id="${m.id}" aria-label="Opsi pesan">${icon("dots", 16)}</button></span>
       </div></div>`;
     }).join("") || `<div class="empty"><span class="empty-ic">${icon("msg", 24)}</span><b>${pub ? "Belum ada pesan" : "Belum ada komentar"}</b><span>${pub ? "Jadilah yang pertama menyapa pembaca lain." : "Jadilah yang pertama berkomentar. Jangan lupa tandai spoiler."}</span></div>`}
-  <div style="height:${att ? 200 : 130}px"></div>`;
+  <div style="height:${att ? 200 : 130}px"></div>
+  <button class="ch-jump" id="chJump" hidden>${icon("chev", 15, 2.4)}<span>${newCount} pesan baru sejak terakhir dilihat</span><b>Lompat</b></button>
+  <button class="ch-down" id="chDown" hidden aria-label="Ke pesan terbaru">${icon("down", 20, 2.2)}</button>`;
     watchAvatars($("#chat"));
+    $("#chJump").onclick = () => { stick = false; $("#newDiv")?.scrollIntoView({ block: "center", behavior: "smooth" }); };
+    $("#chDown").onclick = () => toBottom();
+    floatBtns();
   };
   const drawComposer = () => {
     const c = $("#comp");
@@ -248,14 +272,25 @@ export async function vChat(view, ctx, opt = {}) {
   window.addEventListener("nk:kb", onKb);
   try { await load(true); } catch (e) { $("#chat").innerHTML = `<div class="empty"><b>Gagal memuat chat</b><span>${esc(e.message)}</span></div>`; }
   draw(); drawComposer(); toBottom();
+  // tinggi isi berubah (gambar selesai dimuat) → tetap di paling bawah bila sedang menempel
+  const ro = "ResizeObserver" in window ? new ResizeObserver(() => { if (stick) window.scrollTo(0, document.scrollingElement.scrollHeight); floatBtns(); }) : null;
+  ro?.observe($("#chat"));
+  // gulir oleh pengguna: lepas dari bawah; kembali menempel bila sudah di bawah lagi
+  let userScroll = false;
+  const markUser = () => { userScroll = true; };
+  const onScroll = () => { if (userScroll) stick = atBottom(); floatBtns(); };
+  window.addEventListener("touchmove", markUser, { passive: true }); window.addEventListener("wheel", markUser, { passive: true });
+  const endUser = () => setTimeout(() => { userScroll = false; }, 400);
+  window.addEventListener("touchend", endUser, { passive: true });
+  window.addEventListener("scroll", onScroll, { passive: true });
   // pesan baru diambil tiap 5 detik selama halaman chat terbuka (tiap 30 detik muat ulang penuh)
   let n = 0;
   timer = setInterval(async () => {
     if (document.visibilityState !== "visible") return;
     const bottom = atBottom();
-    try { const got = ++n % 6 === 0 ? (await load(true), 1) : await load(false); if (got) { draw(); if (bottom) toBottom(); } } catch {}
+    try { const got = ++n % 6 === 0 ? (await load(true), 1) : await load(false); if (got) { const y = scrollY; draw(); if (bottom || stick) toBottom(); else window.scrollTo(0, y); } } catch {}
   }, 5000);
-  return () => { clearInterval(timer); window.removeEventListener("nk:kb", onKb); document.removeEventListener("selectionchange", onSel); if (att?.url) URL.revokeObjectURL(att.url); };
+  return () => { clearInterval(timer); ro?.disconnect(); window.removeEventListener("scroll", onScroll); window.removeEventListener("touchmove", markUser); window.removeEventListener("wheel", markUser); window.removeEventListener("touchend", endUser); window.removeEventListener("nk:kb", onKb); document.removeEventListener("selectionchange", onSel); if (att?.url) URL.revokeObjectURL(att.url); };
 }
 
 /* ---------- Panel developer: kontrol penyimpanan ---------- */
