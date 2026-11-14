@@ -469,7 +469,7 @@ async function vChapters(src, id) {
   <div class="mu xs info" id="chinfo"></div>
   <div id="chl" class="rows"></div><div id="chsent" style="height:1px"></div></div><div class="pad-nav"></div>
   <div class="fade-b" aria-hidden="true"></div>
-  <div class="chbar glass" id="chbar"><span class="mu">${icon("search", 20)}</span><label class="grow row"><span class="sr">Cari chapter</span><input id="chq" type="text" inputmode="decimal" enterkeyhint="search" autocomplete="off" placeholder="Cari chapter…"></label>
+  <div class="chbar glass" id="chbar"><span class="mu">${icon("search", 20)}</span><label class="grow row"><span class="sr">Cari chapter</span><input id="chq" type="text" inputmode="text" enterkeyhint="search" autocomplete="off" placeholder="Cari chapter…"></label>
     <button class="chx" data-act="clr" aria-label="Hapus pencarian" hidden>${icon("x", 18, 2)}</button><span class="vdiv" aria-hidden="true"></span>
     <button class="chsort" data-act="sort" id="chsort">${icon("sort", 18)}<span>Terbaru</span></button></div>`;
   const list = () => {
