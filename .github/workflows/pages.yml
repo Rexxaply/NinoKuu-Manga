@@ -1,0 +1,66 @@
+# Menerbitkan PWA Ninokuu (folder app/) ke GitHub Pages.
+# config.js diisi dari secret SUPABASE_URL dan SUPABASE_ANON_KEY (kunci publik, aman tampil di aplikasi).
+name: Deploy PWA
+
+on:
+  push:
+    branches: [main]
+    paths: ["app/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Tulis config.js
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::Secret SUPABASE_URL / SUPABASE_ANON_KEY belum diisi (Langkah 8 panduan)."
+            exit 1
+          fi
+          case "$SUPABASE_ANON_KEY" in
+            sb_secret_*) echo "::error::SUPABASE_ANON_KEY berisi kunci RAHASIA. Ganti dengan kunci publishable/anon."; exit 1 ;;
+          esac
+          python3 - <<'PY'
+          import json, os, re
+          url = os.environ["SUPABASE_URL"].strip().rstrip("/")
+          key = os.environ["SUPABASE_ANON_KEY"].strip()
+          if not re.match(r"^https://[a-z0-9-]+\.supabase\.(co|in)$", url):
+              raise SystemExit("::error::SUPABASE_URL harus berbentuk https://xxxx.supabase.co")
+          # kunci JWT lama: tolak bila perannya service_role
+          if key.startswith("eyJ"):
+              import base64
+              part = key.split(".")[1]; part += "=" * (-len(part) % 4)
+              if json.loads(base64.urlsafe_b64decode(part)).get("role") != "anon":
+                  raise SystemExit("::error::SUPABASE_ANON_KEY bukan kunci anon.")
+          ver = re.search(r'VERSION:\s*"([^"]+)"', open("app/config.js").read()).group(1)
+          open("app/config.js", "w").write("window.NINOKUU_CONFIG = " + json.dumps({"SUPABASE_URL": url, "SUPABASE_ANON_KEY": key, "VERSION": ver}) + ";\n")
+          PY
+          echo "config.js siap (versi $(grep -o '"VERSION": "[^"]*"' app/config.js))"
+
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: app
+      - id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

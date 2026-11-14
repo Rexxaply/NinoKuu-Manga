@@ -2,7 +2,13 @@
 
 Aplikasi baca manga, manhwa, dan manhua (PWA + APK Android).
 
-> Status: tahap persiapan. Desain UI/UX sudah ada di canvas Claude; kode aplikasi menyusul.
+> Status: PWA bagian 1 (Beranda, Pencarian, Detail, Pembaca, Favorit, Akun). Chat, Level, unduhan, Panel developer, dan APK menyusul.
+
+## Aplikasi (PWA)
+
+Folder [`app/`](app/) — tanpa build step, cukup file statis. Diterbitkan otomatis ke GitHub Pages oleh workflow
+**Deploy PWA** setiap ada perubahan di `app/`; `config.js` diisi dari secret `SUPABASE_URL` dan `SUPABASE_ANON_KEY`.
+Alamat: `https://rexxaply.github.io/NinoKuu-Manga/`.
 
 ## Database
 
