@@ -492,7 +492,23 @@ async function vChapters(src, id) {
   // Ketukan pertama: tahan fokus sampai jari diangkat (klik selesai di kolom), baru kolom pindah ke atas.
   // Klik nyasar ke daftar tepat setelah kolom pindah diabaikan, supaya tidak membuka chapter.
   let guardUntil = 0;
-  const setFoc = (on) => { document.body.classList.toggle("chfoc", on); if (on) { guardUntil = Date.now() + 450; window.scrollTo(0, 0); } };
+  const setFoc = (on) => {
+    const was = document.body.classList.contains("chfoc");
+    document.body.classList.toggle("chfoc", on);
+    $("#chbar")?.classList.toggle("was-top", was && !on);
+    if (on) { guardUntil = Date.now() + 450; window.scrollTo(0, 0); }
+  };
+  // keyboard ditutup (tombol kembali / sembunyikan keyboard) tidak melepas fokus di Android:
+  // deteksi dari tinggi layar yang kembali normal, lalu turunkan kolom
+  const vv = window.visualViewport;
+  let fullH = vv ? vv.height : window.innerHeight, kbSeen = false;
+  const onVV = () => {
+    const h = vv ? vv.height : window.innerHeight;
+    if (document.activeElement !== inp) { fullH = h; kbSeen = false; return; }
+    if (fullH - h > 150) kbSeen = true;
+    else if (kbSeen && fullH - h < 80) { kbSeen = false; inp.blur(); }
+  };
+  (vv || window).addEventListener("resize", onVV);
   const guard = (e) => { if (Date.now() < guardUntil && !e.target.closest("#chbar")) { e.preventDefault(); e.stopPropagation(); } };
   document.addEventListener("click", guard, true);
   inp.addEventListener("pointerdown", (e) => { if (document.activeElement !== inp) e.preventDefault(); });
@@ -511,7 +527,7 @@ async function vChapters(src, id) {
   window.addEventListener("touchstart", tstart, { passive: true });
   window.addEventListener("touchmove", drop, { passive: true });
   window.addEventListener("wheel", drop, { passive: true });
-  cleanup = () => { io.disconnect(); window.removeEventListener("touchstart", tstart); window.removeEventListener("touchmove", drop); window.removeEventListener("wheel", drop); document.removeEventListener("click", guard, true); document.body.classList.remove("chfoc"); };
+  cleanup = () => { io.disconnect(); (vv || window).removeEventListener("resize", onVV); window.removeEventListener("touchstart", tstart); window.removeEventListener("touchmove", drop); window.removeEventListener("wheel", drop); document.removeEventListener("click", guard, true); document.body.classList.remove("chfoc"); };
   setActs({
     back: () => backTo(comicHref(src, id)),
     sort: () => { asc = !asc; shown = STEP; draw(); window.scrollTo({ top: 0, behavior: "smooth" }); },
