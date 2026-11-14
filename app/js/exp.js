@@ -389,7 +389,9 @@ function fit(c, text, max) { let t = String(text || ""); if (c.measureText(t).wi
 export async function drawRecap(data, days) {
   const p = S.state.profile, lv = S.levelOf(p), st = savedStatus();
   const W = 1080, H = 1920, F = getComputedStyle(document.body).getPropertyValue("--font") || "sans-serif";
-  try { await document.fonts?.ready; } catch {}
+  // pastikan font aplikasi (semua ketebalan) sudah termuat; kanvas tidak memuat font sendiri
+  try { await Promise.all(["500", "600", "700", "800"].map((w) => document.fonts.load(`${w} 40px "Plus Jakarta Sans"`))); await document.fonts.ready; } catch {}
+  const sp = (px) => { if ("letterSpacing" in c) c.letterSpacing = px + "px"; };
   const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
   const c = cv.getContext("2d");
   const f = (w, s) => `${w} ${s}px ${F}`;
@@ -407,31 +409,29 @@ export async function drawRecap(data, days) {
   const AS = 128, avx = ax + 40, avy = Y + 84;
   await drawAvatar(c, avx, avy, AS, p, lv, F);
   const nx = avx + AS + 78;
-  c.fillStyle = "#F2F4F8"; c.font = f(800, 50); c.fillText(fit(c, p?.name || "Pembaca", X + CW - 64 - nx), nx, avy + 62);
-  const pill = (x, y, txt, bg, fg) => { c.font = f(800, 28); const w = c.measureText(txt).width + 40; rr(c, x, y, w, 52, 26); c.fillStyle = bg; c.fill(); c.fillStyle = fg; c.fillText(txt, x + 20, y + 36); return w; };
-  let px = nx; px += pill(px, avy + 86, `Lv. ${lv.lv}`, "rgba(242,179,61,.18)", "#F2B33D") + 12; pill(px, avy + 86, lv.rank.toUpperCase(), "rgba(224,36,43,.22)", "#FF8A8E");
-  c.font = f(800, 30); const sTxt = `🔥 ${st?.streak ?? 0} hari`, sw = c.measureText(sTxt).width + 44;
+  c.fillStyle = "#F2F4F8"; c.font = f(700, 44); c.fillText(fit(c, p?.name || "Pembaca", X + CW - 64 - nx), nx, avy + 60);
+  const pill = (x, y, txt, bg, fg, ls = 0) => { c.font = f(800, 27); sp(ls); const w = c.measureText(txt).width + 36; rr(c, x, y, w, 50, 16); c.fillStyle = bg; c.fill(); c.fillStyle = fg; c.fillText(txt, x + 18, y + 35); sp(0); return w; };
+  let px = nx; px += pill(px, avy + 86, `Lv. ${lv.lv}`, "rgba(242,179,61,.18)", "#F2B33D") + 12; pill(px, avy + 86, lv.rank.toUpperCase(), "rgba(224,36,43,.22)", "#FF8A8E", 1.5);
+  c.font = f(800, 32); const sTxt = `🔥 ${st?.streak ?? 0} hari`, sw = c.measureText(sTxt).width + 44;
   px = X + CW - 56 - sw; rr(c, px, Y + 44, sw, 56, 28); c.fillStyle = "rgba(255,120,60,.16)"; c.fill(); c.strokeStyle = "rgba(255,140,80,.5)"; c.lineWidth = 2; c.stroke(); c.fillStyle = "#FFB27A"; c.fillText(sTxt, px + 22, Y + 82);
   // judul (rata kiri, sama dengan kartu di aplikasi)
-  c.fillStyle = "#A3ACBD"; c.font = f(800, 30);
-  if ("letterSpacing" in c) c.letterSpacing = "7px";
-  c.fillText(`NINOKUU  ·  ${days} HARI TERAKHIR`, ax, 418);
-  if ("letterSpacing" in c) c.letterSpacing = "0px";
-  c.fillStyle = "#fff"; c.font = f(800, 108); c.fillText(`Rekap ${days} Hari`, ax - 4, 530);
-  g = c.createLinearGradient(ax, 0, ax + 96, 0); g.addColorStop(0, "#F2B33D"); g.addColorStop(1, "#E0242B");
-  c.fillStyle = g; rr(c, ax, 591, 96, 10, 5); c.fill();
-  c.fillStyle = "#F2B33D"; c.font = f(700, 42); c.fillText(range(data.from, data.to), ax + 124, 611);
+  c.fillStyle = "#A3ACBD"; c.font = f(800, 29); sp(5.2);
+  c.fillText(`NINOKUU · ${days} HARI TERAKHIR`, ax, 424); sp(0);
+  c.fillStyle = "#fff"; c.font = f(800, 96); c.fillText(`Rekap ${days} Hari`, ax - 3, 528);
+  g = c.createLinearGradient(ax, 0, ax + 88, 0); g.addColorStop(0, "#F2B33D"); g.addColorStop(1, "#E0242B");
+  c.fillStyle = g; rr(c, ax, 579, 88, 10, 5); c.fill();
+  c.fillStyle = "#F2B33D"; c.font = f(700, 38); c.fillText(range(data.from, data.to), ax + 112, 598);
   // angka besar
-  let y = 660; rr(c, ax, y, bw, 206, 34); c.fillStyle = "rgba(255,255,255,.05)"; c.fill(); c.strokeStyle = "rgba(255,255,255,.08)"; c.stroke();
+  let y = 646; rr(c, ax, y, bw, 214, 34); c.fillStyle = "rgba(255,255,255,.05)"; c.fill(); c.strokeStyle = "rgba(255,255,255,.08)"; c.stroke();
   c.fillStyle = "rgba(255,255,255,.1)"; c.fillRect(ax + bw / 2, y + 36, 2, 148);
-  const big = (x, v, lab, sub, col) => { c.fillStyle = col; c.font = f(800, 100); c.fillText(num(v), x, y + 106); c.fillStyle = "#F2F4F8"; c.font = f(800, 30); c.fillText(lab, x, y + 150); c.fillStyle = "#A3ACBD"; c.font = f(500, 28); c.fillText(sub, x, y + 184); };
+  const big = (x, v, lab, sub, col) => { c.fillStyle = col; c.font = f(800, 104); c.fillText(num(v), x, y + 108); c.fillStyle = "#F2F4F8"; c.font = f(800, 30); sp(3); c.fillText(lab, x, y + 152); sp(0); c.fillStyle = "#A3ACBD"; c.font = f(500, 29); c.fillText(sub, x, y + 188); };
   big(ax + 40, data.chapters, "CHAPTER", "dibaca sampai habis", "#F2B33D"); big(ax + bw / 2 + 40, data.series, "SERIES", "judul berbeda", "#FF6B70");
   // grafik per hari
-  c.fillStyle = "#A3ACBD"; c.font = f(700, 28); c.fillText("Chapter per hari", ax, 912);
+  c.fillStyle = "#A3ACBD"; c.font = f(700, 30); c.fillText("Chapter per hari", ax, 912);
   y = 930; const pd = data.per_day || [], mx = Math.max(1, ...pd), gw = bw / Math.max(1, pd.length), gh = 120;
   pd.forEach((n, i) => { const h = n ? Math.max(10, (n / mx) * gh) : 6; g = c.createLinearGradient(0, y + gh - h, 0, y + gh); g.addColorStop(0, n ? "#F2B33D" : "rgba(255,255,255,.12)"); g.addColorStop(1, n ? "#E0242B" : "rgba(255,255,255,.12)"); c.fillStyle = g; rr(c, ax + i * gw + gw * 0.18, y + gh - h, gw * 0.64, h, Math.min(10, gw * 0.3)); c.fill(); });
   // judul teratas
-  c.fillStyle = "#A3ACBD"; c.font = f(700, 28); c.fillText("Paling sering dibaca", ax, 1104);
+  c.fillStyle = "#A3ACBD"; c.font = f(700, 30); c.fillText("Paling sering dibaca", ax, 1104);
   y = 1126; const cw = (bw - 40) / 3, chh = 240;
   if (data.top?.length) {
     const covers = await Promise.all(data.top.map((t) => loadImg(t.cover)));
@@ -441,20 +441,20 @@ export async function drawRecap(data, days) {
       const im = covers[i]; if (im) { const s = Math.max(cw / im.width, chh / im.height); c.drawImage(im, x + (cw - im.width * s) / 2, y + (chh - im.height * s) / 2, im.width * s, im.height * s); }
       c.restore();
       c.beginPath(); c.arc(x + 32, y + 32, 22, 0, 7); c.fillStyle = i === 0 ? "#F2B33D" : "rgba(11,16,24,.8)"; c.fill(); c.fillStyle = i === 0 ? "#111" : "#fff"; c.font = f(800, 24); c.textAlign = "center"; c.fillText(String(i + 1), x + 32, y + 41); c.textAlign = "left";
-      c.fillStyle = "#F2F4F8"; c.font = f(700, 26); c.fillText(fit(c, t.title || t.comic_id, cw), x, y + chh + 38);
-      c.fillStyle = "#A3ACBD"; c.font = f(500, 24); c.fillText(`${num(t.n)} chapter`, x, y + chh + 68);
+      c.fillStyle = "#F2F4F8"; c.font = f(700, 29); c.fillText(fit(c, t.title || t.comic_id, cw), x, y + chh + 40);
+      c.fillStyle = "#A3ACBD"; c.font = f(500, 27); c.fillText(`${num(t.n)} chapter`, x, y + chh + 74);
     });
   } else { c.fillStyle = "#A3ACBD"; c.font = f(500, 28); c.fillText("Belum ada chapter yang selesai dibaca di periode ini.", ax, y + 40); }
   // statistik kecil
   y = 1484; rr(c, ax, y, bw, 150, 30); c.fillStyle = "rgba(255,255,255,.05)"; c.fill();
   const minis = [[num(data.exp), "EXP", "#F2B33D"], [num(data.likes), "Like", "#6FC3F2"], [num(data.saved), "Koleksi", "#FF6B70"], [`${data.active}/${days}`, "Hari aktif", "#5DD39E"]];
-  minis.forEach(([v, n, col], i) => { const cx = ax + (bw / 4) * (i + 0.5); c.textAlign = "center"; c.fillStyle = col; c.font = f(800, 50); c.fillText(v, cx, y + 82); c.fillStyle = "#A3ACBD"; c.font = f(600, 26); c.fillText(n, cx, y + 122); });
+  minis.forEach(([v, n, col], i) => { const cx = ax + (bw / 4) * (i + 0.5); c.textAlign = "center"; c.fillStyle = col; c.font = f(800, 46); c.fillText(v, cx, y + 80); c.fillStyle = "#A3ACBD"; c.font = f(500, 28); c.fillText(n, cx, y + 120); });
   c.textAlign = "left";
   // merek
   const logo = await loadImg("icons/icon-192.png");
   const by = 1680;
   if (logo) { c.save(); rr(c, ax, by, 64, 64, 16); c.clip(); c.drawImage(logo, ax, by, 64, 64); c.restore(); }
-  c.fillStyle = "#fff"; c.font = f(800, 42); c.fillText("Ninokuu", ax + (logo ? 84 : 0), by + 46);
+  c.fillStyle = "#fff"; c.font = f(800, 44); c.fillText("Ninokuu", ax + (logo ? 84 : 0), by + 46);
   c.fillStyle = "#A3ACBD"; c.font = f(500, 26); c.textAlign = "right"; c.fillText("manga · manhwa · manhua", X + CW - 64, by + 44); c.textAlign = "left";
   c.fillStyle = "rgba(255,255,255,.45)"; c.font = f(600, 28); c.textAlign = "center"; c.fillText("Dibuat dengan Ninokuu", W / 2, 1866); c.textAlign = "left";
   return await new Promise((ok, no) => cv.toBlob((b) => (b ? ok(b) : no(new Error("Gagal membuat gambar"))), "image/png"));
