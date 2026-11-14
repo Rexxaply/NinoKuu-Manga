@@ -1,5 +1,5 @@
 // Ninokuu service worker: kerangka aplikasi bisa dibuka offline, gambar komik disimpan sementara.
-const VER = "ninokuu-app-1.0.1";
+const VER = "ninokuu-app-1.0.2";
 const IMG = "ninokuu-img-v1";
 const SHELL = ["./", "index.html", "config.js", "css/app.css", "js/main.js", "js/api.js", "js/store.js", "js/ui.js", "js/assets.js", "js/docs.js", "icons/logo.png", "icons/icon-192.png", "manifest.webmanifest"];
 const IMG_MAX = 400;
@@ -29,6 +29,6 @@ self.addEventListener("fetch", (e) => {
   }
   // file aplikasi: utamakan jaringan (selalu versi terbaru), cadangan dari cache saat offline
   if (url.origin === location.origin) {
-    e.respondWith(fetch(req).then((r) => { if (r.ok) caches.open(VER).then((c) => c.put(req, r.clone())); return r; }).catch(() => caches.match(req).then((m) => m || caches.match("index.html"))));
+    e.respondWith(fetch(req, { cache: "no-cache" }).then((r) => { if (r.ok) caches.open(VER).then((c) => c.put(req, r.clone())); return r; }).catch(() => caches.match(req).then((m) => m || caches.match("index.html"))));
   }
 });
