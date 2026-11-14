@@ -11,7 +11,7 @@
 // kalau satu sumber rusak, isi secret KOMIKU_SITE / KIRYUU_SITE / SHNGM_SITE / WEST_SITE dengan domain barunya.
 import { createClient } from "npm:@supabase/supabase-js@2.76.1";
 
-const VERSION = "1.0.0";
+const VERSION = "1.1.0";
 const NAME = "ninokuu-api";
 const SOURCES = ["komiku", "kiryuu", "shinigami", "westmanga"] as const;
 type Source = typeof SOURCES[number];
@@ -193,7 +193,8 @@ function newestChapter(list: any[]) {
   return list.reduce((best: any, c: any) => (!best || (chNum(c.ch) ?? -1) > (chNum(best.ch) ?? -1) ? c : best), null);
 }
 
-type Opt = { sort: "update" | "popular"; type: "" | "manga" | "manhwa" | "manhua"; limit: number };
+type Status = "" | "ongoing" | "completed" | "hiatus";
+type Opt = { sort: "update" | "popular"; type: "" | "manga" | "manhwa" | "manhua"; limit: number; genres: string[]; status: Status };
 type Chapter = { id: string; ch: string | null; title: string; at: string | null; url: string };
 type Detail = { manga: { id: string; title: string; cover: string; desc: string; status: string; tags: string[]; author: string; url: string }; chapters: Chapter[] };
 
@@ -209,6 +210,8 @@ async function shngBrowse(page: number, q: string, o: Opt) {
   const p = new URLSearchParams({ page: String(page), page_size: String(o.limit), sort: o.sort === "popular" ? "popularity" : "latest", sort_order: "desc" });
   if (q) p.set("q", q);
   if (o.type) p.set("format", o.type);
+  if (o.genres.length) { p.set("genre_include", o.genres.join(",")); p.set("genre_include_mode", "and"); }
+  if (o.status) p.set("status", o.status);
   const j = await shngJson(`/v1/manga/list?${p}`);
   const items = await Promise.all((j?.data || []).filter((m: any) => m?.manga_id).map(async (m: any) => ({
     id: String(m.manga_id), title: String(m.title || ""), cover: await coverUrl(shngCover(m), SHNGM_SITE + "/"), type: o.type || "",
@@ -257,6 +260,9 @@ async function komikuPage(srcPage: number, q: string, o: Opt) {
   if (q) u.searchParams.set("s", q);
   u.searchParams.set("orderby", o.sort === "popular" ? "meta_value_num" : "modified");
   if (o.type) u.searchParams.set("tipe", o.type);
+  if (o.genres[0]) u.searchParams.set("genre", o.genres[0]);
+  if (o.genres[1]) u.searchParams.set("genre2", o.genres[1]);
+  if (o.status === "ongoing" || o.status === "completed") u.searchParams.set("statusmanga", o.status === "ongoing" ? "ongoing" : "end");
   const html = (await webFetch(u.href, { referer: KOMIKU_SITE + "/" })).text;
   const items: any[] = [];
   for (const m of html.matchAll(/<div\b[^>]*class=["'][^"']*\bbge\b[^"']*["'][^>]*>/gi)) {
@@ -321,9 +327,9 @@ async function kiryuuGetNonce(fresh = false) {
 async function kiryuuSearchPage(srcPage: number, q: string, o: Opt, retry = true): Promise<{ items: any[]; hasNext: boolean }> {
   const fd = new FormData();
   fd.set("nonce", await kiryuuGetNonce(!retry));
-  fd.set("inclusion", "OR"); fd.set("exclusion", "OR"); fd.set("page", String(srcPage));
-  fd.set("genre", "[]"); fd.set("genre_exclude", "[]"); fd.set("author", "[]"); fd.set("artist", "[]"); fd.set("project", "0");
-  fd.set("type", JSON.stringify(o.type ? [o.type] : [])); fd.set("status", "[]");
+  fd.set("inclusion", o.genres.length > 1 ? "AND" : "OR"); fd.set("exclusion", "OR"); fd.set("page", String(srcPage));
+  fd.set("genre", JSON.stringify(o.genres)); fd.set("genre_exclude", "[]"); fd.set("author", "[]"); fd.set("artist", "[]"); fd.set("project", "0");
+  fd.set("type", JSON.stringify(o.type ? [o.type] : [])); fd.set("status", JSON.stringify(o.status ? [o.status === "hiatus" ? "on-hiatus" : o.status] : []));
   fd.set("order", "desc"); fd.set("orderby", o.sort === "popular" ? "popular" : "updated"); fd.set("query", q);
   const html = (await webFetch(`${KIRYUU_SITE}/wp-admin/admin-ajax.php?action=advanced_search`, { method: "POST", body: fd, referer: KIRYUU_SITE + "/", headers: { "X-Requested-With": "XMLHttpRequest" } })).text;
   if (/nonce|invalid|forbidden/i.test(html) && !/\/manga\//.test(html) && retry) return await kiryuuSearchPage(srcPage, q, o, false);
@@ -420,6 +426,8 @@ async function westBrowse(page: number, q: string, o: Opt) {
   const p = new URLSearchParams({ page: String(page), per_page: String(o.limit), type: "Comic", orderBy: o.sort === "popular" ? "Popular" : "Update" });
   if (q) p.set("q", q);
   if (o.type) p.set("country", WEST_COUNTRY[o.type]);
+  if (o.status) p.set("status", o.status[0].toUpperCase() + o.status.slice(1));
+  o.genres.forEach((g) => p.append("genre[]", g));
   const j = await westApi(`/api/contents?${p}`);
   const items = await Promise.all((j?.data || []).filter((m: any) => m?.slug).map(async (m: any) => ({
     id: String(m.slug), title: String(m.title || m.slug), cover: await coverUrl(westAbs(m.cover), westBase + "/"), type: WEST_TYPE[String(m.country_id || "")] || o.type || "",
@@ -482,6 +490,31 @@ async function browse(src: Source, page: number, q: string, o: Opt) {
   if (src === "kiryuu") return await windowed("kiryuu", page, o.limit, (sp) => kiryuuSearchPage(sp, q, o));
   return await westBrowse(page, q, o);
 }
+/* ---------- daftar filter per sumber (genre asli dari penyedia) ---------- */
+type Filters = { genres: { id: string; name: string }[]; status: Status[]; maxGenres: number };
+const KOMIKU_GENRES = "academy:Academy,action:Action,adaptation:Adaptation,adult:Adult,adventure:Adventure,apocalypse:Apocalypse,beasts:Beasts,blacksmith:Blacksmith,comedy:Comedy,cooking:Cooking,crime:Crime,crossdressing:Crossdressing,dark-fantasy:Dark Fantasy,demons:Demons,doujinshi:Doujinshi,drama:Drama,ecchi:Ecchi,entertainment:Entertainment,fantasy:Fantasy,game:Game,gender-bender:Gender Bender,genderswap:Genderswap,genius:Genius,ghosts:Ghosts,gore:Gore,gyaru:Gyaru,harem:Harem,historical:Historical,horror:Horror,isekai:Isekai,josei:Josei,knight:Knight,magic:Magic,magical-girls:Magical Girls,martial-art:Martial Art,martial-arts:Martial Arts,mature:Mature,mc-rebirth:MC Rebirth,mecha:Mecha,medical:Medical,military:Military,monster:Monster,monster-girls:Monster Girls,monsters:Monsters,murim:Murim,music:Music,mystery:Mystery,office-workers:Office Workers,one-shot:One Shot,police:Police,psychological:Psychological,regression:Regression,reincarnation:Reincarnation,revenge:Revenge,romance:Romance,school:School,school-life:School Life,sci-fi:Sci-fi,seinen:Seinen,sexual-violence:Sexual Violence,shoujo:Shoujo,shoujo-ai:Shoujo Ai,shounen:Shounen,shounen-ai:Shounen Ai,slice-of-life:Slice of Life,slow-life:Slow Life,smut:Smut,sports:Sports,strategy:Strategy,super-power:Super Power,supernatural:Supernatural,survival:Survival,sword-fight:Sword Fight,sword-master:Sword Master,system:System,thriller:Thriller,tragedy:Tragedy,trauma:Trauma,vampire:Vampire,villainess:Villainess,violence:Violence,xianxia:Xianxia,xuanhuan:Xuanhuan,yuri:Yuri";
+const SHNG_GENRES = "action:Action,adaptation:Adaptation,adult:Adult,adventure:Adventure,comedy:Comedy,cooking:Cooking,crime:Crime,demons:Demons,drama:Drama,ecchi:Ecchi,fantasy:Fantasy,fight:Fight,game:Game,gender-bender:Gender Bender,harem:Harem,historical:Historical,horror:Horror,isekai:Isekai,josei-genre:Josei,love:Love,magic:Magic,martial-arts:Martial Arts,mature:Mature,mecha:Mecha,medical:Medical,murim:Murim,mystery:Mystery,philosophical:Philosophical,psychological:Psychological,regression:Regression,revenge:Revenge,romance:Romance,school-life:School Life,sci-fi:Sci-fi,seinen:Seinen,shoujo:Shoujo,shounen:Shounen,slice-of-life:Slice of Life,smut:Smut,sports:Sports,supernatural:Supernatural,thriller:Thriller,tragedy:Tragedy,violence:Violence,wuxia:Wuxia";
+const parseList = (s: string) => s.split(",").map((x) => { const [id, ...n] = x.split(":"); return { id, name: n.join(":") }; });
+const filterCache = new Map<string, { at: number; data: Filters }>();
+async function filters(src: Source): Promise<Filters> {
+  const hit = filterCache.get(src);
+  if (hit && Date.now() - hit.at < 6 * 3600e3) return hit.data;
+  let data: Filters;
+  if (src === "komiku") data = { genres: parseList(KOMIKU_GENRES), status: ["ongoing", "completed"], maxGenres: 2 };
+  else if (src === "shinigami") data = { genres: parseList(SHNG_GENRES), status: ["ongoing", "completed", "hiatus"], maxGenres: 10 };
+  else if (src === "kiryuu") {
+    const list: any[] = await kiryuuJson("/wp-json/wp/v2/genre?per_page=100&page=1&orderby=count&order=desc&_fields=slug,name,count");
+    data = { genres: (Array.isArray(list) ? list : []).filter((t) => t?.slug && Number(t.count ?? 1) > 0)
+      .map((t) => ({ id: String(t.slug), name: decodeEnt(String(t.name || t.slug)) })).sort((a, b) => a.name.localeCompare(b.name)), status: ["ongoing", "completed", "hiatus"], maxGenres: 10 };
+  } else {
+    const j = await westApi("/api/contents/genres");
+    data = { genres: (j?.data || []).filter((g: any) => g?.id != null).map((g: any) => ({ id: String(g.id), name: String(g.name || g.slug) })).sort((a: any, b: any) => a.name.localeCompare(b.name)),
+      status: ["ongoing", "completed", "hiatus"], maxGenres: 10 };
+  }
+  if (data.genres.length) filterCache.set(src, { at: Date.now(), data });
+  return data;
+}
+
 async function detail(src: Source, id: string): Promise<Detail> {
   if (src === "shinigami") return await shngDetail(id);
   if (src === "komiku") return await komikuDetail(id);
@@ -717,7 +750,7 @@ Deno.serve(async (req) => {
     }
 
     // Jelajah & baca: terbuka untuk tamu
-    if (action === "browse" || action === "detail" || action === "pages") {
+    if (action === "browse" || action === "detail" || action === "pages" || action === "filters") {
       const src = body.source;
       if (!isSource(src)) return json({ error: "sumber tidak dikenal" }, 400);
       try {
@@ -726,10 +759,13 @@ Deno.serve(async (req) => {
             sort: body.sort === "popular" ? "popular" : "update",
             type: ["manga", "manhwa", "manhua"].includes(body.type) ? body.type : "",
             limit: Math.min(Math.max(5, Number(body.limit) || 20), 30),
+            genres: (Array.isArray(body.genres) ? body.genres : []).map(String).filter((g: string) => /^[\w.-]{1,60}$/.test(g)).slice(0, src === "komiku" ? 2 : 10),
+            status: ["ongoing", "completed", "hiatus"].includes(body.status) ? body.status : "",
           };
           const page = Math.min(Math.max(1, Number(body.page) || 1), 500);
           return json({ ok: true, source: src, page, ...(await browse(src, page, clip(body.q, 100).trim(), opt)) });
         }
+        if (action === "filters") return json({ ok: true, source: src, ...(await filters(src)) });
         if (action === "detail") return json({ ok: true, source: src, ...(await detail(src, clip(body.comic_id, 2000))) });
         return json({ ok: true, source: src, ...(await pages(src, clip(body.chapter_id, 2000))) });
       } catch (e: any) {

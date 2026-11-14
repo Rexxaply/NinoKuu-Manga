@@ -41,7 +41,8 @@ baru (FCM), pengumuman developer, dan pembersihan chat/notifikasi lama. Deploy l
 
 | action | login | isi |
 |---|---|---|
-| `browse` | tidak | `source`, `page`, `q`, `sort` (`update`/`popular`), `type`, `limit` |
+| `browse` | tidak | `source`, `page`, `q`, `sort` (`update`/`popular`), `type`, `limit`, `status` (`ongoing`/`completed`/`hiatus`), `genres` (id genre dari `filters`; Komiku maks 2) |
+| `filters` | tidak | `source` → daftar genre asli penyedia, status yang didukung, batas genre |
 | `detail` | tidak | `source`, `comic_id` |
 | `pages` | tidak | `source`, `chapter_id` → gambar via `?img=…&sig=…` |
 | `cron` | — | dipanggil Supabase Cron |

@@ -3,6 +3,7 @@ import * as api from "./api.js";
 import * as S from "./store.js";
 import { QUOTES } from "./assets.js";
 import { DOCS } from "./docs.js";
+import { openFilter, activeCount, genreName, STATUS_NAME } from "./filters.js";
 import { vChat, vDev, roomFor, roomPreview, roomCount, miniMsg, bindSpoilers } from "./chat.js";
 import { esc, icon, $, $$, toast, ago, SOURCES, srcName, TYPES, typeName, cover, comicHref, readHref, greeting, errBox, loading } from "./ui.js";
 
@@ -43,6 +44,7 @@ async function render() {
   trackNav();
   if (cleanup) { try { cleanup(); } catch {} cleanup = null; }
   closeNotif(); closeSheet();
+  $$(".flt-host").forEach((x) => x.remove()); document.body.classList.remove("flt-open");
   scrollMem.set(route.key, window.scrollY);
   route = { ...parse(), key: location.hash || "#/home" };
   const owner = { detail: null, reader: null, chapters: null, chat: "home", page: "more" }[route.name];
@@ -251,33 +253,45 @@ async function openNotif() {
 function closeNotif() { document.getElementById("notif")?.remove(); $("[data-act=bell]")?.setAttribute("aria-expanded", "false"); }
 
 /* ---------- Pencarian (hasil muncul sambil mengetik) ---------- */
-let sState = { q: "", src: "komiku", type: "" };
+let sState = { q: "", src: "komiku", type: "", status: "", genres: [] };
 async function vSearch(type) {
   if (type !== undefined) sState.type = TYPES.some((t) => t.id === type) ? type : "";
   view.innerHTML = `
 <div class="page-h"><h1>Pencarian</h1></div>
-<div class="px"><label class="search"><span class="mu">${icon("search", 20)}</span><span class="sr">Cari judul</span>
+<div class="px row g8"><label class="search grow"><span class="mu">${icon("search", 20)}</span><span class="sr">Cari judul</span>
   <input id="sq" type="search" enterkeyhint="search" autocomplete="off" placeholder="Cari judul manga, manhwa, manhua…" value="${esc(sState.q)}">
-  <button type="button" class="clr" data-act="clear" aria-label="Hapus pencarian" ${sState.q ? "" : "hidden"}>${icon("x", 16, 2.2)}</button></label></div>
+  <button type="button" class="clr" data-act="clear" aria-label="Hapus pencarian" ${sState.q ? "" : "hidden"}>${icon("x", 16, 2.2)}</button></label>
+  <span id="fltbtn"></span></div>
 <div class="sec s14">${seg(SOURCES, sState.src, "src")}</div>
-<div class="px mt10">${chips(TYPES, sState.type, "type")}</div>
+<div class="px mt10" id="tchips"></div>
+<div class="px" id="factive"></div>
 <div class="sec-h px mt10"><span class="mu sm" id="sinfo"></span>${viewBtn(S.state.settings.searchView === "grid", "view")}</div>
 <div id="sres" class="px">${loading(6, "sk-lrow")}</div>
 <button class="btn ghost wide" data-act="more" id="sMore" hidden>Muat lagi</button>
 <div class="pad-nav"></div>`;
   let page = 1, items = [], seq = 0, timer = null;
+  // tombol filter (angka = jumlah filter aktif) dan baris filter aktif yang bisa dihapus satu-satu
+  const drawFilters = () => {
+    const n = activeCount(sState);
+    $("#fltbtn").innerHTML = `<button class="flt-btn ${n ? "on" : ""}" data-act="filter" aria-label="Filter${n ? ` (${n} aktif)` : ""}">${icon("filter", 20)}${n ? `<span class="flt-n">${n}</span>` : ""}</button>`;
+    $("#tchips").innerHTML = chips(TYPES, sState.type, "type");
+    const pills = [...(sState.status ? [["status", "", STATUS_NAME[sState.status]]] : []), ...sState.genres.map((g) => ["genre", g, genreName(sState.src, g)])];
+    $("#factive").innerHTML = pills.length ? `<div class="fact">${pills.map(([k, v, l]) => `<button class="fpill" data-act="unf" data-k="${k}" data-v="${esc(v)}" aria-label="Hapus filter ${esc(l)}">${esc(l)}${icon("x", 13, 2.4)}</button>`).join("")}<button class="link-red sm" data-act="unall">Hapus semua</button></div>` : "";
+  };
+  drawFilters();
   const draw = () => {
     const grid = S.state.settings.searchView === "grid";
     $("#sres").innerHTML = items.length ? (grid ? `<div class="g3 mt8">${items.map((it) => gcard(comicHref(sState.src, it.id), it, sState.src)).join("")}</div>`
       : `<div class="rows">${items.map((it) => lrow(comicHref(sState.src, it.id), cover(it.cover, it.title, "sm"), esc(it.title), esc(typeName(it.type) || "Komik") + " · " + esc(srcName(sState.src)), `<span class="mu">${icon("chev", 18)}</span>`)).join("")}</div>`)
-      : `<div class="empty"><span class="empty-ic">${icon("search", 24)}</span><b>Tidak ditemukan</b><span>Coba kata lain, atau pilih sumber lain di atas.</span></div>`;
+      : `<div class="empty"><span class="empty-ic">${icon("search", 24)}</span><b>Tidak ditemukan</b><span>${activeCount(sState) ? "Tidak ada komik yang cocok dengan semua filter. Coba kurangi filternya." : "Coba kata lain, atau pilih sumber lain di atas."}</span></div>`;
   };
   const load = async (more = false) => {
     const my = ++seq;
     if (!more) { page = 1; $("#sres").innerHTML = loading(6, "sk-lrow"); $("#sMore").hidden = true; }
-    $("#sinfo").textContent = sState.q ? `Hasil “${sState.q}” di ${srcName(sState.src)}` : `Terbaru di ${srcName(sState.src)}${sState.type ? " · " + typeName(sState.type) : ""}`;
+    const nf = (sState.status ? 1 : 0) + sState.genres.length;
+    $("#sinfo").textContent = (sState.q ? `Hasil “${sState.q}” di ${srcName(sState.src)}` : `Terbaru di ${srcName(sState.src)}${sState.type ? " · " + typeName(sState.type) : ""}`) + (nf ? ` · ${nf} filter` : "");
     try {
-      const r = await api.call("browse", { source: sState.src, q: sState.q, type: sState.type, sort: "update", page, limit: 24 });
+      const r = await api.call("browse", { source: sState.src, q: sState.q, type: sState.type, status: sState.status, genres: sState.genres, sort: "update", page, limit: 24 });
       if (my !== seq || !$("#sres")) return;
       items = more ? items.concat(r.items) : r.items;
       draw();
@@ -297,8 +311,11 @@ async function vSearch(type) {
   const pick = (act, el) => $$(`[data-act=${act}]`).forEach((b) => b.setAttribute(b.parentElement.classList.contains("chips") ? "aria-pressed" : "aria-selected", String(b === el)));
   setActs({
     clear: () => { inp.value = ""; sState.q = ""; $("[data-act=clear]").hidden = true; inp.focus(); load(); },
-    src: (el) => { sState.src = el.dataset.v; pick("src", el); load(); },
-    type: (el) => { sState.type = el.dataset.v; pick("type", el); load(); },
+    src: (el) => { if (sState.genres.length) toast("Filter genre direset karena tiap sumber punya daftar genre sendiri."); sState.src = el.dataset.v; sState.genres = []; pick("src", el); drawFilters(); load(); },
+    type: (el) => { sState.type = el.dataset.v; drawFilters(); load(); },
+    filter: () => openFilter(sState.src, sState, (f) => { sState.type = f.type; sState.status = f.status; sState.genres = f.genres; drawFilters(); load(); }),
+    unf: (el) => { if (el.dataset.k === "status") sState.status = ""; else sState.genres = sState.genres.filter((g) => g !== el.dataset.v); drawFilters(); load(); },
+    unall: () => { sState.status = ""; sState.genres = []; drawFilters(); load(); },
     view: (el) => { S.setSetting("searchView", S.state.settings.searchView === "grid" ? "list" : "grid"); el.outerHTML = viewBtn(S.state.settings.searchView === "grid", "view"); draw(); },
     more: () => { page++; load(true); },
     retry: () => load(),
