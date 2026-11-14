@@ -22,6 +22,9 @@ img { display: block; }
 ::-webkit-scrollbar-track { background: transparent; }
 
 #view { max-width: 980px; margin: 0 auto; padding-top: env(safe-area-inset-top); }
+/* animasi meluncur tidak boleh membuat halaman lebih lebar dari layar (bar bawah sempat hilang) */
+html, body { overflow-x: clip; }
+@supports not (overflow-x: clip) { html, body { overflow-x: hidden; } }
 /* pindah layar: meluncur dari kanan (maju) atau kiri (kembali), seperti prototipe */
 #view.in-f { animation: slideF .36s cubic-bezier(.2, .8, .2, 1); }
 #view.in-b { animation: slideB .36s cubic-bezier(.2, .8, .2, 1); }

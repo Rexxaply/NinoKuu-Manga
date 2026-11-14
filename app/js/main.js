@@ -23,7 +23,24 @@ function parse() {
 const TABS = ["home", "search", "fav", "more"];
 const DEPTH = { home: 0, search: 0, fav: 0, more: 0, detail: 1, page: 1, chat: 1, chapters: 2, comments: 2, reader: 3, chcomments: 4 };
 let prevName = "home", prevTab = "home";
+// riwayat navigasi milik aplikasi: tiap entri riwayat browser diberi nomor urut (history.state.nk),
+// supaya tombol kembali tahu halaman sebelumnya dan tidak menumpuk halaman baru
+const NAVK = "ninokuu:navstack";
+let navStack = (() => { try { return JSON.parse(sessionStorage.getItem(NAVK)) || []; } catch { return []; } })();
+let navIdx = -1, replacing = false;
+function trackNav() {
+  const h = location.hash || "#/home";
+  let i = history.state?.nk;
+  if (typeof i !== "number") {
+    i = replacing ? Math.max(0, navIdx) : navIdx + 1;
+    navStack = navStack.slice(0, i);
+    history.replaceState({ ...(history.state || {}), nk: i }, "");
+  }
+  navStack[i] = h; navIdx = i; replacing = false;
+  try { sessionStorage.setItem(NAVK, JSON.stringify(navStack.slice(0, i + 1))); } catch {}
+}
 async function render() {
+  trackNav();
   if (cleanup) { try { cleanup(); } catch {} cleanup = null; }
   closeNotif(); closeSheet();
   scrollMem.set(route.key, window.scrollY);
@@ -48,7 +65,11 @@ async function render() {
 }
 window.addEventListener("hashchange", render);
 const go = (h) => { location.hash = h; };
-const back = (fallback = "#/home") => (history.length > 1 ? history.back() : go(fallback));
+// ganti halaman tanpa menambah riwayat (dipakai saat pindah chapter)
+const goReplace = (h) => { if (h === location.hash) return; replacing = true; location.replace(h); };
+const back = (fallback = "#/home") => (navIdx > 0 ? history.back() : goReplace(fallback));
+// kembali ke halaman tertentu: mundur bila itu memang halaman sebelumnya, selain itu ganti halaman ini
+const backTo = (href, alsoOk = []) => { const prev = navStack[navIdx - 1]; if (navIdx > 0 && (prev === href || alsoOk.includes(prev))) history.back(); else goReplace(href); };
 
 let acts = {};
 view.addEventListener("click", (e) => {
@@ -407,7 +428,7 @@ function chRowFor(src, id, h, latest) {
 async function vChapters(src, id) {
   const dlBtn = `<button class="icon-btn" data-act="dl" aria-label="Unduh chapter">${icon("down", 21, 2)}</button>`;
   view.innerHTML = topbar("Daftar chapter", dlBtn) + `<div class="px">${loading(8, "sk-lrow")}</div>`;
-  setActs({ back: () => back(comicHref(src, id)), retry: () => vChapters(src, id), dl: dlSoon });
+  setActs({ back: () => backTo(comicHref(src, id)), retry: () => vChapters(src, id), dl: dlSoon });
   let d;
   try { d = cachedDetail(src, id) || (await getDetail(src, id)); } catch (e) { view.innerHTML = topbar("Daftar chapter") + errBox(e); return; }
   if (parse().name !== "chapters") return;
@@ -452,7 +473,7 @@ async function vChapters(src, id) {
   window.addEventListener("wheel", drop, { passive: true });
   cleanup = () => { io.disconnect(); window.removeEventListener("touchmove", drop); window.removeEventListener("wheel", drop); document.body.classList.remove("chfoc"); };
   setActs({
-    back: () => back(comicHref(src, id)),
+    back: () => backTo(comicHref(src, id)),
     sort: () => { asc = !asc; shown = STEP; draw(); window.scrollTo({ top: 0, behavior: "smooth" }); },
     clr: () => { inp.value = ""; q = ""; shown = STEP; draw(); inp.focus({ preventScroll: true }); },
     dl: dlSoon,
@@ -470,7 +491,8 @@ async function vChapters(src, id) {
 async function vReader(src, id, chId) {
   const shell = (inner) => `<div class="reader ui" id="rd">${inner}<div class="r-top"><button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 22, 2)}</button><div class="r-pill glass"><b class="t1">Memuat…</b></div><span class="r-sp"></span></div></div>`;
   view.innerHTML = shell(`<div class="r-pages">${loading(3, "sk-page")}</div>`);
-  setActs({ back: () => go(comicHref(src, id)), retry: () => vReader(src, id, chId) });
+  const toComic = () => backTo(comicHref(src, id), [chaptersHref(src, id)]);
+  setActs({ back: toComic, retry: () => vReader(src, id, chId) });
   let d = cachedDetail(src, id);
   try { if (!d) d = await getDetail(src, id); } catch (e) { $(".r-pages").innerHTML = errBox(e); return; }
   const idx = d.chapters.findIndex((c) => c.id === chId);
@@ -570,15 +592,15 @@ async function vReader(src, id, chId) {
   track.addEventListener("keydown", (e) => { if (e.key === "ArrowRight") goPage(curPage + 1); if (e.key === "ArrowLeft") goPage(curPage - 1); });
   const menu = (open) => { $(".r-menu").hidden = !open; $(".r-menu-bg").hidden = !open; $("[data-act=menu]").setAttribute("aria-expanded", String(open)); };
   setActs({
-    back: () => go(comicHref(src, id)),
+    back: toComic,
     retry: () => vReader(src, id, chId),
     menu: () => menu($(".r-menu").hidden), closeMenu: () => menu(false),
     rmode: (el) => { S.setSetting("readMode", el.dataset.v); vReader(src, id, chId); },
     rreport: () => { menu(false); openReport({ source: src, comic_id: id, title: d.manga.title, chapter_id: chId, chapter: ch.ch }); },
     rdir: (el) => { S.setSetting("readDir", el.dataset.v); vReader(src, id, chId); },
-    prev: () => prev && go(readHref(src, id, prev.id)),
-    main: () => go(next ? readHref(src, id, next.id) : comicHref(src, id)),
-    next: () => go(next ? readHref(src, id, next.id) : comicHref(src, id)),
+    prev: () => prev && goReplace(readHref(src, id, prev.id)),
+    main: () => (next ? goReplace(readHref(src, id, next.id)) : toComic()),
+    next: () => (next ? goReplace(readHref(src, id, next.id)) : toComic()),
   });
   cleanup = () => { clearTimeout(tapT); S.flushHistory(); };
   roomCount(roomFor(src, id, chId)).then((n) => { const el = $("#rcmn"); if (el && n) el.textContent = n; }).catch(() => {});
