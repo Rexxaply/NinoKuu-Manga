@@ -20,6 +20,8 @@ function parse() {
   return { name: map[parts[0]] || parts[0], params: parts.slice(1) };
 }
 const TABS = ["home", "search", "fav", "more"];
+const DEPTH = { home: 0, search: 0, fav: 0, more: 0, detail: 1, page: 1, chapters: 2, reader: 3 };
+let prevName = "home", prevTab = "home";
 async function render() {
   if (cleanup) { try { cleanup(); } catch {} cleanup = null; }
   scrollMem.set(route.key, window.scrollY);
@@ -27,9 +29,17 @@ async function render() {
   const owner = { detail: null, reader: null, chapters: null, page: "more" }[route.name];
   const tab = TABS.includes(route.name) ? route.name : owner;
   document.body.dataset.screen = route.name;
-  nav.hidden = route.name === "reader";
+  // navigasi bawah: indikator bergeser ke tab aktif; disembunyikan (meluncur turun) di luar layar utama tab
+  const onRoot = TABS.includes(route.name);
+  document.body.classList.toggle("nav-off", !onRoot);
+  const ti = Math.max(0, TABS.indexOf(tab ?? prevTab));
+  nav.style.setProperty("--ti", ti);
   $$("#nav a").forEach((a) => a.setAttribute("aria-current", String(a.dataset.tab === tab)));
-  view.classList.remove("in"); void view.offsetWidth; view.classList.add("in");
+  // arah animasi: masuk lebih dalam / tab di kanan = dari kanan; kembali = dari kiri
+  const depth = DEPTH[route.name] ?? 0, prevDepth = DEPTH[prevName] ?? 0;
+  const fwd = depth !== prevDepth ? depth > prevDepth : TABS.indexOf(route.name) >= TABS.indexOf(prevName);
+  view.classList.remove("in", "in-f", "in-b"); void view.offsetWidth; view.classList.add("in", fwd ? "in-f" : "in-b");
+  prevName = route.name; if (tab) prevTab = tab;
   await (VIEWS[route.name] || VIEWS.home)(...route.params);
   const y = scrollMem.get(route.key);
   requestAnimationFrame(() => window.scrollTo(0, y || 0));
@@ -337,9 +347,10 @@ async function vChapters(src, id) {
   draw();
 }
 
-/* ---------- Pembaca (gulir atau slide) ---------- */
+/* ---------- Pembaca (gulir atau slide), tampilan sama seperti prototipe ---------- */
 async function vReader(src, id, chId) {
-  view.innerHTML = `<div class="reader"><div class="r-top glass"><button class="icon-btn" data-act="back" aria-label="Kembali">${icon("back", 22)}</button><span class="r-title mu">Memuat…</span></div><div class="r-pages">${loading(3, "sk-page")}</div></div>`;
+  const shell = (inner) => `<div class="reader ui" id="rd">${inner}<div class="r-top"><button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 22, 2)}</button><div class="r-pill glass"><b class="t1">Memuat…</b></div><span class="r-sp"></span></div></div>`;
+  view.innerHTML = shell(`<div class="r-pages">${loading(3, "sk-page")}</div>`);
   setActs({ back: () => go(comicHref(src, id)), retry: () => vReader(src, id, chId) });
   let d = cachedDetail(src, id);
   try { if (!d) d = await getDetail(src, id); } catch (e) { $(".r-pages").innerHTML = errBox(e); return; }
@@ -349,39 +360,107 @@ async function vReader(src, id, chId) {
   let p;
   try { p = await api.call("pages", { source: src, chapter_id: chId }); } catch (e) { $(".r-pages").innerHTML = errBox(e); return; }
   if (parse().name !== "reader") return;
-  const total = p.images.length, slide = S.state.settings.readMode === "slide", rtl = S.state.settings.readDir !== "ltr";
-  const imgs = p.images.map((im, i) => `<img class="r-img" data-i="${i + 1}" src="${esc(api.pageUrl(im.p))}" alt="Halaman ${i + 1}" ${i > 2 ? 'loading="lazy"' : ""} decoding="async" referrerpolicy="no-referrer">`);
-  const nextBtn = next ? `<a class="btn primary" href="${readHref(src, id, next.id)}">Chapter berikutnya · ${esc(next.ch)}</a>` : `<span class="mu">Ini chapter terbaru.</span>`;
+  const st = S.state.settings, total = p.images.length;
+  let slide = st.readMode === "slide";
+  const rtl = st.readDir !== "ltr";
+  const imgs = p.images.map((im, i) => `<img class="r-img" data-i="${i + 1}" src="${esc(api.pageUrl(im.p))}" alt="Halaman ${i + 1}" ${i > 2 ? 'loading="lazy"' : ""} decoding="async" referrerpolicy="no-referrer" draggable="false">`);
+  const mainLabel = next ? `Lanjut ke Chapter ${esc(next.ch)}` : "Kembali ke info komik";
   view.innerHTML = `<div class="reader ui ${slide ? "slide" : ""}" id="rd">
-  <div class="r-top glass"><button class="icon-btn" data-act="back" aria-label="Kembali">${icon("back", 22)}</button>
-    <span class="r-title"><b class="t1">${esc(d.manga.title)}</b><span class="mu xs">Chapter ${esc(ch.ch)} · <span id="rpg">1</span>/${total}</span></span></div>
-  ${slide ? `<div class="r-slides" id="rpages" dir="${rtl ? "rtl" : "ltr"}">${imgs.map((im) => `<div class="r-slide">${im}</div>`).join("")}<div class="r-slide r-endslide">${nextBtn}</div></div>`
-    : `<div class="r-pages" id="rpages">${imgs.join("")}</div><div class="r-end">${nextBtn}</div>`}
-  <div class="r-bot glass">
-    <a class="icon-btn ${prev ? "" : "dis"}" ${prev ? `href="${readHref(src, id, prev.id)}"` : 'aria-disabled="true"'} aria-label="Chapter sebelumnya">${icon("back", 22)}</a>
-    <a class="btn ghost sm" href="${chaptersHref(src, id)}">${icon("list", 16, 2)}Daftar chapter</a>
-    <a class="icon-btn ${next ? "" : "dis"}" ${next ? `href="${readHref(src, id, next.id)}"` : 'aria-disabled="true"'} aria-label="Chapter berikutnya">${icon("chev", 22)}</a>
-  </div></div>`;
-  const rd = $("#rd");
-  rd.addEventListener("click", (e) => { if (!e.target.closest("a,button")) rd.classList.toggle("ui"); });
+  ${slide ? `<div class="r-slides" id="rbox" dir="${rtl ? "rtl" : "ltr"}">${imgs.map((im) => `<div class="r-slide">${im}</div>`).join("")}<div class="r-slide r-endslide"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span></div></div>`
+    : `<div class="r-scroll" id="rbox"><div class="r-pages" id="rpages">${imgs.join("")}<div class="r-endtxt"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span></div></div></div>`}
+  <div class="r-zoom glass" id="rzoom" hidden>${icon("zoom", 15)}<span id="rzt"></span> · geser untuk melihat, ketuk 2× untuk normal</div>
+  <div class="r-top">
+    <button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 22, 2)}</button>
+    <div class="r-pill glass"><b class="t1">${esc(d.manga.title)}</b><span class="mu xs">Chapter ${esc(ch.ch)}</span></div>
+    <button class="r-round glass" data-act="menu" aria-label="Pengaturan mode baca" aria-expanded="false">${icon("dots", 22)}</button>
+  </div>
+  <div class="r-menu-bg" data-act="closeMenu" hidden></div>
+  <div class="r-menu glass" role="dialog" aria-label="Mode baca" hidden>
+    <span class="cap">Mode baca</span>
+    ${[["scroll", "Scroll (webtoon)", "Gulir ke bawah, halaman tersambung", "scroll"], ["slide", "Slide (halaman)", "Geser per halaman", "slides"]].map(([k, n, dsc, ic]) =>
+      `<button class="r-mode ${st.readMode === k ? "on" : ""}" role="radio" aria-checked="${st.readMode === k}" data-act="rmode" data-v="${k}"><span class="${st.readMode === k ? "redt" : "mu"}">${icon(ic, 20)}</span><span class="col grow"><b>${n}</b><span class="mu xs">${dsc}</span></span>${st.readMode === k ? `<span class="redt">${icon("check", 18, 2.4)}</span>` : ""}</button>`).join("")}
+    ${slide ? `<span class="cap mt4">Arah geser</span><div class="seg s3">${[["rtl", "Kanan ke kiri"], ["ltr", "Kiri ke kanan"]].map(([k, n]) => `<button role="tab" aria-selected="${(rtl ? "rtl" : "ltr") === k}" data-act="rdir" data-v="${k}">${n}</button>`).join("")}</div>` : ""}
+  </div>
+  <div class="r-bottom">
+    <div class="r-seek glass"><span class="r-pn"><span id="rpg">1</span> / ${total}</span>
+      <div class="r-track" id="rtrack" role="slider" aria-label="Posisi halaman" aria-valuemin="1" aria-valuemax="${total}" aria-valuenow="1" tabindex="0"><span class="r-rail"></span><span class="r-fill" id="rfill"></span><span class="r-knob" id="rknob"></span></div></div>
+    <div class="r-btns">
+      <button class="r-sq glass" data-act="prev" aria-label="Chapter sebelumnya" ${prev ? "" : "disabled"}>${icon("back", 22, 2.2)}</button>
+      <button class="r-main" data-act="main">${next ? icon("play", 16, 2.2) : icon("home", 18, 2)}${mainLabel}</button>
+      <button class="r-sq glass" data-act="next" aria-label="${next ? "Chapter berikutnya" : "Kembali ke info komik"}">${next ? icon("chev", 22, 2.2) : icon("home", 21, 2)}</button>
+    </div></div></div>`;
+  const rd = $("#rd"), box = $("#rbox"), pages = $("#rpages");
   const meta = { source: src, comic_id: id, title: d.manga.title, cover: d.manga.cover, chapter: ch.ch, chapter_id: ch.id, pages: total, type: typeFromTags(d.manga.tags) };
   S.saveHistory({ ...meta, page: 1 });
   S.awardRead(src, id, ch.ch);
   let curPage = 1;
-  const setPage = (i) => { if (i !== curPage && i >= 1 && i <= total) { curPage = i; $("#rpg").textContent = i; S.saveHistory({ ...meta, page: i }); } };
-  let io = null;
-  const box = $("#rpages");
-  if (slide) box.addEventListener("scroll", () => setPage(Math.round(Math.abs(box.scrollLeft) / (box.clientWidth || 1)) + 1), { passive: true });
-  else {
-    io = new IntersectionObserver((ents) => { for (const en of ents) if (en.isIntersecting) setPage(Number(en.target.dataset.i)); }, { rootMargin: "-45% 0px -45% 0px" });
-    $$(".r-img").forEach((im) => io.observe(im));
-  }
-  cleanup = () => { io?.disconnect(); S.flushHistory(); };
+  const setPage = (i) => {
+    if (i < 1 || i > total) return;
+    const pc = total > 1 ? ((i - 1) / (total - 1)) * 100 : 100;
+    $("#rfill").style.width = pc + "%"; $("#rknob").style.left = pc + "%"; $("#rtrack").setAttribute("aria-valuenow", i);
+    if (i !== curPage) { curPage = i; $("#rpg").textContent = i; S.saveHistory({ ...meta, page: i }); }
+  };
+  const goPage = (i, smooth = false) => {
+    const el = $(`.r-img[data-i="${i}"]`); if (!el) return;
+    if (slide) { const w = box.clientWidth; box.scrollTo({ left: (rtl ? -1 : 1) * (i - 1) * w, behavior: smooth ? "smooth" : "auto" }); }
+    else box.scrollTo({ top: el.offsetTop * zoom, behavior: smooth ? "smooth" : "auto" });
+    setPage(i);
+  };
+  // posisi halaman saat menggulir
+  let zoom = 1;
+  box.addEventListener("scroll", () => {
+    if (slide) { setPage(Math.round(Math.abs(box.scrollLeft) / (box.clientWidth || 1)) + 1); return; }
+    const y = box.scrollTop / zoom + box.clientHeight / zoom * 0.4;
+    let n = 1; for (const im of $$(".r-img", pages)) { if (im.offsetTop <= y) n = Number(im.dataset.i); else break; }
+    setPage(n);
+  }, { passive: true });
+  // ketuk sekali: tampil/sembunyikan tombol; ketuk dua kali: perbesar 2,5× / kembali normal (mode gulir)
+  let lastTap = null, tapT = null;
+  const showZoom = () => { const z = $("#rzoom"); z.hidden = zoom <= 1.02; $("#rzt").textContent = Math.round(zoom * 100) + "%"; };
+  const applyZoom = (z, fx, fy) => {
+    if (slide) return;
+    const r = box.getBoundingClientRect(), x = fx - r.left, y = fy - r.top;
+    const cx = (box.scrollLeft + x) / zoom, cy = (box.scrollTop + y) / zoom;
+    zoom = Math.max(1, Math.min(4, z));
+    pages.style.zoom = zoom;
+    box.scrollLeft = cx * zoom - x; box.scrollTop = cy * zoom - y;
+    rd.classList.toggle("zoomed", zoom > 1.02); showZoom();
+  };
+  box.addEventListener("click", (e) => {
+    if (e.target.closest("a,button")) return;
+    const now = Date.now();
+    if (lastTap && now - lastTap.t < 320 && Math.hypot(lastTap.x - e.clientX, lastTap.y - e.clientY) < 50) {
+      clearTimeout(tapT); lastTap = null; applyZoom(zoom > 1.05 ? 1 : 2.5, e.clientX, e.clientY);
+    } else {
+      lastTap = { t: now, x: e.clientX, y: e.clientY };
+      clearTimeout(tapT); tapT = setTimeout(() => { lastTap = null; rd.classList.toggle("ui"); }, 320);
+    }
+  });
+  // cubit untuk memperbesar (mode gulir)
+  let pinch = null;
+  box.addEventListener("touchstart", (e) => { if (!slide && e.touches.length === 2) { const [a, b] = e.touches; pinch = { d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1, z: zoom, x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 }; } }, { passive: true });
+  box.addEventListener("touchmove", (e) => { if (pinch && e.touches.length === 2) { e.preventDefault(); const [a, b] = e.touches; applyZoom(pinch.z * (Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) / pinch.d), pinch.x, pinch.y); } }, { passive: false });
+  box.addEventListener("touchend", () => { pinch = null; });
+  // geser slider halaman
+  const track = $("#rtrack");
+  const seekAt = (clientX) => { const r = track.getBoundingClientRect(); const f = Math.min(1, Math.max(0, (clientX - r.left) / r.width)); goPage(Math.round(f * (total - 1)) + 1); };
+  track.addEventListener("pointerdown", (e) => { e.stopPropagation(); track.setPointerCapture(e.pointerId); seekAt(e.clientX); track.onpointermove = (ev) => seekAt(ev.clientX); });
+  track.addEventListener("pointerup", () => { track.onpointermove = null; });
+  track.addEventListener("keydown", (e) => { if (e.key === "ArrowRight") goPage(curPage + 1); if (e.key === "ArrowLeft") goPage(curPage - 1); });
+  const menu = (open) => { $(".r-menu").hidden = !open; $(".r-menu-bg").hidden = !open; $("[data-act=menu]").setAttribute("aria-expanded", String(open)); };
+  setActs({
+    back: () => go(comicHref(src, id)),
+    retry: () => vReader(src, id, chId),
+    menu: () => menu($(".r-menu").hidden), closeMenu: () => menu(false),
+    rmode: (el) => { S.setSetting("readMode", el.dataset.v); vReader(src, id, chId); },
+    rdir: (el) => { S.setSetting("readDir", el.dataset.v); vReader(src, id, chId); },
+    prev: () => prev && go(readHref(src, id, prev.id)),
+    main: () => go(next ? readHref(src, id, next.id) : comicHref(src, id)),
+    next: () => go(next ? readHref(src, id, next.id) : comicHref(src, id)),
+  });
+  cleanup = () => { clearTimeout(tapT); S.flushHistory(); };
   const h = S.histItem(src, id);
-  if (h?.chapter_id === chId && h.page > 1) {
-    const target = $(`.r-img[data-i="${h.page}"]`);
-    if (target) setTimeout(() => (slide ? target.parentElement : target).scrollIntoView({ block: "start", inline: "start" }), 300);
-  }
+  if (h?.chapter_id === chId && h.page > 1) setTimeout(() => goPage(h.page), 350);
 }
 
 /* ---------- Favorit ---------- */
