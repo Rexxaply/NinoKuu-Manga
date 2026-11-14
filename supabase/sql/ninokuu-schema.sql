@@ -738,5 +738,124 @@ create policy "chat-images unggah ke folder sendiri" on storage.objects for inse
 drop policy if exists "chat-images hapus milik sendiri" on storage.objects;
 create policy "chat-images hapus milik sendiri" on storage.objects for delete to authenticated
   using (bucket_id = 'chat-images' and (storage.foldername(name))[1] = (select auth.uid())::text);
+-- developer boleh menghapus gambar siapa pun (dipakai pembersih penyimpanan di Panel developer)
+drop policy if exists "chat-images dihapus developer" on storage.objects;
+create policy "chat-images dihapus developer" on storage.objects for delete to authenticated
+  using (bucket_id = 'chat-images' and (select public.is_dev()));
+
+-- =====================================================================
+-- 11. Kontrol penyimpanan (Panel developer): ukuran database & gambar, lalu pembersih.
+--     Paket Free Supabase: database 500 MB, Storage 1 GB.
+-- =====================================================================
+create or replace function public.dev_storage()
+returns json
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  t text;
+  tables json;
+begin
+  if not public.is_dev() then raise exception 'khusus developer' using errcode = '42501'; end if;
+  select json_agg(x order by x.bytes desc) into tables from (
+    select c.relname as name, pg_catalog.pg_total_relation_size(c.oid) as bytes,
+           coalesce(s.n_live_tup, 0) as rows
+    from pg_catalog.pg_class c
+    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+    left join pg_catalog.pg_stat_user_tables s on s.relid = c.oid
+    where n.nspname = 'public' and c.relkind = 'r'
+  ) x;
+  return json_build_object(
+    'db_bytes', pg_catalog.pg_database_size(pg_catalog.current_database()),
+    'db_quota', 500 * 1024 * 1024,
+    'tables', coalesce(tables, '[]'::json),
+    'img_bytes', (select coalesce(sum((o.metadata->>'size')::bigint), 0) from storage.objects o where o.bucket_id = 'chat-images'),
+    'img_count', (select count(*) from storage.objects o where o.bucket_id = 'chat-images'),
+    'img_orphans', (select count(*) from storage.objects o where o.bucket_id = 'chat-images'
+                      and not exists (select 1 from public.chat_messages m where m.image_path = o.name)),
+    'img_quota', 1024 * 1024 * 1024,
+    'chat_public', (select count(*) from public.chat_messages where room = 'public'),
+    'comments', (select count(*) from public.chat_messages where room <> 'public'),
+    'oldest_chat', (select min(created_at) from public.chat_messages where room = 'public'),
+    'notifications', (select count(*) from public.notifications),
+    'read_log', (select count(*) from public.read_log),
+    'bugs_done', (select count(*) from public.bug_reports where resolved),
+    'comic_orphans', (select count(*) from public.comic_state cs where not exists
+                        (select 1 from public.library l where l.source = cs.source and l.comic_id = cs.comic_id and l.notify))
+  );
+end;
+$$;
+revoke all on function public.dev_storage() from public, anon;
+grant execute on function public.dev_storage() to authenticated;
+
+-- Pembersih. Mengembalikan jumlah yang dihapus dan daftar file gambar yang harus dihapus
+-- lewat Storage API oleh aplikasi (Supabase tidak mengizinkan menghapus file langsung dari SQL).
+create or replace function public.dev_cleanup(p_kind text, p_days int default 30)
+returns json
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  cutoff timestamptz;
+  n int := 0;
+  imgs text[] := '{}';
+begin
+  if not public.is_dev() then raise exception 'khusus developer' using errcode = '42501'; end if;
+  if p_days is null or p_days < 1 or p_days > 3650 then raise exception 'Jumlah hari harus 1 sampai 3650' using errcode = '22023'; end if;
+  cutoff := pg_catalog.now() - pg_catalog.make_interval(days => p_days);
+
+  if p_kind = 'chat_public' or p_kind = 'comments' then
+    with d as (
+      delete from public.chat_messages
+      where created_at < cutoff and ((p_kind = 'chat_public' and room = 'public') or (p_kind = 'comments' and room <> 'public'))
+      returning image_path
+    ) select count(*), coalesce(array_agg(image_path) filter (where image_path is not null), '{}') into n, imgs from d;
+
+  elsif p_kind = 'chat_images' then
+    -- gambar lama dibuang, teksnya tetap; pesan yang isinya hanya gambar ikut dihapus
+    with old as (
+      select id, image_path, char_length(btrim(body)) > 0 as has_text from public.chat_messages
+      where image_path is not null and created_at < cutoff
+    ), u as (
+      update public.chat_messages m set image_path = null, image_spoiler = false
+      from old where m.id = old.id and old.has_text returning old.image_path
+    ), d as (
+      delete from public.chat_messages m using old where m.id = old.id and not old.has_text returning old.image_path
+    ) select count(*), coalesce(array_agg(image_path), '{}') into n, imgs from (select * from u union all select * from d) z;
+
+  elsif p_kind = 'img_orphans' then
+    select count(*), coalesce(array_agg(o.name), '{}') into n, imgs from storage.objects o
+    where o.bucket_id = 'chat-images' and not exists (select 1 from public.chat_messages m where m.image_path = o.name);
+
+  elsif p_kind = 'notifications' then
+    delete from public.notifications where created_at < cutoff;
+    get diagnostics n = row_count;
+
+  elsif p_kind = 'read_log' then
+    -- EXP tetap tersimpan di profil; log baca hanya dipakai untuk batas EXP harian
+    if p_days < 90 then raise exception 'Log baca minimal disimpan 90 hari' using errcode = '22023'; end if;
+    delete from public.read_log where read_at < cutoff;
+    get diagnostics n = row_count;
+
+  elsif p_kind = 'bugs_done' then
+    delete from public.bug_reports where resolved;
+    get diagnostics n = row_count;
+
+  elsif p_kind = 'comic_orphans' then
+    delete from public.comic_state cs where not exists
+      (select 1 from public.library l where l.source = cs.source and l.comic_id = cs.comic_id and l.notify);
+    get diagnostics n = row_count;
+
+  else
+    raise exception 'Jenis pembersihan tidak dikenal: %', p_kind using errcode = '22023';
+  end if;
+  return json_build_object('kind', p_kind, 'deleted', n, 'images', imgs);
+end;
+$$;
+revoke all on function public.dev_cleanup(text, int) from public, anon;
+grant execute on function public.dev_cleanup(text, int) to authenticated;
 
 commit;

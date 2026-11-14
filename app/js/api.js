@@ -152,6 +152,14 @@ export async function removeFile(bucket, path) {
   const r = await fetch(`${BASE}/storage/v1/object/${bucket}`, { method: "DELETE", headers: { apikey: KEY, Authorization: "Bearer " + t, "Content-Type": "application/json" }, body: JSON.stringify({ prefixes: [path] }) });
   if (!r.ok) throw await readErr(r);
 }
+// hapus banyak file sekaligus (per 100)
+export async function removeFiles(bucket, paths) {
+  for (let i = 0; i < paths.length; i += 100) {
+    const t = await accessToken();
+    const r = await fetch(`${BASE}/storage/v1/object/${bucket}`, { method: "DELETE", headers: { apikey: KEY, Authorization: "Bearer " + t, "Content-Type": "application/json" }, body: JSON.stringify({ prefixes: paths.slice(i, i + 100) }) });
+    if (!r.ok) throw await readErr(r);
+  }
+}
 export const publicUrl = (bucket, path) => `${BASE}/storage/v1/object/public/${bucket}/${path.split("/").map(encodeURIComponent).join("/")}`;
 export const userId = () => session?.user?.id || null;
 

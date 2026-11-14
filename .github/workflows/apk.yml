@@ -109,9 +109,10 @@ jobs:
           cp node_modules/@capacitor/core/dist/capacitor.js www/capacitor.js
           cp node_modules/@capacitor/push-notifications/dist/plugin.js www/cap-push.js
           cp node_modules/@capacitor/app/dist/plugin.js www/cap-app.js
-          grep -q "registerPlugin" www/cap-push.js && grep -q "registerPlugin" www/cap-app.js && grep -q "capacitorExports" www/capacitor.js
-          sed -i 's#<script src="config.js"></script>#<script src="capacitor.js"></script>\n<script src="cap-push.js"></script>\n<script src="cap-app.js"></script>\n<script src="config.js"></script>#' www/index.html
-          [ "$(grep -c 'src="cap' www/index.html)" = "3" ] || { echo "::error::Gagal menyisipkan skrip Capacitor ke index.html"; exit 1; }
+          cp node_modules/@capacitor/keyboard/dist/plugin.js www/cap-kb.js
+          grep -q "registerPlugin" www/cap-push.js && grep -q "registerPlugin" www/cap-app.js && grep -q "registerPlugin" www/cap-kb.js && grep -q "capacitorExports" www/capacitor.js
+          sed -i 's#<script src="config.js"></script>#<script src="capacitor.js"></script>\n<script src="cap-push.js"></script>\n<script src="cap-app.js"></script>\n<script src="cap-kb.js"></script>\n<script src="config.js"></script>#' www/index.html
+          [ "$(grep -c 'src="cap' www/index.html)" = "4" ] || { echo "::error::Gagal menyisipkan skrip Capacitor ke index.html"; exit 1; }
 
       - name: Proyek Android
         run: |
@@ -129,7 +130,7 @@ jobs:
             const fs = require("fs");
             // warna bilah status / navigasi & latar jendela mengikuti tema gelap Ninokuu
             const sf = "android/app/src/main/res/values/styles.xml"; let s = fs.readFileSync(sf, "utf8");
-            const items = `<item name="android:statusBarColor">@color/ninokuu_bg</item>\n        <item name="android:navigationBarColor">@color/ninokuu_bg</item>\n        <item name="android:windowBackground">@color/ninokuu_bg</item>\n        <item name="android:windowLightStatusBar">false</item>`;
+            const items = `<item name="android:statusBarColor">@color/ninokuu_bg</item>\n        <item name="android:navigationBarColor">@color/ninokuu_bg</item>\n        <item name="android:windowBackground">@color/ninokuu_bg</item>\n        <item name="android:windowLightStatusBar">false</item>\n        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>`;
             s = s.replace(/(<style name="AppTheme.NoActionBar"[^>]*>)/, `$1\n        ${items}`);
             s = s.replace(/(<style name="AppTheme.NoActionBarLaunch"[^>]*>)/, `$1\n        <item name="windowSplashScreenBackground">@color/ninokuu_bg</item>\n        ${items}`);
             fs.writeFileSync(sf, s);
@@ -137,7 +138,8 @@ jobs:
             const mf = "android/app/src/main/AndroidManifest.xml"; let m = fs.readFileSync(mf, "utf8");
             if (!m.includes("POST_NOTIFICATIONS")) m = m.replace("</manifest>", `    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n</manifest>`);
             m = m.replace("</application>", `    <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/ic_stat_ninokuu" />\n        <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="ninokuu" />\n        <meta-data android:name="com.google.firebase.messaging.default_notification_color" android:resource="@color/ninokuu_red" />\n    </application>`);
-            m = m.replace(/<activity\b/, `<activity\n            android:screenOrientation="portrait"`);
+            // layar menyusut saat keyboard muncul (kolom chat tidak tertutup keyboard)
+            m = m.replace(/<activity\b/, `<activity\n            android:screenOrientation="portrait"` + (m.includes("windowSoftInputMode") ? "" : `\n            android:windowSoftInputMode="adjustResize"`));
             fs.writeFileSync(mf, m);'
           grep -n "ninokuu_bg" android/app/src/main/res/values/styles.xml | head -3
           grep -n "POST_NOTIFICATIONS\|ic_stat_ninokuu\|screenOrientation" android/app/src/main/AndroidManifest.xml
@@ -192,9 +194,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # catatan rilis = pesan commit terakhir (ditampilkan di peringatan pembaruan aplikasi)
+          { git log -1 --pretty=%B | grep -vE '^(Co-Authored-By|Claude-Session):' | sed '/^[[:space:]]*$/d'
+            echo ""
+            echo "Dibangun otomatis dari commit ${{ github.sha }} · paket $APP_ID."
+            echo "Unduh ninokuu.apk lalu pasang di HP Android. Pembaruan bisa dipasang langsung menimpa versi lama."; } > "$RUNNER_TEMP/notes.md"
           gh release delete apk-terbaru --repo "${{ github.repository }}" --yes --cleanup-tag || true
           gh release create apk-terbaru ninokuu.apk --repo "${{ github.repository }}" --target "${{ github.sha }}" \
-            --title "Ninokuu APK (build ${{ github.run_number }})" --latest \
-            --notes "Dibangun otomatis dari commit ${{ github.sha }} · paket $APP_ID. Unduh ninokuu.apk lalu pasang di HP Android. Pembaruan bisa dipasang langsung menimpa versi lama."
+            --title "Ninokuu APK (build ${{ github.run_number }})" --latest --notes-file "$RUNNER_TEMP/notes.md"
           echo "### APK siap" >> "$GITHUB_STEP_SUMMARY"
           echo "https://github.com/${{ github.repository }}/releases/download/apk-terbaru/ninokuu.apk" >> "$GITHUB_STEP_SUMMARY"

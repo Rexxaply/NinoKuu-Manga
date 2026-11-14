@@ -178,7 +178,9 @@ export async function pushStatus() {
   const p = await PN().checkPermissions().catch(() => ({}));
   return p.receive === "granted" ? "on" : p.receive === "denied" ? "denied" : "off";
 }
-let lastToken = null;
+let lastToken = null, lastError = "";
+export const pushError = () => lastError;
+export const pushToken = () => lastToken;
 async function registerToken() {
   const P = PN();
   try { await P.createChannel({ id: "ninokuu", name: "Chapter baru & pengumuman", description: "Chapter baru dari komik yang loncengnya menyala", importance: 5, visibility: 1, vibration: true }); } catch {}
@@ -192,15 +194,23 @@ async function registerToken() {
   });
 }
 // ask=true: tampilkan dialog izin bila belum pernah ditanya. Mengembalikan "on" | "off" | "denied" | "unsupported"
-export async function pushEnable(rpc, ask = false) {
+// force=true: daftarkan ulang ke server walau token sama (mis. setelah tes gagal "belum terdaftar")
+export async function pushEnable(rpc, ask = false, force = false) {
   if (!PN()) return "unsupported";
   let st = await PN().checkPermissions().catch(() => ({}));
-  if (st.receive !== "granted" && ask && st.receive !== "denied") st = await PN().requestPermissions().catch(() => ({}));
+  // izin yang dinyalakan dari Pengaturan HP kadang belum terbaca → minta sekali lagi (tanpa dialog bila sudah diizinkan)
+  if (st.receive !== "granted" && st.receive !== "denied" && (ask || force)) st = await PN().requestPermissions().catch(() => ({}));
   if (st.receive !== "granted") return st.receive === "denied" ? "denied" : "off";
-  const tok = await registerToken();
-  if (tok && tok !== lastToken) { await rpc("register_device", { p_token: tok, p_platform: "android" }); lastToken = tok; }
-  return "on";
+  try {
+    const tok = await registerToken();
+    if (!tok) throw new Error("Firebase tidak memberi token");
+    if (tok !== lastToken || force) { await rpc("register_device", { p_token: tok, p_platform: "android" }); lastToken = tok; }
+    lastError = "";
+    return "on";
+  } catch (e) { lastError = e.message || String(e); lastToken = null; throw e; }
 }
+// notifikasi masuk saat aplikasi terbuka → perbarui lonceng
+export function onPushReceived(cb) { PN()?.addListener("pushNotificationReceived", () => cb()); }
 // ketuk notifikasi → buka halaman yang dituju (ninokuu://comic/<sumber>/<id>, ninokuu://chat, ninokuu://home)
 export function onPushOpen(go) {
   PN()?.addListener("pushNotificationActionPerformed", (a) => {
@@ -211,6 +221,17 @@ export function onPushOpen(go) {
     else if (/^https?:/i.test(u)) window.open(u, "_blank");
     else go("#/home");
   });
+}
+
+/* ---------- keyboard (tinggi keyboard dari Android) ---------- */
+// cb(tinggiKeyboardPx) saat muncul, cb(0) saat disembunyikan
+export function onKeyboard(cb) {
+  const K = plugin("Keyboard"); if (!K) return false;
+  K.addListener("keyboardWillShow", (i) => cb(Number(i?.keyboardHeight) || 0, "will"));
+  K.addListener("keyboardDidShow", (i) => cb(Number(i?.keyboardHeight) || 0, "did"));
+  K.addListener("keyboardWillHide", () => cb(0, "will"));
+  K.addListener("keyboardDidHide", () => cb(0, "did"));
+  return true;
 }
 
 /* ---------- tombol kembali Android ---------- */
@@ -240,6 +261,9 @@ export async function latestBuild() {
   try {
     const j = await nget(`https://api.github.com/repos/${REPO}/releases/tags/apk-terbaru`, { headers: { Accept: "application/vnd.github+json" } });
     const n = Number(String(j?.name || "").match(/build (\d+)/i)?.[1] || 0);
-    return n ? { build: n, url: APK_URL } : null;
+    // catatan rilis: baris "Yang baru" dari pesan commit (tanpa baris atribusi)
+    const notes = String(j?.body || "").split(/\r?\n/).map((x) => x.trim())
+      .filter((x) => x && !/^(Co-Authored-By|Claude-Session|Dibangun otomatis|Unduh |Pembaruan bisa)/i.test(x)).slice(0, 12);
+    return n ? { build: n, url: APK_URL, notes, at: j?.published_at || null } : null;
   } catch { return null; }
 }

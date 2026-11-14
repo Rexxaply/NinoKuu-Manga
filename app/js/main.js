@@ -153,7 +153,7 @@ async function vHome() {
   const last = S.history()[0];
   view.innerHTML = `
 <header class="top"><img class="logo" src="icons/logo.png" alt="Ninokuu" width="110" height="34">
-  <span class="top-r"><a class="gl-btn" href="#/chat" aria-label="Chat publik">${icon("msg", 20)}</a><button class="gl-btn" data-act="bell" aria-label="Notifikasi" aria-expanded="false">${icon("bell", 21)}<span class="bell-n" id="bellN" hidden></span></button></span></header>
+  <span class="top-r"><a class="gl-btn" href="#/chat" aria-label="Chat publik">${icon("msg", 20)}<span class="c-dot" id="chatDot" hidden></span></a><button class="gl-btn" data-act="bell" aria-label="Notifikasi" aria-expanded="false">${icon("bell", 21)}<span class="bell-n" id="bellN" hidden></span></button></span></header>
 <section class="hello"><h1>${greeting()}${name ? `, <span class="gold">${esc(name)}</span>` : ""}</h1>
   <button class="quote" data-act="quote" title="Ketuk untuk kutipan lain">“${esc(QUOTES[qi])}”</button></section>
 ${last ? `<section class="sec s16"><h2 class="cap">Lanjut baca</h2>
@@ -208,7 +208,7 @@ ${last ? `<section class="sec s16"><h2 class="cap">Lanjut baca</h2>
     more: () => { page++; loadUpd(true); },
     retry: () => vHome(),
   });
-  loadPop(); loadUpd(); refreshBell();
+  loadPop(); loadUpd(); refreshDots();
 }
 
 /* ---------- notifikasi (lonceng): maks 30, 7 hari terakhir ---------- */
@@ -224,6 +224,20 @@ async function refreshBell() {
   const n = notifs.filter((x) => !readSet.has(x.id)).length, el = $("#bellN");
   if (el) { el.hidden = !n; el.textContent = n > 9 ? "9+" : String(n); }
 }
+// titik merah: lonceng (notifikasi belum dibaca) dan chat publik (ada pesan baru dari orang lain)
+async function refreshDots() {
+  if (document.visibilityState !== "visible") return;
+  const cd = $("#chatDot");
+  if (!cd && !$("#bellN")) return;
+  refreshBell().catch(() => {});
+  if (!cd) return;
+  try {
+    const top = ((await api.rest("chat_feed?select=id,user_id&room=eq.public&order=id.desc&limit=1")) || [])[0];
+    cd.hidden = !(top && top.id > Number(api.lsGet("chatSeen", 0)) && top.user_id !== api.userId());
+  } catch {}
+}
+setInterval(refreshDots, 45000);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refreshDots(); });
 async function openNotif() {
   closeNotif();
   const wrap = document.createElement("div");
@@ -514,6 +528,8 @@ async function vChapters(src, id) {
     else if (kbSeen && fullH - h < 80) { kbSeen = false; inp.blur(); }
   };
   (vv || window).addEventListener("resize", onVV);
+  const onKb = (e) => { if (!e.detail.open && document.activeElement === inp) inp.blur(); };
+  window.addEventListener("nk:kb", onKb);
   const guard = (e) => { if (Date.now() < guardUntil && !e.target.closest("#chbar")) { e.preventDefault(); e.stopPropagation(); } };
   document.addEventListener("click", guard, true);
   inp.addEventListener("pointerdown", (e) => { if (document.activeElement !== inp) e.preventDefault(); });
@@ -532,7 +548,7 @@ async function vChapters(src, id) {
   window.addEventListener("touchstart", tstart, { passive: true });
   window.addEventListener("touchmove", drop, { passive: true });
   window.addEventListener("wheel", drop, { passive: true });
-  cleanup = () => { io.disconnect(); (vv || window).removeEventListener("resize", onVV); window.removeEventListener("touchstart", tstart); window.removeEventListener("touchmove", drop); window.removeEventListener("wheel", drop); document.removeEventListener("click", guard, true); document.body.classList.remove("chfoc"); };
+  cleanup = () => { io.disconnect(); window.removeEventListener("nk:kb", onKb); (vv || window).removeEventListener("resize", onVV); window.removeEventListener("touchstart", tstart); window.removeEventListener("touchmove", drop); window.removeEventListener("wheel", drop); document.removeEventListener("click", guard, true); document.body.classList.remove("chfoc"); };
   setActs({
     back: () => backTo(comicHref(src, id)),
     sort: () => { asc = !asc; shown = STEP; draw(); window.scrollTo({ top: 0, behavior: "smooth" }); },
@@ -611,30 +627,50 @@ async function vReader(src, id, chId) {
   };
   const goPage = (i, smooth = false) => {
     const el = $(`.r-img[data-i="${i}"]`); if (!el) return;
-    if (slide) { const w = box.clientWidth; box.scrollTo({ left: (rtl ? -1 : 1) * (i - 1) * w, behavior: smooth ? "smooth" : "auto" }); }
-    else box.scrollTo({ top: el.offsetTop * zoom, behavior: smooth ? "smooth" : "auto" });
+    if (slide) { clearZoom(); const w = box.clientWidth; box.scrollTo({ left: (rtl ? -1 : 1) * (i - 1) * w, behavior: smooth ? "smooth" : "auto" }); }
+    else box.scrollTo({ top: el.offsetTop, behavior: smooth ? "smooth" : "auto" });
     setPage(i);
   };
   // posisi halaman saat menggulir
-  let zoom = 1;
+  let zoom = 1, zEl = null, zBase = 0;
   box.addEventListener("scroll", () => {
     if (slide) { setPage(Math.round(Math.abs(box.scrollLeft) / (box.clientWidth || 1)) + 1); return; }
-    const y = box.scrollTop / zoom + box.clientHeight / zoom * 0.4;
+    const y = box.scrollTop + box.clientHeight * 0.4;
     let n = 1; for (const im of $$(".r-img", pages)) { if (im.offsetTop <= y) n = Number(im.dataset.i); else break; }
     setPage(n);
   }, { passive: true });
   // ketuk sekali: tampil/sembunyikan tombol; ketuk dua kali: perbesar 2,5× / kembali normal (mode gulir)
   let lastTap = null, tapT = null;
   const showZoom = () => { const z = $("#rzoom"); z.hidden = zoom <= 1.02; $("#rzt").textContent = Math.round(zoom * 100) + "%"; };
+  // Zoom memperbesar LEBAR gambar (bukan CSS zoom) → geser kiri-kanan & gulir tetap mulus untuk
+  // manga, manhwa, maupun manhua (strip panjang). Mode gulir: seluruh halaman; mode slide: halaman yang tampil.
+  const zTarget = () => (slide ? $$(".r-slide", box)[curPage - 1]?.querySelector(".r-img") : pages);
+  function clearZoom() {
+    if (zEl) {
+      const sc = slide ? zEl.parentElement : box;
+      zEl.style.width = zEl.style.maxWidth = zEl.style.maxHeight = zEl.style.height = "";
+      if (slide) { sc.classList.remove("zoomed-slide"); sc.scrollLeft = 0; box.classList.remove("zlock"); }
+    }
+    zoom = 1; zEl = null; rd.classList.remove("zoomed"); showZoom();
+  }
   const applyZoom = (z, fx, fy) => {
-    if (slide) return;
-    const r = box.getBoundingClientRect(), x = fx - r.left, y = fy - r.top;
-    const cx = (box.scrollLeft + x) / zoom, cy = (box.scrollTop + y) / zoom;
-    zoom = Math.max(1, Math.min(4, z));
-    pages.style.zoom = zoom;
-    box.scrollLeft = cx * zoom - x; box.scrollTop = cy * zoom - y;
-    rd.classList.toggle("zoomed", zoom > 1.02); showZoom();
+    z = Math.max(1, Math.min(4, z));
+    const el = zTarget(); if (!el) return;
+    if (zEl && zEl !== el) clearZoom();
+    if (!zEl) { if (z <= 1.01) return; zEl = el; zBase = el.getBoundingClientRect().width; zoom = 1; }
+    const sc = slide ? el.parentElement : box;
+    const r = sc.getBoundingClientRect(), x = fx - r.left, y = fy - r.top, k = z / zoom, sl = sc.scrollLeft, st = sc.scrollTop;
+    zoom = z;
+    el.style.width = zBase * zoom + "px"; el.style.maxWidth = "none";
+    if (slide) { el.style.maxHeight = "none"; el.style.height = "auto"; sc.classList.add("zoomed-slide"); box.classList.add("zlock"); }
+    sc.scrollLeft = (sl + x) * k - x; sc.scrollTop = (st + y) * k - y;
+    if (zoom <= 1.01) clearZoom(); else { rd.classList.add("zoomed"); showZoom(); }
   };
+  // mode slide: halaman strip panjang (manhwa/manhua) dibuat selebar layar dan bisa digulir ke bawah
+  if (slide) $$(".r-slide .r-img", box).forEach((im) => {
+    const mark = () => { if (im.naturalHeight > im.naturalWidth * 1.8) im.parentElement.classList.add("tall"); };
+    if (im.complete && im.naturalWidth) mark(); else im.addEventListener("load", mark, { once: true });
+  });
   box.addEventListener("click", (e) => {
     if (e.target.closest("a,button")) return;
     const now = Date.now();
@@ -647,7 +683,7 @@ async function vReader(src, id, chId) {
   });
   // cubit untuk memperbesar (mode gulir)
   let pinch = null;
-  box.addEventListener("touchstart", (e) => { if (!slide && e.touches.length === 2) { const [a, b] = e.touches; pinch = { d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1, z: zoom, x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 }; } }, { passive: true });
+  box.addEventListener("touchstart", (e) => { if (e.touches.length === 2) { const [a, b] = e.touches; pinch = { d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1, z: zoom, x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 }; } }, { passive: true });
   box.addEventListener("touchmove", (e) => { if (pinch && e.touches.length === 2) { e.preventDefault(); const [a, b] = e.touches; applyZoom(pinch.z * (Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) / pinch.d), pinch.x, pinch.y); } }, { passive: false });
   box.addEventListener("touchend", () => { pinch = null; });
   // geser slider halaman
@@ -672,6 +708,22 @@ async function vReader(src, id, chId) {
   roomCount(roomFor(src, id, chId)).then((n) => { const el = $("#rcmn"); if (el && n) el.textContent = n; }).catch(() => {});
   const h = S.histItem(src, id);
   if (h?.chapter_id === chId && h.page > 1) setTimeout(() => goPage(h.page), 350);
+}
+
+/* ---------- status notifikasi HP di Lainnya ---------- */
+function showPush(st) {
+  const el = $("#pushst"); if (!el) return;
+  const err = N.pushError();
+  el.textContent = { on: "Aktif · HP terdaftar · ketuk untuk kirim tes", off: "Mati · ketuk untuk mengaktifkan", denied: "Diblokir di pengaturan HP",
+    unsupported: "Tidak tersedia", busy: "Mendaftarkan HP…", unreg: "Izin aktif, tapi HP belum terdaftar · ketuk untuk daftar ulang",
+    login: "Izin aktif · masuk dulu agar notifikasi terkirim", error: "Gagal mendaftar" + (err ? ": " + err : "") + " · ketuk untuk coba lagi" }[st] || st;
+}
+async function refreshPushStatus() {
+  const st = await N.pushStatus();
+  if (st !== "on") return showPush(st);
+  if (!S.loggedIn()) return showPush("login");
+  showPush("busy");
+  try { await N.pushEnable(api.rpc, false); showPush("on"); } catch { showPush("error"); }
 }
 
 /* ---------- Komentar komik / chapter (logika sama dengan chat publik) ---------- */
@@ -793,14 +845,13 @@ ${group("Bacaanmu", mrow("star", "Level &amp; Rank", user ? `${lv.rank} · Lv ${
   ${seg([{ id: "scroll", name: "Scroll (webtoon)" }, { id: "slide", name: "Slide (halaman)" }], st.readMode, "rmode", "s2")}
   ${st.readMode === "slide" ? `<span class="mu sm">Arah geser</span>${seg([{ id: "rtl", name: "Kanan ke kiri" }, { id: "ltr", name: "Kiri ke kanan" }], st.readDir === "ltr" ? "ltr" : "rtl", "dir", "s2")}` : ""}
   <span class="mu xs lh">${st.readMode === "slide" ? "Geser per halaman. Kanan ke kiri cocok untuk manga Jepang." : "Gulir ke bawah, halaman tersambung. Cocok untuk manhwa dan manhua."}</span></div></section>
-${N.isApp ? group("Aplikasi", `<span id="updrow"></span>` + mrow("bell", "Notifikasi HP", `<span id="pushst">Memeriksa…</span>`, "pushset") + mrow("info", "Versi aplikasi", `Build ${N.BUILD || "-"} · ${esc(VERSION)}`, ""))
+${N.isApp ? group("Aplikasi", `<span id="updrow"></span>` + mrow("bell", "Notifikasi HP", `<span id="pushst">Memeriksa…</span>`, "pushset") + mrow("info", "Versi aplikasi", `Build ${N.BUILD || "-"} · ketuk untuk cek pembaruan`, "checkupd"))
   : group("Aplikasi Android", mrow("down", "Pasang aplikasi Android (APK)", "Baca Shinigami &amp; WestManga, notifikasi chapter baru di HP", "getapk"))}
 ${group("Data &amp; penyimpanan", mrow("cloud", "Backup data offline", "Simpan koleksi, riwayat, dan pengaturan ke file", "backup") + mrow("restore", "Pulihkan data", "Dari file backup", "restore") + mrow("trash", "Bersihkan cache", "Gambar sampul &amp; halaman yang tersimpan", "cache"))}
 ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord Ninokuu", "discord") + mrow("info", "Tentang aplikasi", "Versi " + esc(VERSION), "about") + mrow("shield", "Kebijakan privasi", "", "privacy") + mrow("doc", "Ketentuan pengguna", "", "terms") + mrow("heart", "Dukung di Trakteer", "Traktir pengembang", "trakteer"))}
 <p class="mu xs center mt18">Ninokuu versi ${esc(VERSION)}</p><div class="pad-nav"></div>`;
-  const showPush = (st) => { const el = $("#pushst"); if (el) el.textContent = { on: "Aktif · ketuk untuk kirim tes", off: "Mati · ketuk untuk mengaktifkan", denied: "Diblokir di pengaturan HP", unsupported: "Tidak tersedia" }[st] || st; };
   if (N.isApp) {
-    N.pushStatus().then(showPush);
+    refreshPushStatus();
     N.latestBuild().then((r) => { const el = $("#updrow"); if (el && r && r.build > N.BUILD) el.outerHTML = mrow("refresh", `<span class="gold">Versi baru tersedia</span>`, `Build ${r.build} · ketuk untuk mengunduh`, "update"); });
   }
   const form = $("#auth");
@@ -826,17 +877,22 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
     about: () => go("#/p/about"), privacy: () => go("#/p/privacy"), terms: () => go("#/p/terms"),
     backup: () => go("#/p/backup"), restore: () => go("#/p/restore"),
     getapk: () => window.open(N.APK_URL, "_blank"),
-    update: () => window.open(N.APK_URL, "_blank"),
+    update: () => checkUpdate(true),
+    checkupd: () => checkUpdate(true),
     pushset: async () => {
       if (!user) { toast("Masuk dulu supaya notifikasi bisa dikirim ke HP ini."); return; }
       try {
-        const st = await N.pushEnable(api.rpc, true);
-        showPush(st);
-        if (st === "denied") return toast("Izin notifikasi ditolak. Buka Pengaturan HP → Aplikasi → Ninokuu → Notifikasi, lalu aktifkan.", 5000);
-        if (st !== "on") return toast("Notifikasi belum diizinkan.");
-        const r = await api.call("test_push");
-        toast(r.ok ? "Tes notifikasi dikirim. Cek bilah notifikasi HP." : r.error || "Tes notifikasi gagal", 4000);
-      } catch (e) { toast(e.message, 4500); }
+        showPush("busy");
+        const st = await N.pushEnable(api.rpc, true, true);
+        if (st === "denied") { showPush(st); return toast("Izin notifikasi ditolak. Buka Pengaturan HP → Aplikasi → Ninokuu → Notifikasi, lalu aktifkan.", 5000); }
+        if (st !== "on") { showPush(st); return toast("Notifikasi belum diizinkan."); }
+        const test = () => api.call("test_push").catch((e) => ({ ok: false, error: e.message }));
+        let r = await test();
+        // server belum mengenal HP ini → daftar ulang sekali lalu coba lagi
+        if (!r.ok && /belum terdaftar/i.test(r.error || "")) { await N.pushEnable(api.rpc, false, true); r = await test(); }
+        showPush(r.ok ? "on" : "unreg");
+        toast(r.ok ? "Tes notifikasi dikirim. Cek bilah notifikasi HP." : r.error || "Tes notifikasi gagal", 4500);
+      } catch (e) { showPush("error"); toast("Pendaftaran notifikasi gagal: " + e.message, 5000); }
     },
     discord: () => soon("Server Discord Ninokuu sedang disiapkan."), trakteer: () => soon("Halaman Trakteer sedang disiapkan. Terima kasih!"),
     gfx: (el) => { S.setSetting("gfx", el.dataset.v); applyGfx(); vMore(); },
@@ -853,8 +909,54 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
 }
 
 /* ---------- khusus APK: notifikasi, tombol kembali, cek chapter sumber yang diblokir server ---------- */
+// Keyboard: bila WebView tidak menyusut saat keyboard muncul, angkat elemen bawah (kolom chat, dll.)
+// setinggi bagian keyboard yang belum "dimakan" oleh penyusutan layar.
+let kbBase = window.innerHeight, kbOpen = false;
+window.addEventListener("resize", () => { if (!kbOpen) kbBase = window.innerHeight; });
+function setKeyboard(h, phase) {
+  const root = document.documentElement;
+  if (h > 0) {
+    kbOpen = true;
+    if (phase !== "did") return;
+    const extra = h - Math.max(0, kbBase - window.innerHeight);
+    root.style.setProperty("--kb", (extra > 40 ? extra : 0) + "px");
+    document.body.classList.add("kb-open");
+    const ae = document.activeElement;
+    if (ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName) && !ae.closest(".composer, .chbar")) setTimeout(() => ae.scrollIntoView({ block: "center", behavior: "smooth" }), 60);
+  } else {
+    kbOpen = false;
+    root.style.setProperty("--kb", "0px");
+    document.body.classList.remove("kb-open");
+  }
+  window.dispatchEvent(new CustomEvent("nk:kb", { detail: { open: h > 0, phase } }));
+}
+
+// Pembaruan APK: peringatan saat aplikasi dibuka bila ada build baru, dan cek manual dari Lainnya.
+function showUpdate(r) {
+  openSheet(`<span class="sheet-ttl">Pembaruan tersedia</span>
+    <span class="sheet-prev">Build ${r.build} · kamu memakai build ${N.BUILD || "-"}</span>
+    ${r.notes?.length ? `<div class="upd-notes"><b class="xs gold">Yang baru</b>${r.notes.map((x) => `<span>${esc(x.replace(/^[-•*]\s*/, ""))}</span>`).join("")}</div>` : ""}
+    <span class="mu xs upd-hint">Unduh lalu pasang menimpa aplikasi ini. Login, favorit, dan riwayat tetap aman.</span>
+    <div class="row g8"><button class="sh-cancel grow" data-s="later">Nanti</button><button class="btn primary grow" data-s="get">${icon("down", 17, 2)}Perbarui sekarang</button></div>`, (b) => {
+    if (b.dataset.s === "later") { try { sessionStorage.setItem("ninokuu:updLater", String(r.build)); } catch {} closeSheet(); }
+    if (b.dataset.s === "get") { window.open(r.url, "_blank"); closeSheet(); }
+  });
+}
+async function checkUpdate(manual) {
+  if (manual) toast("Memeriksa pembaruan…", 1500);
+  const r = await N.latestBuild();
+  if (!r) { if (manual) toast("Tidak bisa memeriksa pembaruan. Periksa koneksi internet."); return; }
+  if (r.build > N.BUILD) {
+    let later = ""; try { later = sessionStorage.getItem("ninokuu:updLater") || ""; } catch {}
+    if (manual || later !== String(r.build)) showUpdate(r);
+  } else if (manual) toast(`Kamu sudah memakai versi terbaru (build ${N.BUILD}).`);
+}
+
 function startApp() {
   document.body.classList.add("is-app");
+  N.onKeyboard(setKeyboard);
+  N.onPushReceived(() => refreshDots());
+  setTimeout(() => checkUpdate(false), 2500);
   N.onPushOpen((h) => go(h));
   // tombol kembali Android: tutup lapisan yang terbuka dulu, lalu mundur; di Beranda → keluar
   N.onBack((exit) => {
@@ -872,6 +974,7 @@ function startApp() {
   const pushQuiet = () => { if (S.loggedIn()) N.pushEnable(api.rpc, false).catch(() => {}); };
   const check = () => { if (S.loggedIn()) N.checkBlockedSources([...S.state.lib.values()], api.call).catch(() => {}); };
   setTimeout(pushQuiet, 3000);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { pushQuiet(); if (route.name === "more") refreshPushStatus(); } });
   setTimeout(check, 8000);
   setInterval(check, 30 * 60e3);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") check(); });

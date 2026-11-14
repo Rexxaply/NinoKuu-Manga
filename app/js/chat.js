@@ -77,6 +77,8 @@ export async function vChat(view, ctx, opt = {}) {
     const rows = await api.rest(q);
     const fresh = (rows || []).reverse();
     msgs = full ? fresh : msgs.concat(fresh);
+    // tandai chat publik sudah dilihat (titik merah di ikon chat Beranda hilang)
+    if (pub && msgs.length) api.lsSet("chatSeen", Math.max(Number(api.lsGet("chatSeen", 0)), msgs[msgs.length - 1].id));
     if (full && pub) pin = ((await api.rest("announcements?select=id,title,body,created_at&pinned=eq.true&order=created_at.desc&limit=1").catch(() => [])) || [])[0] || null;
     return fresh.length;
   };
@@ -201,6 +203,9 @@ export async function vChat(view, ctx, opt = {}) {
     else if (a === "unpin") run(() => api.rest(`announcements?id=eq.${pin.id}`, { method: "PATCH", body: { pinned: false }, prefer: "return=minimal" }), "Sematan dilepas");
   });
   setActs({ back: () => back(opt.backHref || "#/home") });
+  // keyboard muncul → tetap lihat pesan terakhir
+  const onKb = (e) => { if (e.detail.open && e.detail.phase === "did") toBottom(); };
+  window.addEventListener("nk:kb", onKb);
   try { await load(true); } catch (e) { $("#chat").innerHTML = `<div class="empty"><b>Gagal memuat chat</b><span>${esc(e.message)}</span></div>`; }
   draw(); drawComposer(); toBottom();
   // pesan baru diambil tiap 5 detik selama halaman chat terbuka (tiap 30 detik muat ulang penuh)
@@ -210,7 +215,39 @@ export async function vChat(view, ctx, opt = {}) {
     const bottom = atBottom();
     try { const got = ++n % 6 === 0 ? (await load(true), 1) : await load(false); if (got) { draw(); if (bottom) toBottom(); } } catch {}
   }, 5000);
-  return () => { clearInterval(timer); document.removeEventListener("selectionchange", onSel); if (att?.url) URL.revokeObjectURL(att.url); };
+  return () => { clearInterval(timer); window.removeEventListener("nk:kb", onKb); document.removeEventListener("selectionchange", onSel); if (att?.url) URL.revokeObjectURL(att.url); };
+}
+
+/* ---------- Panel developer: kontrol penyimpanan ---------- */
+const fmtB = (b) => { b = Number(b || 0); return b < 1048576 ? (b / 1024).toFixed(b < 10240 ? 1 : 0).replace(".", ",") + " KB" : b < 1073741824 ? (b / 1048576).toFixed(b < 104857600 ? 1 : 0).replace(".", ",") + " MB" : (b / 1073741824).toFixed(2).replace(".", ",") + " GB"; };
+// [jenis, judul, pilihan hari (null = tanpa batas umur), keterangan]
+const CLEAN = [
+  ["chat_public", "Chat publik lama", [30, 14, 7], (s) => `${s.chat_public} pesan${s.oldest_chat ? " · tertua " + ago(s.oldest_chat) : ""}`],
+  ["comments", "Komentar komik & chapter lama", [365, 180, 90], (s) => `${s.comments} komentar`],
+  ["chat_images", "Gambar chat lama (teksnya tetap)", [60, 30, 14, 7], (s) => `${s.img_count} gambar · ${fmtB(s.img_bytes)}`],
+  ["img_orphans", "Gambar tanpa pesan", null, (s) => `${s.img_orphans} file (pesannya sudah dihapus)`],
+  ["notifications", "Notifikasi lama", [7, 3], (s) => `${s.notifications} notifikasi`],
+  ["read_log", "Log baca lama", [365, 180, 90], (s) => `${s.read_log} baris · EXP tetap, tapi chapter lama bisa memberi EXP lagi`],
+  ["bugs_done", "Laporan komik yang sudah selesai", null, (s) => `${s.bugs_done} laporan`],
+  ["comic_orphans", "Pantauan komik tanpa pengikut", null, (s) => `${s.comic_orphans} komik tidak lagi berlonceng`],
+];
+function bar(label, used, quota, extra = "") {
+  const pc = quota ? Math.min(100, (used / quota) * 100) : 0, tone = pc >= 85 ? "red" : pc >= 60 ? "gold" : "ok";
+  return `<div class="col g6"><span class="row sb sm"><b>${label}</b><span class="mu">${fmtB(used)} / ${fmtB(quota)}</span></span>
+    <span class="qbar"><span class="qfill ${tone}" style="width:${Math.max(pc, 1.5).toFixed(1)}%"></span></span>
+    <span class="mu xs">${pc.toFixed(1).replace(".", ",")}% terpakai${extra ? " · " + extra : ""}</span></div>`;
+}
+function storageHtml(s) {
+  if (!s) return "";
+  if (s.error) return `<section class="col g10"><h2 class="cap m0">Penyimpanan server</h2><div class="note">${icon("info", 18)}<span>Kontrol penyimpanan belum aktif. Jalankan ulang <b>ninokuu-schema.sql</b> di SQL Editor Supabase. <span class="mu">(${esc(s.error)})</span></span></div></section>`;
+  const tables = (s.tables || []).slice(0, 14);
+  return `<section class="col g10"><h2 class="cap m0">Penyimpanan server</h2>
+  <div class="card col g14">${bar("Database", s.db_bytes, s.db_quota)}${bar("Gambar chat (Storage)", s.img_bytes, s.img_quota, `${Number(s.img_count).toLocaleString("id-ID")} file`)}
+    <details class="tbls"><summary class="sm b">Rincian tabel</summary>${tables.map((t) => `<span class="row sb xs"><span>${esc(t.name)}</span><span class="mu">${Number(t.rows).toLocaleString("id-ID")} baris · ${fmtB(t.bytes)}</span></span>`).join("")}</details>
+    <span class="mu xs">Kuota paket Free Supabase. Bila database penuh, Supabase membuatnya hanya-baca sampai dibersihkan.</span></div>
+  <div class="group">${CLEAN.map(([k, title, days, sub]) => `<div class="mrow clean"><span class="rc-mid"><b>${title}</b><span class="mu sm">${sub(s)}</span></span>
+    ${days ? `<select data-k="${k}" aria-label="Umur data">${days.map((d) => `<option value="${d}">&gt; ${d} hari</option>`).join("")}</select>` : ""}
+    <button class="btn ghost sm" data-d="clean" data-k="${k}">Bersihkan</button></div>`).join("")}</div></section>`;
 }
 
 /* ---------- Panel developer ---------- */
@@ -222,18 +259,20 @@ export async function vDev(view, ctx) {
   const root = $("#devroot");
   const tog = (key, on) => `<button class="switch ${on ? "on" : ""}" role="switch" aria-checked="${on}" data-d="tog" data-k="${key}"><span></span></button>`;
   let form = { title: "", body: "", pin: true, push: true };
+  let nf = (n) => Number(n || 0).toLocaleString("id-ID");
   const draw = async () => {
-    const [stats, reps, restricted, bugs] = await Promise.all([
+    const [stats, reps, restricted, bugs, sto] = await Promise.all([
       dev ? api.rpc("dev_stats").catch(() => null) : null,
       api.rest("chat_reports?select=message_id,created_at&order=created_at.desc&limit=200").catch(() => []),
       api.rest(`profiles?select=id,name,banned,muted_until&or=${encodeURIComponent(`(banned.eq.true,muted_until.gt."${new Date().toISOString()}")`)}&limit=100`).catch(() => []),
       api.rest("bug_reports?select=*&resolved=eq.false&order=created_at.desc&limit=60").catch(() => []),
+      dev ? api.rpc("dev_storage").catch((e) => ({ error: e.message })) : null,
     ]);
     const KIND = { gambar: "Gambar tidak muncul / rusak", chapter: "Chapter hilang / tidak lengkap", urutan: "Urutan halaman salah", info: "Info komik salah", lainnya: "Lainnya" };
     const counts = {}; (reps || []).forEach((r) => { counts[r.message_id] = (counts[r.message_id] || 0) + 1; });
     const ids = Object.keys(counts);
     const repMsgs = ids.length ? (await api.rest(`chat_feed?select=*&id=in.(${ids.join(",")})`).catch(() => [])) : [];
-    const nf = (n) => Number(n || 0).toLocaleString("id-ID");
+    nf = (n) => Number(n || 0).toLocaleString("id-ID");
     $("#dev").innerHTML = `
   <div class="dev-me"><span class="ic-box">${icon("dev", 20)}</span><span class="rc-mid g4"><span class="row g6"><b>${esc(p.name)}</b>${p.verified ? VB : ""}${dev ? `<span class="pill-dev">DEV</span>` : `<span class="pill-mod">MOD</span>`}</span>
     <span class="mu xs">${dev ? (S.state.settings.asUser ? "Developer · sedang melihat sebagai pengguna biasa" : "Developer · Lv 99 · akses penuh") : "Moderator · moderasi chat"}</span></span></div>
@@ -241,6 +280,7 @@ export async function vDev(view, ctx) {
       <div class="stat"><b>${nf(stats?.users)}</b><span class="mu xs">Pengguna terdaftar</span></div><div class="stat"><b>${nf(stats?.messages_today)}</b><span class="mu xs">Pesan chat hari ini</span></div>
       <div class="stat"><b>${nf(stats?.reports_open)}</b><span class="mu xs">Laporan chat</span></div><div class="stat"><b>${nf(stats?.bugs_open)}</b><span class="mu xs">Laporan komik</span></div></div>
     <div class="card row g10 sm"><span class="online-dot"></span><span class="grow">Keepalive terakhir ${stats?.last_keepalive ? esc(ago(stats.last_keepalive)) : "belum ada"} · cron ${stats?.last_cron ? esc(ago(stats.last_cron)) : "belum jalan"}</span><button class="btn ghost sm" data-d="cron">Jalankan cron</button></div></section>
+  ${storageHtml(sto)}
   <section class="col g10"><h2 class="cap m0">Pengumuman</h2><div class="card col g12">
     <label class="fld">Judul<input id="at" maxlength="80" placeholder="Contoh: Maintenance server malam ini" value="${esc(form.title)}"></label>
     <label class="fld">Isi (opsional)<textarea id="ab" maxlength="500" rows="3" placeholder="Detail singkat untuk pembaca">${esc(form.body)}</textarea></label>
@@ -288,6 +328,18 @@ export async function vDev(view, ctx) {
     if (a === "del") { if (!confirm("Hapus pesan ini untuk semua?")) return; run(() => api.rest(`chat_messages?id=eq.${b.dataset.id}`, { method: "DELETE" }), "Pesan dihapus"); }
     if (a === "mute") run(() => api.rpc("mod_restrict", { p_user: b.dataset.u, p_mute_minutes: 60 }), `${b.dataset.n} dibisukan 1 jam`);
     if (a === "ban") { if (!confirm(`Blokir ${b.dataset.n} dari chat?`)) return; run(() => api.rpc("mod_restrict", { p_user: b.dataset.u, p_ban: true }), `${b.dataset.n} diblokir`); }
+    if (a === "clean") {
+      const kind = b.dataset.k, sel = root.querySelector(`select[data-k="${kind}"]`), days = sel ? Number(sel.value) : 1;
+      const item = CLEAN.find((c) => c[0] === kind);
+      if (!confirm(`${item[1]}${sel ? ` lebih dari ${days} hari` : ""} akan dihapus permanen. Lanjutkan?`)) return;
+      b.disabled = true; b.textContent = "Membersihkan…";
+      return run(async () => {
+        const r = await api.rpc("dev_cleanup", { p_kind: kind, p_days: days });
+        const imgs = r?.images || [];
+        if (imgs.length) await api.removeFiles("chat-images", imgs);
+        toast(`${nf(r?.deleted)} data dibersihkan${imgs.length ? ` · ${nf(imgs.length)} file gambar dihapus` : ""}`, 3500);
+      });
+    }
     if (a === "bugok") run(() => api.rest(`bug_reports?id=eq.${b.dataset.id}`, { method: "PATCH", body: { resolved: true }, prefer: "return=minimal" }), "Laporan ditandai selesai");
     if (a === "lift") run(() => api.rpc("mod_restrict", { p_user: b.dataset.u, p_mute_minutes: 0, p_ban: false }), `Batasan ${b.dataset.n} dicabut`);
   });
