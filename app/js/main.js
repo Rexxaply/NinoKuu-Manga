@@ -3,6 +3,7 @@ import * as api from "./api.js";
 import * as S from "./store.js";
 import { QUOTES } from "./assets.js";
 import { DOCS } from "./docs.js";
+import * as N from "./native.js";
 import { openFilter, activeCount, genreName, STATUS_NAME } from "./filters.js";
 import { vChat, vDev, roomFor, roomPreview, roomCount, miniMsg, bindSpoilers } from "./chat.js";
 import { esc, icon, $, $$, toast, ago, SOURCES, srcName, TYPES, typeName, cover, comicHref, readHref, greeting, errBox, loading } from "./ui.js";
@@ -419,7 +420,11 @@ async function vDetail(src, id) {
     bell: async () => {
       if (!S.loggedIn()) { toast("Masuk dulu untuk menyalakan notifikasi chapter baru."); return; }
       const on = !S.libItem(src, id)?.notify;
-      try { await S.setNotify(meta, on); S.updateLibMeta(src, id, { type, latest: latest?.ch ?? null }); toast(on ? "Notifikasi chapter baru menyala" : "Notifikasi dimatikan"); }
+      try {
+        await S.setNotify(meta, on); S.updateLibMeta(src, id, { type, latest: latest?.ch ?? null });
+        toast(on ? "Notifikasi chapter baru menyala" : "Notifikasi dimatikan");
+        if (on && N.pushSupported()) N.pushEnable(api.rpc, true).then((st) => { if (st === "denied") toast("Izin notifikasi HP ditolak. Aktifkan di Pengaturan → Aplikasi → Ninokuu → Notifikasi.", 5000); }).catch(() => {});
+      }
       catch (e) { toast(e.message); }
       draw();
     },
@@ -560,7 +565,7 @@ async function vReader(src, id, chId) {
   const st = S.state.settings, total = p.images.length;
   let slide = st.readMode === "slide";
   const rtl = st.readDir !== "ltr";
-  const imgs = p.images.map((im, i) => `<img class="r-img" data-i="${i + 1}" src="${esc(api.pageUrl(im.p))}" alt="Halaman ${i + 1}" ${i > 2 ? 'loading="lazy"' : ""} decoding="async" referrerpolicy="no-referrer" draggable="false">`);
+  const imgs = p.images.map((im, i) => `<img class="r-img" data-i="${i + 1}" src="${esc(im.direct ? im.u : api.pageUrl(im.p))}"${im.direct ? ` data-direct="${esc(im.u)}"` : ""} alt="Halaman ${i + 1}" ${i > 2 ? 'loading="lazy"' : ""} decoding="async" referrerpolicy="no-referrer" draggable="false">`);
   const mainLabel = next ? `Lanjut ke Chapter ${esc(next.ch)}` : "Kembali ke info komik";
   view.innerHTML = `<div class="reader ui ${slide ? "slide" : ""}" id="rd">
   ${slide ? `<div class="r-slides" id="rbox" dir="${rtl ? "rtl" : "ltr"}">${imgs.map((im) => `<div class="r-slide">${im}</div>`).join("")}<div class="r-slide r-endslide"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span><a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini</a></div></div>`
@@ -589,6 +594,11 @@ async function vReader(src, id, chId) {
       <button class="r-sq glass" data-act="next" aria-label="${next ? "Chapter berikutnya" : "Kembali ke info komik"}">${next ? icon("chev", 22, 2.2) : icon("home", 21, 2)}</button>
     </div></div></div>`;
   const rd = $("#rd"), box = $("#rbox"), pages = $("#rpages");
+  // APK: gambar langsung dari situs; bila ditolak WebView, ambil ulang lewat jaringan HP
+  $$(".r-img[data-direct]", rd).forEach((im) => im.addEventListener("error", async () => {
+    if (im.dataset.tried) return; im.dataset.tried = "1";
+    try { im.src = await N.imageViaNative(im.dataset.direct, p.ref); } catch {}
+  }));
   const meta = { source: src, comic_id: id, title: d.manga.title, cover: d.manga.cover, chapter: ch.ch, chapter_id: ch.id, pages: total, type: typeFromTags(d.manga.tags) };
   S.saveHistory({ ...meta, page: 1 });
   S.awardRead(src, id, ch.ch);
@@ -775,7 +785,7 @@ ${user ? `<button class="me mx" data-act="level">${avatarHtml(p, lv)}
     </form>
     ${authMode === "in" ? `<button class="btn ghost" data-act="auth" data-v="up">Belum punya akun? Daftar</button><button class="link" data-act="auth" data-v="reset">Lupa password?</button>` : `<button class="btn ghost" data-act="auth" data-v="in">Sudah punya akun? Masuk</button>`}</div>`}
 ${["developer", "moderator"].includes(p?.role) ? group("Developer", mrow("dev", "Panel developer", p.role === "developer" ? "Moderasi, pengumuman, statistik" : "Moderasi chat", "dev")) : ""}
-${group("Bacaanmu", mrow("star", "Level &amp; Rank", user ? `${lv.rank} · Lv ${lv.lv}` : "Masuk untuk mulai naik level", "level") + mrow("clock", "Riwayat baca", `${S.history().length} judul`, "goHist") + mrow("down", "Unduhan", "Tersedia di aplikasi APK", "goDl"))}
+${group("Bacaanmu", mrow("star", "Level &amp; Rank", user ? `${lv.rank} · Lv ${lv.lv}` : "Masuk untuk mulai naik level", "level") + mrow("clock", "Riwayat baca", `${S.history().length} judul`, "goHist") + mrow("down", "Unduhan", N.isApp ? "Segera hadir di pembaruan berikutnya" : "Tersedia di aplikasi APK", "goDl"))}
 <section class="sec s20"><h2 class="cap">Tampilan</h2><div class="card col g12"><span class="b145">Mode efek avatar</span>
   ${seg([{ id: "Ringan", name: "Ringan" }, { id: "Normal", name: "Normal" }], gfx, "gfx", "s2")}
   <span class="mu xs lh">${gfx === "Ringan" ? "Partikel dikurangi; komet, aurora, dan awan nebula dimatikan. Hemat baterai, cocok untuk HP spek rendah." : "Bingkai avatar kosmik penuh dengan partikel dan animasi."}</span></div></section>
@@ -783,9 +793,16 @@ ${group("Bacaanmu", mrow("star", "Level &amp; Rank", user ? `${lv.rank} · Lv ${
   ${seg([{ id: "scroll", name: "Scroll (webtoon)" }, { id: "slide", name: "Slide (halaman)" }], st.readMode, "rmode", "s2")}
   ${st.readMode === "slide" ? `<span class="mu sm">Arah geser</span>${seg([{ id: "rtl", name: "Kanan ke kiri" }, { id: "ltr", name: "Kiri ke kanan" }], st.readDir === "ltr" ? "ltr" : "rtl", "dir", "s2")}` : ""}
   <span class="mu xs lh">${st.readMode === "slide" ? "Geser per halaman. Kanan ke kiri cocok untuk manga Jepang." : "Gulir ke bawah, halaman tersambung. Cocok untuk manhwa dan manhua."}</span></div></section>
+${N.isApp ? group("Aplikasi", `<span id="updrow"></span>` + mrow("bell", "Notifikasi HP", `<span id="pushst">Memeriksa…</span>`, "pushset") + mrow("info", "Versi aplikasi", `Build ${N.BUILD || "-"} · ${esc(VERSION)}`, ""))
+  : group("Aplikasi Android", mrow("down", "Pasang aplikasi Android (APK)", "Baca Shinigami &amp; WestManga, notifikasi chapter baru di HP", "getapk"))}
 ${group("Data &amp; penyimpanan", mrow("cloud", "Backup data offline", "Simpan koleksi, riwayat, dan pengaturan ke file", "backup") + mrow("restore", "Pulihkan data", "Dari file backup", "restore") + mrow("trash", "Bersihkan cache", "Gambar sampul &amp; halaman yang tersimpan", "cache"))}
 ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord Ninokuu", "discord") + mrow("info", "Tentang aplikasi", "Versi " + esc(VERSION), "about") + mrow("shield", "Kebijakan privasi", "", "privacy") + mrow("doc", "Ketentuan pengguna", "", "terms") + mrow("heart", "Dukung di Trakteer", "Traktir pengembang", "trakteer"))}
 <p class="mu xs center mt18">Ninokuu versi ${esc(VERSION)}</p><div class="pad-nav"></div>`;
+  const showPush = (st) => { const el = $("#pushst"); if (el) el.textContent = { on: "Aktif · ketuk untuk kirim tes", off: "Mati · ketuk untuk mengaktifkan", denied: "Diblokir di pengaturan HP", unsupported: "Tidak tersedia" }[st] || st; };
+  if (N.isApp) {
+    N.pushStatus().then(showPush);
+    N.latestBuild().then((r) => { const el = $("#updrow"); if (el && r && r.build > N.BUILD) el.outerHTML = mrow("refresh", `<span class="gold">Versi baru tersedia</span>`, `Build ${r.build} · ketuk untuk mengunduh`, "update"); });
+  }
   const form = $("#auth");
   if (form) form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -799,6 +816,7 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
       } else await api.signIn(f.get("email"), f.get("pw"));
       await S.syncAfterLogin().catch(() => {});
       toast("Berhasil masuk"); vMore();
+      if (N.pushSupported()) N.pushEnable(api.rpc, true).then(() => { if (route.name === "more") vMore(); }).catch(() => {});
     } catch (ex) { err.textContent = ex.message; btn.disabled = false; }
   });
   setActs({
@@ -807,6 +825,19 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
     goHist: () => go("#/fav/hist"), goDl: () => go("#/fav/dl"),
     about: () => go("#/p/about"), privacy: () => go("#/p/privacy"), terms: () => go("#/p/terms"),
     backup: () => go("#/p/backup"), restore: () => go("#/p/restore"),
+    getapk: () => window.open(N.APK_URL, "_blank"),
+    update: () => window.open(N.APK_URL, "_blank"),
+    pushset: async () => {
+      if (!user) { toast("Masuk dulu supaya notifikasi bisa dikirim ke HP ini."); return; }
+      try {
+        const st = await N.pushEnable(api.rpc, true);
+        showPush(st);
+        if (st === "denied") return toast("Izin notifikasi ditolak. Buka Pengaturan HP → Aplikasi → Ninokuu → Notifikasi, lalu aktifkan.", 5000);
+        if (st !== "on") return toast("Notifikasi belum diizinkan.");
+        const r = await api.call("test_push");
+        toast(r.ok ? "Tes notifikasi dikirim. Cek bilah notifikasi HP." : r.error || "Tes notifikasi gagal", 4000);
+      } catch (e) { toast(e.message, 4500); }
+    },
     discord: () => soon("Server Discord Ninokuu sedang disiapkan."), trakteer: () => soon("Halaman Trakteer sedang disiapkan. Terima kasih!"),
     gfx: (el) => { S.setSetting("gfx", el.dataset.v); applyGfx(); vMore(); },
     rmode: (el) => { S.setSetting("readMode", el.dataset.v); vMore(); },
@@ -819,6 +850,31 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
       toast("Cache dibersihkan");
     },
   });
+}
+
+/* ---------- khusus APK: notifikasi, tombol kembali, cek chapter sumber yang diblokir server ---------- */
+function startApp() {
+  document.body.classList.add("is-app");
+  N.onPushOpen((h) => go(h));
+  // tombol kembali Android: tutup lapisan yang terbuka dulu, lalu mundur; di Beranda → keluar
+  N.onBack((exit) => {
+    const ae = document.activeElement;
+    if (ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName) && document.body.classList.contains("chfoc")) { ae.blur(); return; }
+    const flt = $(".flt-host [data-f=close]"); if (flt) { flt.click(); return; }
+    if (sheetEl) { closeSheet(); return; }
+    if (document.getElementById("notif")) { closeNotif(); return; }
+    const chatSheet = $("#host [data-c=close]"); if (chatSheet) { chatSheet.click(); return; }
+    const rmenu = $(".r-menu:not([hidden])"); if (rmenu) { $("[data-act=closeMenu]")?.click(); return; }
+    if (navIdx > 0) { history.back(); return; }
+    if (route.name !== "home") { goReplace("#/home"); return; }
+    exit();
+  });
+  const pushQuiet = () => { if (S.loggedIn()) N.pushEnable(api.rpc, false).catch(() => {}); };
+  const check = () => { if (S.loggedIn()) N.checkBlockedSources([...S.state.lib.values()], api.call).catch(() => {}); };
+  setTimeout(pushQuiet, 3000);
+  setTimeout(check, 8000);
+  setInterval(check, 30 * 60e3);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") check(); });
 }
 
 /* ---------- halaman turunan Lainnya ---------- */
@@ -929,7 +985,8 @@ api.onAuth((s) => { if (!s) S.clearUserData(); });
 if (S.loggedIn()) { S.loadProfile().catch(() => {}); S.pull().catch(() => {}); }
 S.subscribe(() => { if (route.name === "fav" && !document.activeElement?.matches?.("#fq")) vFav(); });
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") S.flushHistory(); });
-if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
+// APK: berkas sudah ada di dalam aplikasi, service worker tidak diperlukan
+if (!N.isApp && "serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
 (async () => {
   try {
     const type = await api.sessionFromUrl();
@@ -940,6 +997,7 @@ if ("serviceWorker" in navigator && location.protocol === "https:") navigator.se
     }
   } catch (e) { toast(e.message, 4500); }
   render();
+  if (N.isApp) startApp();
   // bingkai avatar (berkas besar) dimuat di latar belakang agar menu Lainnya langsung tampil
   setTimeout(() => (window.requestIdleCallback || setTimeout)(() => loadAvatars()), 1200);
 })();

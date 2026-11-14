@@ -70,3 +70,19 @@ Catatan:
 - Workflow juga membuat commit kosong `chore: keepalive` bila repo tidak ada commit lebih dari 45 hari,
   karena GitHub mematikan jadwal otomatis di repo yang sepi sekitar 60 hari.
 - Kalau proyek sudah terlanjur dijeda, pulihkan dulu lewat tombol **Restore** di dashboard Supabase.
+
+## Aplikasi Android (APK)
+
+Dibangun dari folder `app/` dengan Capacitor oleh GitHub Actions; hasilnya di Release `apk-terbaru`:
+`https://github.com/Rexxaply/NinoKuu-Manga/releases/download/apk-terbaru/ninokuu.apk`
+
+Sekali saja: tab **Actions → Buat kunci APK → Run workflow**. Kunci dibuat dari secret `APK_KEYSTORE_PASSWORD`,
+dienkripsi, dan disimpan sebagai `apk/ninokuu.keystore.enc` (sidik jari di `apk/keystore-sha256.txt`).
+Setelah itu **Build APK** berjalan otomatis setiap ada perubahan di `app/` atau `apk/` (atau jalankan manual).
+
+Secret yang dipakai: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `GOOGLE_SERVICES_JSON`, `APK_KEYSTORE_PASSWORD`.
+Nama paket diambil dari `google-services.json` (atau variabel `APP_ID`).
+
+Khusus APK (`app/js/native.js`): Shinigami & WestManga dibuka langsung lewat jaringan HP, notifikasi Firebase
+(`register_device`), HP mengecek chapter baru komik berlonceng dari dua sumber itu lalu melapor ke server
+(`report_chapters`), tombol kembali Android, dan pemberitahuan versi APK baru.

@@ -1,0 +1,13 @@
+{
+  "name": "ninokuu-apk",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Pembungkus Android (Capacitor) untuk Ninokuu. Dibangun oleh workflow Build APK.",
+  "dependencies": {
+    "@capacitor/android": "^7.6.0",
+    "@capacitor/app": "^7.1.0",
+    "@capacitor/cli": "^7.6.0",
+    "@capacitor/core": "^7.6.0",
+    "@capacitor/push-notifications": "^7.0.0"
+  }
+}

@@ -1,0 +1,53 @@
+# Membuat kunci tanda tangan APK Ninokuu. Jalankan SEKALI dari tab Actions → "Buat kunci APK" → Run workflow.
+#
+# Kunci dibuat dengan password dari secret APK_KEYSTORE_PASSWORD, lalu dienkripsi lagi (AES-256, password yang sama)
+# dan disimpan di repo sebagai apk/ninokuu.keystore.enc. Tanpa password itu berkas ini tidak bisa dipakai.
+# Semua APK selanjutnya ditandatangani kunci ini, sehingga pembaruan bisa dipasang menimpa versi lama.
+# JANGAN ganti APK_KEYSTORE_PASSWORD setelah APK pertama dibagikan.
+name: Buat kunci APK
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  key:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Buat dan simpan kunci
+        env:
+          KS_PASS: ${{ secrets.APK_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -f apk/ninokuu.keystore.enc ]; then
+            echo "::error::Kunci APK sudah ada (apk/ninokuu.keystore.enc). Kunci tidak dibuat ulang supaya pembaruan APK tetap bisa dipasang."
+            exit 1
+          fi
+          if [ "${#KS_PASS}" -lt 16 ]; then
+            echo "::error::Secret APK_KEYSTORE_PASSWORD kosong atau kurang dari 16 karakter."
+            exit 1
+          fi
+          work=$(mktemp -d)
+          keytool -genkeypair -noprompt -storetype PKCS12 -keystore "$work/ninokuu.p12" -alias ninokuu \
+            -keyalg RSA -keysize 4096 -validity 36500 -storepass:env KS_PASS -keypass:env KS_PASS \
+            -dname "CN=Ninokuu, O=Ninokuu, C=ID"
+          openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:KS_PASS -in "$work/ninokuu.p12" -out apk/ninokuu.keystore.enc
+          # pastikan bisa dibuka kembali dengan password yang sama
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass env:KS_PASS -in apk/ninokuu.keystore.enc -out "$work/check.p12"
+          cmp "$work/ninokuu.p12" "$work/check.p12"
+          fp=$(keytool -list -v -keystore "$work/ninokuu.p12" -storepass:env KS_PASS -alias ninokuu | grep -m1 "SHA256:" | sed 's/.*SHA256: *//')
+          echo "$fp" > apk/keystore-sha256.txt
+          rm -rf "$work"
+          echo "Sidik jari SHA-256 kunci: $fp"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apk/ninokuu.keystore.enc apk/keystore-sha256.txt
+          git commit -m "Kunci tanda tangan APK (terenkripsi)"
+          git push
+          echo "### Kunci APK dibuat" >> "$GITHUB_STEP_SUMMARY"
+          echo "SHA-256: \`$fp\`. Lanjutkan dengan menjalankan workflow **Build APK**." >> "$GITHUB_STEP_SUMMARY"

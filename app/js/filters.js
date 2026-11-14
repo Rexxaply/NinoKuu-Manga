@@ -2,6 +2,7 @@
 // Daftar genre diambil dari penyedia (action "filters" di Edge Function), jadi hanya yang benar-benar ada di sumber itu.
 import * as api from "./api.js";
 import { esc, icon, $, $$, toast, srcName } from "./ui.js";
+import { isApp } from "./native.js";
 
 const norm = (n) => String(n || "").toLowerCase().replace(/[-_]/g, " ").replace(/\s+/g, " ").trim();
 const DEMO = new Set(["shounen", "shonen", "shoujo", "shojo", "seinen", "josei", "kodomo"]);
@@ -113,7 +114,7 @@ export function openFilter(src, cur, onApply) {
     st.genres = st.genres.filter((g) => d.genres.some((x) => x.id === g));
     if (host.isConnected) draw();
   }).catch((e) => {
-    err = /action|tidak dikenal|unknown/i.test(e.message) ? "Daftar genre belum tersedia: Edge Function ninokuu-api perlu diperbarui." : /blocked|Cloudflare|dijangkau|403/i.test(e.message) ? `${srcName(src)} tidak bisa dijangkau dari web. Filter genre tersedia di aplikasi APK.` : e.message;
+    err = /action|tidak dikenal|unknown/i.test(e.message) ? "Daftar genre belum tersedia: Edge Function ninokuu-api perlu diperbarui." : !isApp && /blocked|Cloudflare|dijangkau|403/i.test(e.message) ? `${srcName(src)} tidak bisa dijangkau dari web. Filter genre tersedia di aplikasi APK.` : e.message;
     if (host.isConnected) draw();
   });
   return close;

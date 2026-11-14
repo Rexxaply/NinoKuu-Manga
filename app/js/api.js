@@ -1,5 +1,6 @@
 // Koneksi ke Supabase (Auth, database REST, Storage) dan Edge Function ninokuu-api.
 // Tanpa library: semua lewat fetch, supaya ringan dan sama di PWA maupun APK.
+import { direct, isApp, WEB_URL } from "./native.js";
 const C = window.NINOKUU_CONFIG || {};
 const BASE = String(C.SUPABASE_URL || "").replace(/\/+$/, "");
 const KEY = String(C.SUPABASE_ANON_KEY || "");
@@ -79,7 +80,8 @@ export async function signUp(email, password, name) {
   return { confirm: true }; // Confirm email aktif: tunggu konfirmasi
 }
 export async function recover(email) { await authCall("/recover?redirect_to=" + encodeURIComponent(appUrl()), { email: email.trim() }); }
-const appUrl = () => location.origin + location.pathname;
+// link di email (konfirmasi akun, reset password) selalu ke versi web; di APK alamatnya https://localhost
+const appUrl = () => (isApp ? WEB_URL : location.origin + location.pathname);
 // link dari email (konfirmasi daftar / reset password) kembali ke aplikasi dengan token di #
 export async function sessionFromUrl() {
   const h = location.hash.replace(/^#/, "");
@@ -155,6 +157,9 @@ export const userId = () => session?.user?.id || null;
 
 /* ---------- Edge Function ninokuu-api ---------- */
 export async function call(action, payload = {}) {
+  // APK: Shinigami & WestManga diambil langsung lewat jaringan HP (server diblokir Cloudflare)
+  const d = await direct(action, payload);
+  if (d) return d;
   const t = (await accessToken()) || KEY;
   let r;
   try {

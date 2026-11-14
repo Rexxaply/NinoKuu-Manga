@@ -1,0 +1,8 @@
+node_modules/
+www/
+android/
+*.apk
+*.p12
+*.keystore
+!ninokuu.keystore.enc
+google-services.json

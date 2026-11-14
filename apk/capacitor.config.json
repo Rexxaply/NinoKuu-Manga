@@ -1,0 +1,16 @@
+{
+  "appId": "diisi.otomatis.dari.google.services",
+  "appName": "Ninokuu",
+  "webDir": "www",
+  "backgroundColor": "#0B1018",
+  "server": { "androidScheme": "https" },
+  "android": {
+    "allowMixedContent": false,
+    "adjustMarginsForEdgeToEdge": "force",
+    "backgroundColor": "#0B1018"
+  },
+  "plugins": {
+    "CapacitorHttp": { "enabled": false },
+    "PushNotifications": { "presentationOptions": ["badge", "sound", "alert"] }
+  }
+}
