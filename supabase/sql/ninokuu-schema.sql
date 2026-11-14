@@ -8,6 +8,12 @@
 --     jadi penolakan tidak bergantung pada RLS saja.
 --   * EXP, level, laporan, dan notifikasi tidak bisa diubah langsung dari aplikasi;
 --     hanya lewat fungsi/trigger di server.
+--
+-- Menjadikan akunmu Developer (sekali, setelah akunnya terdaftar):
+--   update public.profiles set role = 'developer', verified = true, exp = 203840
+--   where id = (select id from auth.users where email = 'emailkamu@gmail.com');
+-- Peran hanya bisa diubah dari SQL Editor ini (atau oleh Developer lewat fungsi set_role),
+-- tidak pernah langsung dari aplikasi.
 begin;
 
 -- =====================================================================
@@ -33,6 +39,74 @@ create policy "profil dibaca publik" on public.profiles for select using (true);
 drop policy if exists "profil diubah pemiliknya" on public.profiles;
 create policy "profil diubah pemiliknya" on public.profiles for update to authenticated
   using ((select auth.uid()) = id) with check ((select auth.uid()) = id);
+
+-- Peran & status. role: user | moderator | developer. Kolom ini tidak bisa diubah dari aplikasi
+-- (hak update hanya untuk kolom name).
+alter table public.profiles add column if not exists role text not null default 'user';
+alter table public.profiles add column if not exists verified boolean not null default false;
+alter table public.profiles add column if not exists muted_until timestamptz;
+alter table public.profiles add column if not exists banned boolean not null default false;
+alter table public.profiles drop constraint if exists profiles_role_valid;
+alter table public.profiles add constraint profiles_role_valid check (role in ('user', 'moderator', 'developer'));
+
+create or replace function public.is_staff()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (select 1 from public.profiles p
+                 where p.id = auth.uid() and p.role in ('moderator', 'developer') and not p.banned);
+$$;
+create or replace function public.is_dev()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'developer');
+$$;
+revoke all on function public.is_staff() from public;
+revoke all on function public.is_dev() from public;
+grant execute on function public.is_staff() to anon, authenticated;
+grant execute on function public.is_dev() to anon, authenticated;
+
+-- Nama yang dicadangkan untuk akun resmi, agar tidak ada yang menyamar.
+create or replace function public.name_is_reserved(p_name text)
+returns boolean
+language sql
+immutable
+set search_path = ''
+as $$
+  select k ~ '(rexxa|ninokuu|admin|developer|moderator|official|resmi)'
+      or k in ('dev', 'mod', 'staff', 'cs', 'support')
+  from (select pg_catalog.lower(pg_catalog.regexp_replace(coalesce(p_name, ''), '[^a-zA-Z0-9]', '', 'g')) as k) x;
+$$;
+
+create or replace function public.profiles_guard()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  new.name := pg_catalog.btrim(new.name);
+  if new.role = 'user' and public.name_is_reserved(new.name) then
+    if tg_op = 'INSERT' then
+      new.name := 'Pembaca';
+    elsif new.name is distinct from old.name then
+      raise exception 'Nama ini khusus untuk akun resmi Ninokuu' using errcode = 'P0001', hint = 'reserved_name';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.profiles_guard() from public, anon, authenticated;
+
+drop trigger if exists profiles_guard on public.profiles;
+create trigger profiles_guard before insert or update on public.profiles
+  for each row execute function public.profiles_guard();
 
 create or replace function public.handle_new_user()
 returns trigger
@@ -300,7 +374,7 @@ grant delete on table public.chat_messages to authenticated;
 
 drop policy if exists "chat dibaca publik" on public.chat_messages;
 create policy "chat dibaca publik" on public.chat_messages for select
-  using (not hidden and created_at > now() - interval '30 days');
+  using (created_at > now() - interval '30 days' and (not hidden or (select public.is_staff())));
 drop policy if exists "chat ditulis yang login" on public.chat_messages;
 create policy "chat ditulis yang login" on public.chat_messages for insert to authenticated
   with check (
@@ -310,7 +384,7 @@ create policy "chat ditulis yang login" on public.chat_messages for insert to au
   );
 drop policy if exists "chat dihapus pengirimnya" on public.chat_messages;
 create policy "chat dihapus pengirimnya" on public.chat_messages for delete to authenticated
-  using ((select auth.uid()) = user_id);
+  using ((select auth.uid()) = user_id or (select public.is_staff()));
 
 create or replace function public.chat_guard()
 returns trigger
@@ -320,10 +394,22 @@ set search_path = ''
 as $$
 declare
   last_at timestamptz;
+  me public.profiles%rowtype;
 begin
   new.created_at := pg_catalog.now();
   new.hidden := false;
   new.body := btrim(new.body);
+  select * into me from public.profiles p where p.id = new.user_id;
+  if me.banned then
+    raise exception 'Akunmu diblokir dari chat publik' using errcode = 'P0001', hint = 'banned';
+  end if;
+  if me.muted_until is not null and me.muted_until > pg_catalog.now() then
+    raise exception 'Kamu sedang dibisukan sampai %', to_char(me.muted_until at time zone 'Asia/Jakarta', 'HH24:MI') || ' WIB'
+      using errcode = 'P0001', hint = 'muted';
+  end if;
+  if me.role in ('moderator', 'developer') then
+    return new; -- staf bebas jeda
+  end if;
   select max(c.created_at) into last_at from public.chat_messages c where c.user_id = new.user_id;
   if last_at is not null and last_at > pg_catalog.now() - interval '5 seconds' then
     raise exception 'Pelan-pelan ya, tunggu beberapa detik' using errcode = 'P0001', hint = 'cooldown';
@@ -351,7 +437,7 @@ revoke all on table public.chat_reports from anon, authenticated;
 grant select, insert on table public.chat_reports to authenticated;
 drop policy if exists "laporan dibaca pelapor" on public.chat_reports;
 create policy "laporan dibaca pelapor" on public.chat_reports for select to authenticated
-  using ((select auth.uid()) = reporter);
+  using ((select auth.uid()) = reporter or (select public.is_staff()));
 drop policy if exists "laporan dibuat pelapor" on public.chat_reports;
 create policy "laporan dibuat pelapor" on public.chat_reports for insert to authenticated
   with check ((select auth.uid()) = reporter);
@@ -377,7 +463,8 @@ create trigger chat_reports_hide after insert on public.chat_reports
 
 -- Daftar chat siap tampil (nama + EXP pengirim). Mengikuti RLS pembaca.
 create or replace view public.chat_feed with (security_invoker = true) as
-select c.id, c.user_id, p.name, p.exp, c.body, c.image_path, c.image_spoiler, c.created_at
+select c.id, c.user_id, p.name, p.exp, c.body, c.image_path, c.image_spoiler, c.created_at,
+       p.role, p.verified, c.hidden
 from public.chat_messages c
 join public.profiles p on p.id = c.user_id;
 revoke all on table public.chat_feed from anon, authenticated;
@@ -397,7 +484,134 @@ $$;
 revoke all on function public.chat_cleanup(interval) from public, anon, authenticated;
 
 -- =====================================================================
--- 9. Penyimpanan gambar chat: bucket publik "chat-images", maks 30 MB per file,
+-- 9. Alat staf (moderator & developer). Semua dicek di server, bukan hanya di aplikasi.
+-- =====================================================================
+-- Tampilkan / sembunyikan pesan.
+create or replace function public.mod_set_hidden(p_message bigint, p_hidden boolean)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not public.is_staff() then raise exception 'khusus moderator' using errcode = '42501'; end if;
+  update public.chat_messages set hidden = p_hidden where id = p_message;
+  if not p_hidden then delete from public.chat_reports where message_id = p_message; end if;
+end;
+$$;
+
+-- Bisukan (menit > 0), cabut bisu (0), blokir / buka blokir. Moderator hanya bisa menindak
+-- pengguna biasa; developer bisa menindak moderator; developer tidak bisa ditindak.
+create or replace function public.mod_restrict(p_user uuid, p_mute_minutes integer default null, p_ban boolean default null)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  me text := (select p.role from public.profiles p where p.id = auth.uid());
+  target text := (select p.role from public.profiles p where p.id = p_user);
+begin
+  if not public.is_staff() then raise exception 'khusus moderator' using errcode = '42501'; end if;
+  if target is null then raise exception 'pengguna tidak ditemukan' using errcode = 'P0002'; end if;
+  if p_user = auth.uid() or target = 'developer' or (target = 'moderator' and me <> 'developer') then
+    raise exception 'tidak boleh menindak akun ini' using errcode = '42501';
+  end if;
+  if p_mute_minutes is not null then
+    update public.profiles set muted_until = case when p_mute_minutes > 0
+      then pg_catalog.now() + pg_catalog.make_interval(mins => least(p_mute_minutes, 60 * 24 * 30)) end
+    where id = p_user;
+  end if;
+  if p_ban is not null then
+    update public.profiles set banned = p_ban where id = p_user;
+    if p_ban then update public.chat_messages set hidden = true where user_id = p_user; end if;
+  end if;
+end;
+$$;
+
+-- Khusus developer: atur peran dan centang verifikasi orang lain.
+create or replace function public.dev_set_role(p_user uuid, p_role text default null, p_verified boolean default null)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not public.is_dev() then raise exception 'khusus developer' using errcode = '42501'; end if;
+  if p_user = auth.uid() and p_role is not null and p_role <> 'developer' then
+    raise exception 'developer tidak bisa menurunkan perannya sendiri dari aplikasi' using errcode = '42501';
+  end if;
+  update public.profiles set role = coalesce(p_role, role), verified = coalesce(p_verified, verified) where id = p_user;
+end;
+$$;
+
+revoke all on function public.mod_set_hidden(bigint, boolean) from public, anon;
+revoke all on function public.mod_restrict(uuid, integer, boolean) from public, anon;
+revoke all on function public.dev_set_role(uuid, text, boolean) from public, anon;
+grant execute on function public.mod_set_hidden(bigint, boolean) to authenticated;
+grant execute on function public.mod_restrict(uuid, integer, boolean) to authenticated;
+grant execute on function public.dev_set_role(uuid, text, boolean) to authenticated;
+
+-- Pengumuman dari developer: bisa disematkan di atas chat dan dikirim sebagai notifikasi
+-- (pengiriman notifikasinya dilakukan Edge Function, berdasarkan kolom push).
+create table if not exists public.announcements (
+  id bigint generated always as identity primary key,
+  title text not null,
+  body text not null default '',
+  pinned boolean not null default true,
+  push boolean not null default false,
+  created_by uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  constraint announcements_len check (char_length(btrim(title)) between 1 and 80 and char_length(body) <= 500)
+);
+create index if not exists announcements_recent_idx on public.announcements (created_at desc);
+alter table public.announcements enable row level security;
+revoke all on table public.announcements from anon, authenticated;
+grant select on table public.announcements to anon, authenticated;
+grant insert (title, body, pinned, push), update (title, body, pinned), delete on table public.announcements to authenticated;
+drop policy if exists "pengumuman dibaca publik" on public.announcements;
+create policy "pengumuman dibaca publik" on public.announcements for select using (true);
+drop policy if exists "pengumuman dibuat developer" on public.announcements;
+create policy "pengumuman dibuat developer" on public.announcements for insert to authenticated
+  with check ((select public.is_dev()) and created_by = (select auth.uid()));
+drop policy if exists "pengumuman diubah developer" on public.announcements;
+create policy "pengumuman diubah developer" on public.announcements for update to authenticated
+  using ((select public.is_dev())) with check ((select public.is_dev()));
+drop policy if exists "pengumuman dihapus developer" on public.announcements;
+create policy "pengumuman dihapus developer" on public.announcements for delete to authenticated
+  using ((select public.is_dev()));
+
+-- Statistik ringkas untuk Panel developer.
+create or replace function public.dev_stats()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  ka timestamptz;
+begin
+  if not public.is_dev() then raise exception 'khusus developer' using errcode = '42501'; end if;
+  if pg_catalog.to_regclass('public.keepalive') is not null then
+    execute 'select pinged_at from public.keepalive where id = 1' into ka;
+  end if;
+  return pg_catalog.jsonb_build_object(
+    'users', (select count(*) from public.profiles),
+    'messages_today', (select count(*) from public.chat_messages
+                       where created_at >= (pg_catalog.now() at time zone 'Asia/Jakarta')::date::timestamp at time zone 'Asia/Jakarta'),
+    'reports_open', (select count(distinct r.message_id) from public.chat_reports r
+                     join public.chat_messages c on c.id = r.message_id where not c.hidden),
+    'hidden', (select count(*) from public.chat_messages where hidden),
+    'restricted', (select count(*) from public.profiles where banned or muted_until > pg_catalog.now()),
+    'last_keepalive', ka);
+end;
+$$;
+revoke all on function public.dev_stats() from public, anon;
+grant execute on function public.dev_stats() to authenticated;
+
+-- =====================================================================
+-- 10. Penyimpanan gambar chat: bucket publik "chat-images", maks 30 MB per file,
 --    hanya JPG/PNG/WEBP/GIF, tiap pengguna hanya bisa mengunggah ke foldernya sendiri.
 -- =====================================================================
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)

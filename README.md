@@ -13,6 +13,16 @@ Jalankan di Supabase → **SQL Editor**, berurutan. Keduanya aman dijalankan ula
    (jeda 5 detik, laporan, sembunyi otomatis setelah 3 laporan), dan bucket `chat-images` (maks 30 MB, JPG/PNG/WEBP/GIF).
 2. [`supabase/sql/keepalive.sql`](supabase/sql/keepalive.sql) — lihat bagian berikut.
 
+Akun Developer (centang verifikasi, badge DEV, Level 99, Panel developer) diberikan sekali lewat SQL Editor:
+
+```sql
+update public.profiles set role = 'developer', verified = true, exp = 203840
+where id = (select id from auth.users where email = 'emailkamu@gmail.com');
+```
+
+Ganti `'developer'` dengan `'moderator'` untuk mengangkat moderator chat. Nama seperti "Rexxa", "Ninokuu",
+dan "Admin" dicadangkan untuk akun resmi.
+
 Semua tabel memakai RLS. Hak bawaan `anon`/`authenticated` dicabut lalu diberikan seperlunya;
 EXP, notifikasi, dan status sembunyi pesan hanya diubah oleh trigger/fungsi di server.
 
