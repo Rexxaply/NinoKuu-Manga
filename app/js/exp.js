@@ -33,10 +33,13 @@ let status = null, statusAt = 0;
 export async function loadStatus(force = false) {
   if (!S.loggedIn()) { status = null; return null; }
   if (!force && status && status.today === wibToday() && Date.now() - statusAt < 20e3) return status;
-  try { status = await api.rpc("daily_status"); statusAt = Date.now(); } catch { status = null; }
+  try { status = await api.rpc("daily_status"); statusAt = Date.now(); if (status) api.lsSet("dailyStatus", status); } catch { status = null; }
   return status;
 }
 export const cachedStatus = () => status;
+// status terakhir yang tersimpan di HP (hanya bila masih hari yang sama)
+const savedStatus = () => { const c = status || api.lsGet("dailyStatus"); return c && c.today === wibToday() ? c : null; };
+api.onAuth((sess) => { if (!sess) { status = null; api.lsSet("dailyStatus", null); } });
 
 /* ---------- pil "+EXP" dengan progres level ---------- */
 let pillT = null;
@@ -60,7 +63,8 @@ window.addEventListener("nk:exp", (e) => { if (S.state.profile?.role !== "develo
 
 /* ---------- popup login harian ---------- */
 // sudah ditampilkan di sesi ini? (dibuka ulang aplikasi → muncul lagi selama belum diklaim)
-const seen = { get: () => { try { return sessionStorage.getItem("ninokuu:dailySeen"); } catch { return null; } }, set: (d) => { try { sessionStorage.setItem("ninokuu:dailySeen", d); } catch {} } };
+const seenKey = () => "ninokuu:dailySeen:" + (api.userId() || "");
+const seen = { get: () => { try { return sessionStorage.getItem(seenKey()); } catch { return null; } }, set: (d) => { try { sessionStorage.setItem(seenKey(), d); } catch {} } };
 let dailyOpen = false;
 const tile = (d, cur, claimed) => {
   const done = d < cur || (d === cur && claimed), now = d === cur, last = slotOf(d) === 7;
@@ -196,9 +200,10 @@ async function historyHtml() {
 export async function vLevel(view, L, tab = "sum") {
   await L.loadAvatars();
   const user = api.currentUser();
+  // digambar langsung dari data terakhir (tanpa layar kosong), lalu diperbarui setelah server menjawab
   const draw = async () => {
     const p = S.state.profile, lv = S.levelOf(p);
-    const st = user ? await loadStatus() : null;
+    const st = user ? savedStatus() : null;
     const tabs = `<div class="seg s2 lv-tabs" role="tablist">${[["sum", "Ringkasan"], ["hist", "Riwayat"], ["lad", "Tangga"]].map(([k, n]) =>
       `<button role="tab" aria-selected="${tab === k}" data-act="tab" data-v="${k}">${n}</button>`).join("")}</div>`;
     let body = "";
@@ -233,10 +238,16 @@ export async function vLevel(view, L, tab = "sum") {
     tab: (el) => { if (tab === el.dataset.v) return; tab = el.dataset.v; draw(); },
     daily: () => openDaily(true),
   });
-  const again = () => { if (document.body.dataset.screen === "page" && $(".lv-page")) draw(); };
+  const alive = () => document.body.dataset.screen === "page" && $(".lv-page");
+  const again = () => { if (alive()) loadStatus(true).then(() => { if (alive()) { const y = scrollY; draw().then(() => scrollTo(0, y)); } }); };
   window.addEventListener("nk:daily", again);
+  window.addEventListener("nk:exp", again);
   await draw();
-  return () => window.removeEventListener("nk:daily", again);
+  if (user) {
+    const before = JSON.stringify(savedStatus());
+    loadStatus().then((st) => { if (st && JSON.stringify(st) !== before && alive() && tab === "sum") { const y = scrollY; draw().then(() => scrollTo(0, y)); } });
+  }
+  return () => { window.removeEventListener("nk:daily", again); window.removeEventListener("nk:exp", again); };
 }
 
 /* ---------- Rekap bacaan ---------- */
@@ -250,7 +261,7 @@ export async function vRecap(view, L) {
   let days = 7, data = null, busy = false;
   const cache = {};
   const draw = () => {
-    const p = S.state.profile, lv = S.levelOf(p), st = cachedStatus();
+    const p = S.state.profile, lv = S.levelOf(p), st = savedStatus();
     const maxD = Math.max(1, ...(data?.per_day || [0]));
     view.innerHTML = L.topbar("Rekap bacaan", `<button class="icon-btn" data-act="reload" aria-label="Muat ulang">${icon("refresh", 20)}</button>`) + `<div class="px col g14 mt6">
   <div class="seg s2" role="tablist">${[[7, "Mingguan", "7 hari terakhir"], [30, "Bulanan", "30 hari terakhir"]].map(([k, n, s]) =>
@@ -308,7 +319,7 @@ const rr = (c, x, y, w, h, r) => { c.beginPath(); c.roundRect ? c.roundRect(x, y
 function fit(c, text, max) { let t = String(text || ""); if (c.measureText(t).width <= max) return t; while (t && c.measureText(t + "…").width > max) t = t.slice(0, -1); return t + "…"; }
 
 export async function drawRecap(data, days) {
-  const p = S.state.profile, lv = S.levelOf(p), st = cachedStatus();
+  const p = S.state.profile, lv = S.levelOf(p), st = savedStatus();
   const W = 1080, H = 1920, F = getComputedStyle(document.body).getPropertyValue("--font") || "sans-serif";
   try { await document.fonts?.ready; } catch {}
   const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
