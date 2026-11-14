@@ -13,7 +13,7 @@ const TEMA = new Set(["fantasy", "dark fantasy", "isekai", "harem", "reverse har
   "crossdressing", "beasts", "knight", "sword fight", "sword master", "swormanship", "blacksmith", "genius", "strategy", "slow life", "gyaru", "fight"]);
 // label format (tipe sudah dipilih di bagian Tipe komik)
 const HIDE = new Set(["comic", "manga", "manhwa", "manhua", "webtoon", "webtoons", "web comic", "long strip", "mangatoon", "latest", "dra", "shoujo(g)", "entertainment"]);
-export const GROUPS = [["genre", "Genre", "Romance, slice of life, komedi, dll."], ["demo", "Demografis", "Target pembaca"], ["tema", "Tema", "Fantasy, isekai, harem, dll."], ["konten", "Konten", "Konten dewasa / sensitif"]];
+export const GROUPS = [["genre", "Genre", "Romance, slice of life, komedi, dan lainnya"], ["demo", "Demografis", "Target pembaca: shounen, seinen, josei, dll."], ["tema", "Tema", "Fantasy, isekai, harem, dan lainnya"], ["konten", "Konten", "Konten dewasa atau sensitif"]];
 export function groupGenres(list) {
   const g = { genre: [], demo: [], tema: [], konten: [] };
   for (const x of list || []) {
@@ -43,30 +43,44 @@ const TYPES = [["", "Semua"], ["manga", "Manga"], ["manhwa", "Manhwa"], ["manhua
 // kartu filter; onApply({type, status, genres}) dipanggil saat "Terapkan filter"
 export function openFilter(src, cur, onApply) {
   let st = { type: cur.type || "", status: cur.status || "", genres: [...(cur.genres || [])] }, data = null, err = null;
+  const open = {}; // grup yang sedang dibuka penuh
+  const SHOW = 9;
   const host = document.createElement("div");
   host.className = "flt-host";
   document.body.append(host);
   document.body.classList.add("flt-open");
   const close = () => { host.classList.add("out"); document.body.classList.remove("flt-open"); setTimeout(() => host.remove(), 200); };
-  const chip = (on, act, v, label, dis = false) => `<button class="fchip ${on ? "on" : ""}" aria-pressed="${on}" data-f="${act}" data-v="${esc(v)}" ${dis ? "disabled" : ""}>${on ? icon("check", 14, 2.6) : ""}${esc(label)}</button>`;
+  const seg = (act, list, val) => `<div class="fseg" style="--n:${list.length}" role="radiogroup">${list.map(([v, l]) => `<button role="radio" aria-checked="${val === v}" data-f="${act}" data-v="${esc(v)}">${esc(l)}</button>`).join("")}</div>`;
+  const tile = (x, on, dis) => `<button class="ftile ${on ? "on" : ""}" aria-pressed="${on}" data-f="g" data-v="${esc(x.id)}" ${dis ? "disabled" : ""}>${esc(x.name)}${on ? `<span class="fck">${icon("check", 11, 3.2)}</span>` : ""}</button>`;
+  const head = (title, sub, c = 0) => `<div class="fsec-h"><span class="col g4 grow"><b>${title}${c ? `<span class="fcount">${c}</span>` : ""}</b><span class="mu xs">${sub}</span></span></div>`;
   const draw = () => {
     const max = data?.maxGenres || 10, full = st.genres.length >= max;
     const groups = data ? groupGenres(data.genres) : null;
     const n = activeCount(st);
     const body = host.querySelector(".flt-body"), y = body ? body.scrollTop : 0;
+    const groupHtml = (k, title, sub) => {
+      const list = groups[k]; if (!list.length) return "";
+      const sel = list.filter((x) => st.genres.includes(x.id));
+      // yang dipilih selalu terlihat walau grup diringkas
+      const shown = open[k] || list.length <= SHOW + 3 ? list : [...sel, ...list.filter((x) => !sel.includes(x)).slice(0, Math.max(0, SHOW - sel.length))];
+      return `<section class="fsec ${k === "konten" ? "warn" : ""}">${head(title, sub, sel.length)}
+        <div class="fgrid">${shown.map((x) => tile(x, st.genres.includes(x.id), full && !st.genres.includes(x.id))).join("")}</div>
+        ${list.length > SHOW + 3 ? `<button class="fmore ${open[k] ? "open" : ""}" data-f="more" data-v="${k}">${open[k] ? "Ringkas" : `Lihat semua ${list.length}`}${icon("chev", 15, 2.2)}</button>` : ""}</section>`;
+    };
     host.innerHTML = `<button class="flt-bg" data-f="close" aria-label="Tutup filter"></button>
     <div class="flt-card" role="dialog" aria-label="Filter komik">
-      <div class="flt-h"><span class="col grow g2"><b>Filter</b><span class="mu xs">Sesuai komik yang ada di ${esc(srcName(src))}</span></span><button class="x-btn" data-f="close" aria-label="Tutup">${icon("x", 16, 2.2)}</button></div>
+      <span class="flt-grab" aria-hidden="true"></span>
+      <div class="flt-h"><span class="col grow g4"><span class="row g8"><b>Filter</b><span class="tag-s">${esc(srcName(src))}</span></span><span class="mu xs">Hanya pilihan yang tersedia di sumber ini</span></span>
+        <button class="x-btn" data-f="close" aria-label="Tutup">${icon("x", 16, 2.2)}</button></div>
       <div class="flt-body">
-        <section><h3>Tipe komik</h3><div class="fchips">${TYPES.map(([v, l]) => chip(st.type === v, "type", v, l)).join("")}</div></section>
-        <section><h3>Status</h3><div class="fchips">${chip(!st.status, "status", "", "Semua")}${(data?.status || ["ongoing", "completed"]).map((v) => chip(st.status === v, "status", v, STATUS_NAME[v] || v)).join("")}</div></section>
+        <section class="fsec">${head("Tipe komik", "Asal komik")}${seg("type", TYPES, st.type)}</section>
+        <section class="fsec">${head("Status", "Masih berjalan atau sudah tamat")}${seg("status", [["", "Semua"], ...(data?.status || ["ongoing", "completed"]).map((v) => [v, STATUS_NAME[v] || v])], st.status)}</section>
         ${err ? `<div class="note">${icon("info", 18)}<span>${esc(err)}</span></div>`
-        : !groups ? `<div class="flt-load">${Array.from({ length: 10 }, (_, i) => `<span class="sk" style="width:${60 + ((i * 37) % 50)}px"></span>`).join("")}</div>`
-        : `${max < 10 ? `<div class="note gold-n">${icon("info", 18)}<span>${esc(srcName(src))} hanya bisa memfilter <b>${max} genre/tag</b> sekaligus${full ? " — hapus salah satu untuk memilih yang lain" : ""}.</span></div>` : ""}
-          ${GROUPS.map(([k, title, sub]) => groups[k].length ? `<section><h3>${title}${(() => { const c = groups[k].filter((x) => st.genres.includes(x.id)).length; return c ? ` <span class="fcount">${c}</span>` : ""; })()}<span class="mu xs">${sub}</span></h3>
-            <div class="fchips ${k === "konten" ? "warn" : ""}">${groups[k].map((x) => chip(st.genres.includes(x.id), "g", x.id, x.name, full && !st.genres.includes(x.id))).join("")}</div></section>` : "").join("")}`}
+        : !groups ? `<div class="fgrid flt-load">${Array.from({ length: 9 }, () => `<span class="sk"></span>`).join("")}</div>`
+        : `${max < 10 ? `<div class="flt-lim ${full ? "full" : ""}">${icon("info", 16)}<span>${full ? `Sudah ${max} dari ${max} genre/tag. Hapus salah satu untuk ganti.` : `${esc(srcName(src))} maksimal <b>${max} genre/tag</b> sekaligus · dipilih ${st.genres.length}/${max}`}</span></div>` : ""}
+          ${GROUPS.map(([k, title, sub]) => groupHtml(k, title, sub)).join("")}`}
       </div>
-      <div class="flt-f"><button class="btn ghost" data-f="reset" ${n ? "" : "disabled"}>Reset</button><button class="btn primary grow" data-f="apply">Terapkan filter${n ? ` (${n})` : ""}</button></div>
+      <div class="flt-f"><button class="btn ghost" data-f="reset" ${n ? "" : "disabled"}>${icon("refresh", 17, 2)}Reset</button><button class="btn primary grow" data-f="apply">Terapkan filter${n ? ` <span class="fbadge">${n}</span>` : ""}</button></div>
     </div>`;
     const nb = host.querySelector(".flt-body"); if (nb) nb.scrollTop = y;
   };
@@ -82,6 +96,7 @@ export function openFilter(src, cur, onApply) {
       else return toast(`Maksimal ${data?.maxGenres} genre/tag di ${srcName(src)}`);
     }
     if (a === "reset") st = { type: "", status: "", genres: [] };
+    if (a === "more") open[v] = !open[v];
     if (a === "apply") { close(); onApply(st); return; }
     draw();
   });
