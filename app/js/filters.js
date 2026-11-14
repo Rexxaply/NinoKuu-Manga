@@ -67,21 +67,25 @@ export function openFilter(src, cur, onApply) {
         <div class="fgrid">${shown.map((x) => tile(x, st.genres.includes(x.id), full && !st.genres.includes(x.id))).join("")}</div>
         ${list.length > SHOW + 3 ? `<button class="fmore ${open[k] ? "open" : ""}" data-f="more" data-v="${k}">${open[k] ? "Ringkas" : `Lihat semua ${list.length}`}${icon("chev", 15, 2.2)}</button>` : ""}</section>`;
     };
-    host.innerHTML = `<button class="flt-bg" data-f="close" aria-label="Tutup filter"></button>
-    <div class="flt-card" role="dialog" aria-label="Filter komik">
-      <span class="flt-grab" aria-hidden="true"></span>
-      <div class="flt-h"><span class="col grow g4"><span class="row g8"><b>Filter</b><span class="tag-s">${esc(srcName(src))}</span></span><span class="mu xs">Hanya pilihan yang tersedia di sumber ini</span></span>
-        <button class="x-btn" data-f="close" aria-label="Tutup">${icon("x", 16, 2.2)}</button></div>
-      <div class="flt-body">
-        <section class="fsec">${head("Tipe komik", "Asal komik")}${seg("type", TYPES, st.type)}</section>
+    const bodyHtml = `        <section class="fsec">${head("Tipe komik", "Asal komik")}${seg("type", TYPES, st.type)}</section>
         <section class="fsec">${head("Status", "Masih berjalan atau sudah tamat")}${seg("status", [["", "Semua"], ...(data?.status || ["ongoing", "completed"]).map((v) => [v, STATUS_NAME[v] || v])], st.status)}</section>
         ${err ? `<div class="note">${icon("info", 18)}<span>${esc(err)}</span></div>`
         : !groups ? `<div class="fgrid flt-load">${Array.from({ length: 9 }, () => `<span class="sk"></span>`).join("")}</div>`
         : `${max < 10 ? `<div class="flt-lim ${full ? "full" : ""}">${icon("info", 16)}<span>${full ? `Sudah ${max} dari ${max} genre/tag. Hapus salah satu untuk ganti.` : `${esc(srcName(src))} maksimal <b>${max} genre/tag</b> sekaligus · dipilih ${st.genres.length}/${max}`}</span></div>` : ""}
-          ${GROUPS.map(([k, title, sub]) => groupHtml(k, title, sub)).join("")}`}
-      </div>
-      <div class="flt-f"><button class="btn ghost" data-f="reset" ${n ? "" : "disabled"}>${icon("refresh", 17, 2)}Reset</button><button class="btn primary grow" data-f="apply">Terapkan filter${n ? ` <span class="fbadge">${n}</span>` : ""}</button></div>
+          ${GROUPS.map(([k, title, sub]) => groupHtml(k, title, sub)).join("")}`}`;
+    const footHtml = `<button class="btn ghost" data-f="reset" ${n ? "" : "disabled"}>${icon("refresh", 17, 2)}Reset</button><button class="btn primary grow" data-f="apply">Terapkan filter${n ? ` <span class="fbadge">${n}</span>` : ""}</button>`;
+    // kartu dibuat sekali; ketukan berikutnya hanya memperbarui isi (tanpa animasi muncul ulang)
+    if (!host.querySelector(".flt-card")) {
+      host.innerHTML = `<button class="flt-bg" data-f="close" aria-label="Tutup filter"></button>
+    <div class="flt-card" role="dialog" aria-label="Filter komik">
+      <span class="flt-grab" aria-hidden="true"></span>
+      <div class="flt-h"><span class="col grow g4"><span class="row g8"><b>Filter</b><span class="tag-s">${esc(srcName(src))}</span></span><span class="mu xs">Hanya pilihan yang tersedia di sumber ini</span></span>
+        <button class="x-btn" data-f="close" aria-label="Tutup">${icon("x", 16, 2.2)}</button></div>
+      <div class="flt-body"></div><div class="flt-f"></div>
     </div>`;
+    }
+    host.querySelector(".flt-body").innerHTML = bodyHtml;
+    host.querySelector(".flt-f").innerHTML = footHtml;
     const nb = host.querySelector(".flt-body"); if (nb) nb.scrollTop = y;
   };
   host.addEventListener("click", (e) => {
