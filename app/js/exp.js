@@ -284,7 +284,7 @@ export async function vRecap(view, L) {
     <div class="rc-chart ${days === 7 ? "w" : "m"}" aria-label="Chapter per hari">${(data.per_day || []).map((n, i, a) => { const L = chartLabel(data.from, i, a.length);
       return `<span class="rc-col"><span class="rc-bar">${days === 7 && n ? `<em>${n}</em>` : ""}<i style="height:${n ? Math.max(8, (n / maxD) * 100) : 3}%" class="${n ? "on" : ""}"></i></span><small>${L ? L.replace("\n", "<br>") : ""}</small></span>`; }).join("")}</div>
     ${data.top?.length ? `<span class="rc-sub">Paling sering dibaca</span><div class="rc-top">${data.top.map((t, i) => `<a class="rc-tc" href="#/c/${esc(t.source)}/${encodeURIComponent(t.comic_id)}">
-      <span class="rc-cv">${t.cover ? `<img src="${esc(t.cover)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}<i>${i + 1}</i></span>
+      <span class="rc-cv">${t.cover ? `<img src="${esc(t.cover)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-rm>` : ""}<i>${i + 1}</i></span>
       <span class="t2 xs b">${esc(t.title || t.comic_id)}</span><span class="mu xs">${num(t.n)} chapter</span></a>`).join("")}</div>` : `<span class="mu sm">Belum ada chapter yang dibaca sampai habis di periode ini.</span>`}
     <div class="rc-mini">${[["star", num(data.exp), "EXP"], ["thumb", num(data.likes), "Like"], ["bookmark", num(data.saved), "Koleksi"], ["cal", `${num(data.active)}/${days}`, "Hari aktif"]].map(([ic, v, n]) =>
       `<span><i>${icon(ic, 17, 2)}</i><b>${v}</b><small>${n}</small></span>`).join("")}</div>

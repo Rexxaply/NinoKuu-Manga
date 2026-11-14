@@ -32,3 +32,6 @@ Thumbs.db
 .vscode/
 .idea/
 *.log
+
+# Register audit keamanan (peta kelemahan aplikasi) — jangan di-commit di repo publik
+.security-audit/

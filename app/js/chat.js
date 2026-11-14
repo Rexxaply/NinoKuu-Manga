@@ -40,13 +40,13 @@ export const watchAvatars = (root) => { if (avIO) root.querySelectorAll(".m-avc:
 // pembatas tanggal (WIB), contoh: 15 November 2026
 const dayKey = (iso) => new Date(Date.parse(iso) + 7 * 3600e3).toISOString().slice(0, 10);
 const dayLabel = (iso) => new Date(iso).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Jakarta" });
-const avPhoto = (m) => (m.avatar_path ? `<img class="av-img" src="${esc(api.publicUrl("avatars", m.avatar_path))}" alt="" loading="lazy" decoding="async" onerror="this.remove()">` : "");
+const avPhoto = (m) => (m.avatar_path ? `<img class="av-img" src="${esc(api.publicUrl("avatars", m.avatar_path))}" alt="" loading="lazy" decoding="async" data-rm>` : "");
 const chatAv = (m, lv) => {
   const ini = esc((m.name || "?")[0].toUpperCase()), ph = avPhoto(m), fr = FR[lv.tier];
   if (!fr) return `<span class="m-av" style="background:${RING[lv.tier]}"><span>${ini}${ph}</span></span>`;
   return `<span class="m-avc t${lv.tier}"><img class="m-fr" src="${fr}" alt="" aria-hidden="true"><span class="m-in">${ini}${ph}</span></span>`;
 };
-const avInner = (m) => esc((m.name || "?")[0].toUpperCase()) + (m.avatar_path ? `<img class="av-img" src="${esc(api.publicUrl("avatars", m.avatar_path))}" alt="" loading="lazy" decoding="async" onerror="this.remove()">` : "");
+const avInner = (m) => esc((m.name || "?")[0].toUpperCase()) + (m.avatar_path ? `<img class="av-img" src="${esc(api.publicUrl("avatars", m.avatar_path))}" alt="" loading="lazy" decoding="async" data-rm>` : "");
 const plain = (t) => String(t || "").replace(/\|\|([\s\S]+?)\|\|/g, "$1");
 
 /* ---------- kompres gambar sebelum diunggah (hemat kuota penyimpanan) ---------- */

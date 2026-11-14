@@ -253,7 +253,7 @@ async function openNotif() {
     <div class="pop-h"><span class="cap m0">Notifikasi</span>${unread ? `<button class="link-red sm" data-n="readall">Tandai dibaca</button>` : ""}</div>
     <div class="pop-list">${!S.loggedIn() ? `<p class="pop-empty">Masuk untuk menerima notifikasi chapter baru dari komik yang loncengnya kamu nyalakan.<br><a class="gold b" href="#/more">Masuk</a></p>`
       : notifs.length ? notifs.map((x) => `<button class="pop-i ${readSet.has(x.id) ? "" : "unread"}" data-n="open" data-id="${x.id}">
-          <span class="pop-cv">${x.cover ? `<img src="${esc(x.cover)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : icon(x.comic_id ? "book" : "mega", 15)}</span>
+          <span class="pop-cv">${x.cover ? `<img src="${esc(x.cover)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-rm>` : icon(x.comic_id ? "book" : "mega", 15)}</span>
           <span class="rc-mid g1"><span class="t1 pop-t">${esc(x.title)}</span><span class="t1 mu xs">${esc(x.body || "")} · ${esc(ago(x.created_at))}</span></span>
           ${readSet.has(x.id) ? "" : `<span class="dot" aria-label="Belum dibaca"></span>`}</button>`).join("")
       : `<p class="pop-empty">Belum ada notifikasi. Nyalakan lonceng di info komik.</p>`}</div>
@@ -955,7 +955,7 @@ const avatarHtml = (p, lv, size = 56, opt = {}) => {
   const ini = esc((opt.ini || p?.name || "?").trim()[0]?.toUpperCase() || "?");
   const tier = opt.tier ?? lv.tier;
   // foto profil ditumpuk di atas inisial (bila gagal dimuat, inisial tetap terlihat)
-  const photo = p?.avatar_path ? `<img class="av-img" src="${esc(api.publicUrl("avatars", p.avatar_path))}" alt="" decoding="async" onerror="this.remove()">` : "";
+  const photo = p?.avatar_path ? `<img class="av-img" src="${esc(api.publicUrl("avatars", p.avatar_path))}" alt="" decoding="async" data-rm>` : "";
   let tpl = AVM?.AV[size][tier];
   if (tpl && photo) tpl = tpl.replace("position:relative;font-family", "position:static;font-family");
   if (tpl) return `<span class="av-wrap s${size}">${tpl.replaceAll("%I%", ini + photo).replaceAll("%L%", opt.noMedal ? "" : String(opt.lv ?? lv.lv))}</span>`;

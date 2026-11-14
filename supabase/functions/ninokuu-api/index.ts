@@ -11,7 +11,7 @@
 // kalau satu sumber rusak, isi secret KOMIKU_SITE / KIRYUU_SITE / SHNGM_SITE / WEST_SITE dengan domain barunya.
 import { createClient } from "npm:@supabase/supabase-js@2.76.1";
 
-const VERSION = "1.2.0";
+const VERSION = "1.2.1";
 const NAME = "ninokuu-api";
 const SOURCES = ["komiku", "kiryuu", "shinigami", "westmanga"] as const;
 type Source = typeof SOURCES[number];
@@ -59,6 +59,21 @@ async function fetchT(u: string | URL, init: RequestInit, timeoutMs?: number) {
   catch (e: any) { throw webErr(e?.name === "AbortError" ? `timeout ${timeoutMs} ms` : `jaringan: ${e?.message || e}`); }
   finally { if (t) clearTimeout(t); }
 }
+// ikuti pengalihan (redirect) sendiri, maks. 5 kali: setiap tujuan dicek safeUrl SEBELUM diminta,
+// jadi situs luar tidak bisa mengalihkan server ke alamat internal
+async function fetchSafe(u: URL, init: RequestInit, timeoutMs?: number): Promise<{ r: Response; url: URL }> {
+  let cur = u, opt: RequestInit = { ...init, redirect: "manual" };
+  for (let hop = 0; hop <= 5; hop++) {
+    const r = await fetchT(cur, opt, timeoutMs);
+    const loc = r.status >= 300 && r.status < 400 ? r.headers.get("Location") : null;
+    if (!loc) return { r, url: cur };
+    await r.body?.cancel().catch(() => {});
+    cur = safeUrl(new URL(loc, cur).href);
+    const m = String(opt.method || "GET").toUpperCase();
+    if (r.status === 303 || ((r.status === 301 || r.status === 302) && m !== "GET" && m !== "HEAD")) opt = { ...opt, method: "GET", body: undefined };
+  }
+  throw webErr("Terlalu banyak pengalihan (redirect)", 400);
+}
 // tolak alamat lokal/privat agar server tidak bisa dipakai mengintip jaringan internal
 function safeUrl(raw: string): URL {
   let u: URL;
@@ -81,10 +96,9 @@ async function webFetch(raw: string | URL, opt: { referer?: string; json?: boole
     ...(opt.referer ? { Referer: opt.referer } : {}),
     ...(opt.headers || {}),
   };
-  let r: Response;
-  try { r = await fetchT(u, { method: opt.method || "GET", headers, body: opt.body, redirect: "follow" }, opt.timeout || 15000); }
-  catch (e: any) { throw webErr(`${u.hostname} tidak bisa dihubungi (${e.message})`); }
-  if (r.url) safeUrl(r.url);
+  let r: Response, final: URL;
+  try { ({ r, url: final } = await fetchSafe(u, { method: opt.method || "GET", headers, body: opt.body }, opt.timeout || 15000)); }
+  catch (e: any) { if (e?.status === 400) throw e; throw webErr(`${u.hostname} tidak bisa dihubungi (${e.message})`); }
   if (Number(r.headers.get("content-length") || 0) > WEB_MAX_HTML) throw webErr("Halaman terlalu besar");
   const text = await r.text();
   if (text.length > WEB_MAX_HTML) throw webErr("Halaman terlalu besar");
@@ -95,7 +109,7 @@ async function webFetch(raw: string | URL, opt: { referer?: string; json?: boole
     throw webErr(`${u.hostname} membalas HTTP ${r.status}`, r.status === 429 ? 429 : 502);
   }
   if (/<title>\s*Just a moment/i.test(text)) throw Object.assign(webErr(`${u.hostname} dilindungi Cloudflare dan menolak server.`, 403), { blocked: true });
-  return { text, url: r.url || u.href, json: () => { try { return JSON.parse(text); } catch { throw webErr("Balasan server bukan JSON"); } } };
+  return { text, url: final.href, json: () => { try { return JSON.parse(text); } catch { throw webErr("Balasan server bukan JSON"); } } };
 }
 
 /* ---------- tanda tangan URL gambar ---------- */
@@ -120,7 +134,7 @@ async function proxyImage(u: string, ref: string, sig: string, cover: boolean) {
   if (!u || !sig || !(await checkSig(u, ref, sig, cover))) return json({ error: "tanda tangan gambar tidak valid" }, 403);
   let url: URL;
   try { url = safeUrl(u); } catch (e: any) { return json({ error: e.message }, 400); }
-  const r = await fetchT(url, { headers: { "User-Agent": WEB_UA, Accept: "image/avif,image/webp,image/*,*/*;q=0.8", ...(ref ? { Referer: ref } : {}) }, redirect: "follow" }, 25000).catch(() => null);
+  const r = await fetchSafe(url, { headers: { "User-Agent": WEB_UA, Accept: "image/avif,image/webp,image/*,*/*;q=0.8", ...(ref ? { Referer: ref } : {}) } }, 25000).then((x) => x.r).catch(() => null);
   if (!r || !r.ok) return json({ error: `gagal memuat gambar${r ? " (" + r.status + ")" : ""}` }, 502);
   const type = r.headers.get("Content-Type") || "";
   if (!/^image\//i.test(type) && !/octet-stream/i.test(type)) return json({ error: "bukan file gambar" }, 415);

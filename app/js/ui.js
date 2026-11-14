@@ -40,7 +40,7 @@ export const typeName = (t) => TYPES.find((x) => x.id === t)?.name || "";
 
 // sampul dengan cadangan huruf awal bila gambar gagal dimuat
 export const cover = (url, title, cls = "") =>
-  `<span class="cover ${cls}" data-ini="${esc((title || "?").trim()[0] || "?")}">${url ? `<img src="${esc(url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}</span>`;
+  `<span class="cover ${cls}" data-ini="${esc((title || "?").trim()[0] || "?")}">${url ? `<img src="${esc(url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-rm>` : ""}</span>`;
 
 export const comicHref = (src, id) => `#/c/${src}/${encodeURIComponent(id)}`;
 export const readHref = (src, id, ch) => `#/r/${src}/${encodeURIComponent(id)}/${encodeURIComponent(ch)}`;
@@ -65,3 +65,10 @@ export const loading = (n = 6, cls = "sk-row") => `<div class="sk-wrap">${Array.
 // Mode Ringan (body.nk-lite) mematikan animasinya.
 export const rankBadge = (lv, cls = "") => `<span class="rk-b t${lv.tier} ${cls}"><span class="rk-tx">${esc(lv.rank)}</span></span>`;
 export const rankText = (name, tier) => `<b class="rk-t t${tier}"><span class="rk-tx">${esc(name)}</span></b>`;
+
+// CSP (script-src 'self') memblokir atribut onerror inline, jadi gambar bertanda data-rm yang gagal dimuat
+// (sampul, avatar, gambar chat) dihapus di sini supaya inisial/latar cadangan terlihat.
+document.addEventListener("error", (e) => {
+  const t = e.target;
+  if (t instanceof HTMLImageElement && t.hasAttribute("data-rm")) t.remove();
+}, true);

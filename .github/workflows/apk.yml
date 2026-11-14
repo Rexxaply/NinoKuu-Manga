@@ -29,9 +29,9 @@ jobs:
     defaults:
       run:
         working-directory: apk
+    # Rahasia TIDAK dipasang di level job: hanya langkah yang butuh yang menerimanya,
+    # supaya skrip paket npm (npm install) tidak bisa membaca kata sandi kunci APK.
     env:
-      GSJ: ${{ secrets.GOOGLE_SERVICES_JSON }}
-      KS_PASS: ${{ secrets.APK_KEYSTORE_PASSWORD }}
       APP_ID_VAR: ${{ vars.APP_ID }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -46,6 +46,9 @@ jobs:
           java-version: 21
 
       - name: Periksa kunci dan secret
+        env:
+          GSJ: ${{ secrets.GOOGLE_SERVICES_JSON }}
+          KS_PASS: ${{ secrets.APK_KEYSTORE_PASSWORD }}
         run: |
           set -e
           if [ ! -f ninokuu.keystore.enc ]; then
@@ -60,6 +63,8 @@ jobs:
           echo "KS_FILE=$RUNNER_TEMP/ninokuu.p12" >> "$GITHUB_ENV"
 
       - name: Nama paket dari google-services.json
+        env:
+          GSJ: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
           set -e
           printf '%s' "$GSJ" > google-services.json
@@ -143,7 +148,12 @@ jobs:
             m = m.replace("</application>", `    <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/ic_stat_ninokuu" />\n        <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="ninokuu" />\n        <meta-data android:name="com.google.firebase.messaging.default_notification_color" android:resource="@color/ninokuu_red" />\n    </application>`);
             // layar menyusut saat keyboard muncul (kolom chat tidak tertutup keyboard)
             m = m.replace(/<activity\b/, `<activity\n            android:screenOrientation="portrait"` + (m.includes("windowSoftInputMode") ? "" : `\n            android:windowSoftInputMode="adjustResize"`));
+            // keamanan: token sesi di penyimpanan WebView tidak ikut cadangan otomatis Android
+            m = m.replace(/android:allowBackup="true"/, `android:allowBackup="false"`);
+            if (!m.includes("android:allowBackup")) m = m.replace(/<application\b/, `<application\n        android:allowBackup="false"`);
+            if (!m.includes("android:fullBackupContent")) m = m.replace(/<application\b/, `<application\n        android:fullBackupContent="false"`);
             fs.writeFileSync(mf, m);'
+          grep -q 'android:allowBackup="false"' android/app/src/main/AndroidManifest.xml || { echo "::error::allowBackup belum false"; exit 1; }
           grep -n "ninokuu_bg" android/app/src/main/res/values/styles.xml | head -3
           grep -n "POST_NOTIFICATIONS\|ic_stat_ninokuu\|screenOrientation" android/app/src/main/AndroidManifest.xml
 
@@ -180,6 +190,8 @@ jobs:
 
       - name: Build APK
         working-directory: apk/android
+        env:
+          KS_PASS: ${{ secrets.APK_KEYSTORE_PASSWORD }}
         run: |
           set -e
           chmod +x gradlew
