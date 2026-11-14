@@ -4,6 +4,18 @@ Aplikasi baca manga, manhwa, dan manhua (PWA + APK Android).
 
 > Status: tahap persiapan. Desain UI/UX sudah ada di canvas Claude; kode aplikasi menyusul.
 
+## Database
+
+Jalankan di Supabase → **SQL Editor**, berurutan. Keduanya aman dijalankan ulang.
+
+1. [`supabase/sql/ninokuu-schema.sql`](supabase/sql/ninokuu-schema.sql) — profil & EXP, koleksi (+ lonceng per komik),
+   riwayat, pengaturan, perangkat notifikasi, kotak notifikasi (maks 30 / 7 hari), chat publik
+   (jeda 5 detik, laporan, sembunyi otomatis setelah 3 laporan), dan bucket `chat-images` (maks 30 MB, JPG/PNG/WEBP/GIF).
+2. [`supabase/sql/keepalive.sql`](supabase/sql/keepalive.sql) — lihat bagian berikut.
+
+Semua tabel memakai RLS. Hak bawaan `anon`/`authenticated` dicabut lalu diberikan seperlunya;
+EXP, notifikasi, dan status sembunyi pesan hanya diubah oleh trigger/fungsi di server.
+
 ## Menjaga Supabase tetap aktif (paket gratis)
 
 Supabase paket gratis menjeda proyek setelah 7 hari tanpa aktivitas. Repo ini punya
