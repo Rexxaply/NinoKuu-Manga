@@ -168,8 +168,8 @@ function ladderHtml(lv, L) {
     <span class="mu xs lh">Angka EXP = total yang dibutuhkan untuk mencapai level itu. Tiap level butuh 40 EXP lebih banyak dari level sebelumnya.</span></div>
   <div class="lad-row" id="ladRow">${chips.join("")}</div>
   <h2 class="cap">Tangga rank</h2>
-  <div class="group">${L.RANK_INFO.map(([n, a, b, c], i) => `<div class="rank-row ${i === lv.tier ? "me" : ""} ${i > lv.tier ? "lock" : ""}">${L.avatarHtml(S.state.profile, lv, 46, { tier: i, ini: S.state.profile?.name || n, noMedal: true })}
-      <span class="rc-mid"><b style="color:${c}">${n}</b><span class="mu xs">Lv ${a}–${b} · mulai ${num(totalFor(a))} EXP</span></span><span class="xs b ${i === lv.tier ? "gold" : i < lv.tier ? "ok" : "mu"}">${i === lv.tier ? "RANK-MU" : i < lv.tier ? "Terlewati" : "Terkunci"}</span></div>`).join("")}</div>`;
+  <div class="group">${L.RANK_INFO.map(([n, a, b, c, t], i) => `<div class="rank-row ${i === lv.ri ? "me" : ""} ${i > lv.ri ? "lock" : ""}">${L.avatarHtml(S.state.profile, lv, 46, { tier: t, ini: S.state.profile?.name || n, noMedal: true })}
+      <span class="rc-mid"><b style="color:${c}">${n}</b><span class="mu xs">Lv ${a}–${b} · mulai ${num(totalFor(a))} EXP</span></span><span class="xs b ${i === lv.ri ? "gold" : i < lv.ri ? "ok" : "mu"}">${i === lv.ri ? "RANK-MU" : i < lv.ri ? "Terlewati" : "Terkunci"}</span></div>`).join("")}</div>`;
 }
 
 const dayLabel = (iso) => {

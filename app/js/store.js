@@ -23,16 +23,22 @@ export const setSetting = (k, v) => { state.settings[k] = v; saveLocal(); emit()
 export const loggedIn = () => !!api.currentUser();
 
 /* ---------- level & rank ---------- */
-export const RANKS = ["Warrior", "Elite", "Grandmaster", "Epic", "Legend", "Mythic", "Honor", "Glory", "Immortal"];
-const STARTS = [1, 12, 23, 34, 45, 56, 67, 78, 89];
+// 8 rank. tier = bingkai avatar kosmik yang dipakai (bingkai 5 tidak dipakai lagi), ri = urutan rank.
+export const RANK_LIST = [
+  ["Peasant", 1, 12, "#AEB6C4", 0], ["Apprentice", 13, 24, "#F0BE84", 1], ["Adventurer", 25, 37, "#FFA36B", 2],
+  ["Fighter", 38, 50, "#6FC3F2", 3], ["Paladin", 51, 62, "#5DD39E", 4], ["Archmage", 63, 75, "#B48CFF", 6],
+  ["Hero of Legend", 76, 87, "#FF9CC0", 7], ["Dragon Emperor", 88, 99, "#F2B33D", 8],
+];
+export const RANKS = RANK_LIST.map((r) => r[0]);
 export const need = (lv) => 100 + lv * 40;
+const rankOf = (lv) => { let ri = 0; RANK_LIST.forEach((r, i) => { if (lv >= r[1]) ri = i; }); return ri; };
 export function levelOf(p = state.profile) {
-  if (!p) return { lv: 1, rank: RANKS[0], tier: 0, cur: 0, need: need(1), max: false };
-  if (p.role === "developer") return { lv: 99, rank: "Immortal", tier: 8, cur: 0, need: 0, max: true };
+  if (!p) return { lv: 1, rank: RANKS[0], tier: 0, ri: 0, cur: 0, need: need(1), max: false };
+  if (p.role === "developer") return { lv: 99, rank: RANKS[7], tier: 8, ri: 7, cur: 0, need: 0, max: true };
   let lv = 1, e = Math.max(0, Number(p.exp) || 0);
   while (lv < 99 && e >= need(lv)) { e -= need(lv); lv++; }
-  let tier = 0; STARTS.forEach((s, i) => { if (lv >= s) tier = i; });
-  return { lv, rank: RANKS[tier], tier, cur: e, need: need(lv), max: lv >= 99 };
+  const ri = rankOf(lv);
+  return { lv, rank: RANKS[ri], tier: RANK_LIST[ri][4], ri, cur: e, need: need(lv), max: lv >= 99 };
 }
 
 /* ---------- koleksi ---------- */

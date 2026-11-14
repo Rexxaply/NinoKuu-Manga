@@ -1133,7 +1133,7 @@ function startApp() {
 }
 
 /* ---------- halaman turunan Lainnya ---------- */
-const RANK_INFO = [["Warrior", 1, 11, "#AEB6C4"], ["Elite", 12, 22, "#F0BE84"], ["Grandmaster", 23, 33, "#FFA36B"], ["Epic", 34, 44, "#6FC3F2"], ["Legend", 45, 55, "#5DD39E"], ["Mythic", 56, 66, "#8FAEFF"], ["Honor", 67, 77, "#B48CFF"], ["Glory", 78, 88, "#FF9CC0"], ["Immortal", 89, 99, "#F2B33D"]];
+const RANK_INFO = S.RANK_LIST;
 async function vPage(name) {
   if (name === "dev") return vDev(view, ctx());
   const p = S.state.profile, lv = S.levelOf(p), user = api.currentUser();
