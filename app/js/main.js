@@ -7,7 +7,7 @@ import * as N from "./native.js";
 import { openFilter, activeCount, genreName, STATUS_NAME } from "./filters.js";
 import { vChat, vDev, roomFor, roomPreview, roomCount, miniMsg, bindSpoilers } from "./chat.js";
 import * as X from "./exp.js";
-import { esc, icon, $, $$, toast, ago, SOURCES, srcName, TYPES, typeName, cover, comicHref, readHref, greeting, errBox, loading } from "./ui.js";
+import { esc, icon, $, $$, toast, ago, SOURCES, srcName, TYPES, typeName, cover, comicHref, readHref, greeting, errBox, loading, rankBadge } from "./ui.js";
 
 const VERSION = window.NINOKUU_CONFIG?.VERSION || "1.0.0";
 const KIND_NAME = { mayor: "Pembaruan besar", minor: "Fitur baru", patch: "Perbaikan" };
@@ -952,7 +952,7 @@ const avatarHtml = (p, lv, size = 56, opt = {}) => {
   if (tpl) return `<span class="av-wrap s${size}">${tpl.replaceAll("%I%", ini + photo).replaceAll("%L%", opt.noMedal ? "" : String(opt.lv ?? lv.lv))}</span>`;
   return `<span class="avatar ${SIZE_CLS[size] || ""} t${tier}"><span>${ini}${photo}</span></span>`;
 };
-const rankPill = (lv, big = false) => `<span class="rank-pill ${big ? "big" : ""} t${lv.tier} ${lv.tier >= 4 ? "nk-bshine" : ""}" style="--d:${(2.4 - lv.tier * .15).toFixed(2)}s">${lv.rank}</span>`;
+const rankPill = (lv, big = false) => rankBadge(lv, big ? "big" : "");
 const badges = (p) => `${p?.verified ? `<span class="verif" title="Terverifikasi">${icon("check", 10, 3.2)}</span>` : ""}${p?.role === "developer" ? `<span class="pill-dev">DEV</span>` : p?.role === "moderator" ? `<span class="pill-mod">MOD</span>` : ""}`;
 async function vMore() {
   await loadAvatars();

@@ -669,7 +669,7 @@ body.nav-off .xp-pill.on { transform: none; }
   background: radial-gradient(closest-side, var(--s1) 78%, transparent 79%), conic-gradient(var(--gold) calc(var(--p) * 1%), rgba(255, 255, 255, .08) 0); }
 .lv-ring .col { align-items: center; } .lv-ring b { font-size: 34px; font-weight: 800; line-height: 1; } .lv-ring small { font-size: 9.5px; font-weight: 800; letter-spacing: .12em; color: var(--mu); }
 .lv-ring small:last-child { color: var(--gold); letter-spacing: 0; font-size: 11px; }
-.lv-card .rank-pill { align-self: flex-start; }
+.lv-card .rk-b { align-self: flex-start; }
 .lv-exp { font-size: 24px; font-weight: 800; }
 .lv-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .lv-stats > span { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 6px; border-radius: 14px; background: rgba(255, 255, 255, .05); text-align: center; }
@@ -740,3 +740,42 @@ body.nav-off .xp-pill.on { transform: none; }
 .rc-card > .row:first-child { padding: 12px 0 0 10px; gap: 26px; align-items: flex-start; }
 .rc-card > .row:first-child > .col { padding-top: 4px; }
 .lv-chip { white-space: nowrap; }
+
+/* ===== label rank: border & warna mengikuti bingkai avatar ===== */
+.rk-b, .rk-t { --rc: #C9D2E3; --rb: rgba(201, 210, 227, .14); --rl: rgba(201, 210, 227, .6); }
+.t1.rk-b, .t1.rk-t { --rc: #F0BE84; --rb: rgba(240, 190, 132, .14); --rl: rgba(240, 190, 132, .6); }
+.t2.rk-b, .t2.rk-t { --rc: #FF9A66; --rb: rgba(255, 154, 102, .14); --rl: rgba(255, 154, 102, .6); }
+.t3.rk-b, .t3.rk-t { --rc: #6FD0FF; --rb: rgba(111, 208, 255, .14); --rl: rgba(111, 208, 255, .6); }
+.t4.rk-b, .t4.rk-t { --rc: #4FE3B8; --rb: rgba(79, 227, 184, .14); --rl: rgba(79, 227, 184, .6); }
+.t5.rk-b, .t5.rk-t { --rc: #8FA5FF; --rb: rgba(143, 165, 255, .14); --rl: rgba(143, 165, 255, .6); }
+.t6.rk-b, .t6.rk-t { --rc: #C49BFF; --rb: rgba(196, 155, 255, .16); --rl: rgba(196, 155, 255, .7); }
+.t7.rk-b, .t7.rk-t { --rc: #FF8DBB; --rb: rgba(255, 141, 187, .16); --rl: rgba(255, 141, 187, .7); }
+.t8.rk-b, .t8.rk-t { --rc: #F7C14E; --rb: rgba(247, 193, 78, .18); --rl: rgba(247, 193, 78, .8); }
+.rk-b { position: relative; overflow: hidden; display: inline-flex; align-items: center; flex: none; padding: 2px 9px; border-radius: 8px; border: 1px solid var(--rl); background: var(--rb);
+  color: var(--rc); font-size: 10px; font-weight: 800; line-height: 1.45; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; }
+.rk-b.big { font-size: 12px; padding: 4px 14px; border-radius: 12px; }
+.rk-b.sm, .rk-b.xs { font-size: 9.5px; padding: 1px 7px; border-radius: 7px; }
+.rk-b.xs { align-self: flex-start; }
+.rk-t { position: relative; display: inline-block; color: var(--rc); }
+/* Archmage & Hero of Legend: kilauan cahaya berjalan di huruf */
+.t6 > .rk-tx, .t7 > .rk-tx { background: linear-gradient(100deg, var(--rc) 0 38%, #fff 50%, var(--rc) 62% 100%); background-size: 260% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent; animation: rkShim 2.8s linear infinite; }
+.rk-b.t6, .rk-b.t7 { box-shadow: 0 0 10px var(--rb), inset 0 0 6px var(--rb); }
+/* Dragon Emperor: huruf emas berkilau + titik emas berkedip yang berjalan */
+.t8 > .rk-tx { background: linear-gradient(100deg, #C8871A 0 28%, #FFF1BF 42%, #F7C14E 50%, #FFF6D8 58%, #C8871A 72% 100%); background-size: 240% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent; animation: rkShim 1.9s linear infinite; }
+.rk-b.t8 { background: linear-gradient(135deg, rgba(247, 193, 78, .22), rgba(224, 36, 43, .2)); box-shadow: 0 0 12px rgba(247, 193, 78, .45); }
+.rk-b.t8::before, .rk-b.t8::after, .rk-t.t8::before, .rk-t.t8::after { content: ""; position: absolute; top: 50%; left: -8px; width: 6px; height: 6px; margin-top: -3px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, #fff 0 22%, #FFE29A 45%, transparent 70%); box-shadow: 0 0 6px 2px rgba(255, 214, 110, .75); animation: rkRun 2.6s linear infinite; }
+.rk-b.t8::after, .rk-t.t8::after { top: 28%; animation-delay: 1.3s; animation-duration: 3.1s; }
+@keyframes rkShim { from { background-position: 130% 0; } to { background-position: -130% 0; } }
+@keyframes rkRun { 0% { left: -8px; opacity: 0; transform: scale(.4); } 12% { opacity: 1; transform: scale(1.15); } 30% { opacity: .25; transform: scale(.6); }
+  48% { opacity: 1; transform: scale(1.2); } 66% { opacity: .3; transform: scale(.6); } 84% { opacity: 1; transform: scale(1.1); } 100% { left: calc(100% + 2px); opacity: 0; transform: scale(.4); } }
+/* Mode Ringan: tanpa animasi & partikel (warna & border tetap) */
+body.nk-lite .rk-tx { animation: none !important; background-position: 50% 0; }
+body.nk-lite .rk-b.t8::before, body.nk-lite .rk-b.t8::after, body.nk-lite .rk-t.t8::before, body.nk-lite .rk-t.t8::after { display: none; }
+@media (prefers-reduced-motion: reduce) { .rk-tx { animation: none !important; } .rk-b.t8::before, .rk-b.t8::after, .rk-t.t8::before, .rk-t.t8::after { display: none; } }
+/* avatar berbingkai kosmik di chat & komentar */
+.m-avc { position: relative; width: 40px; height: 40px; flex: none; margin: 4px 6px 0 4px; }
+.cm .m-avc { margin: 4px 8px 0 4px; }
+.m-avc .av-img { border-radius: 50%; }

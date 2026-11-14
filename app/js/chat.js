@@ -1,7 +1,14 @@
 // Chat publik + Panel developer (mengikuti prototipe desain).
 import * as api from "./api.js";
 import * as S from "./store.js";
-import { esc, icon, $, $$, toast, ago } from "./ui.js";
+import { esc, icon, $, $$, toast, ago, rankBadge } from "./ui.js";
+
+// bingkai avatar kosmik (sama dengan profil) untuk chat & komentar; Mode Ringan menurunkan efeknya lewat avatars.css
+let AVM = null;
+const avReady = import("./avatars.js").then((m) => {
+  AVM = m;
+  if (!document.getElementById("nk-sprite")) { const d = document.createElement("div"); d.id = "nk-sprite"; d.innerHTML = m.SPRITE; document.body.prepend(d); }
+}).catch(() => {});
 
 const RANK_BG = ["linear-gradient(135deg,#7A8396,#4A5266)", "linear-gradient(135deg,#C48A50,#7A4A22)", "linear-gradient(135deg,#F0823F,#9C3A12)", "linear-gradient(135deg,#BFE8FF,#4AA5DE)", "linear-gradient(135deg,#5DD39E,#127048)", "linear-gradient(135deg,#6E95FF,#1C3FA8)", "linear-gradient(135deg,#B08AFF,#5A22C9)", "linear-gradient(135deg,#FF8AB2,#D61F63)", "linear-gradient(135deg,#FFD36B,#E0242B)"];
 const RANK_FG = ["#F2F4F8", "#FFF4E8", "#FFF1E8", "#06263A", "#04241A", "#fff", "#fff", "#fff", "#1A0A00"];
@@ -27,6 +34,12 @@ function bodyHtml(m) {
   return out + esc(t.slice(last));
 }
 // isi lingkaran avatar: foto profil bila ada, selain itu huruf awal nama
+const avPhoto = (m) => (m.avatar_path ? `<img class="av-img" src="${esc(api.publicUrl("avatars", m.avatar_path))}" alt="" loading="lazy" decoding="async" onerror="this.remove()">` : "");
+const chatAv = (m, lv) => {
+  const tpl = AVM?.AV?.[40]?.[lv.tier], ini = esc((m.name || "?")[0].toUpperCase()), ph = avPhoto(m);
+  if (!tpl) return `<span class="m-av" style="background:${RING[lv.tier]}"><span>${ini}${ph}</span></span>`;
+  return `<span class="m-avc">${(ph ? tpl.replace("position:relative;font-family", "position:static;font-family") : tpl).replaceAll("%I%", ini + ph).replaceAll("%L%", String(lv.lv))}</span>`;
+};
 const avInner = (m) => esc((m.name || "?")[0].toUpperCase()) + (m.avatar_path ? `<img class="av-img" src="${esc(api.publicUrl("avatars", m.avatar_path))}" alt="" loading="lazy" decoding="async" onerror="this.remove()">` : "");
 const plain = (t) => String(t || "").replace(/\|\|([\s\S]+?)\|\|/g, "$1");
 
@@ -73,8 +86,8 @@ export const roomCount = (room) => api.count(`chat_feed?select=id&room=eq.${enco
 // baris komentar ringkas (pratinjau di info komik)
 export function miniMsg(m) {
   const lv = S.levelOf({ exp: m.exp, role: m.role }), t = lv.tier;
-  return `<div class="cm"><span class="m-av" style="background:${RING[t]}"><span>${avInner(m)}</span></span>
-    <span class="rc-mid g4"><span class="m-head">${esc(m.name)}${m.verified ? VB : ""}${m.role === "developer" ? `<span class="pill-dev">DEV</span>` : m.role === "moderator" ? `<span class="pill-mod">MOD</span>` : ""}<span class="m-rank" style="background:${RANK_BG[t]};color:${RANK_FG[t]}">${lv.rank}</span><span class="mu xs cm-t">${esc(ago(m.created_at))}</span></span>
+  return `<div class="cm">${chatAv(m, lv)}
+    <span class="rc-mid g4"><span class="m-head">${esc(m.name)}${m.verified ? VB : ""}${m.role === "developer" ? `<span class="pill-dev">DEV</span>` : m.role === "moderator" ? `<span class="pill-mod">MOD</span>` : ""}${rankBadge(lv, "sm")}<span class="mu xs cm-t">${esc(ago(m.created_at))}</span></span>
     ${m.body ? `<span class="cm-b">${bodyHtml(m)}</span>` : ""}${m.image_path ? `<span class="mu xs row g4">${icon("img", 14)}Gambar${m.image_spoiler ? " · spoiler" : ""}</span>` : ""}</span></div>`;
 }
 export function bindSpoilers(el) {
@@ -82,6 +95,7 @@ export function bindSpoilers(el) {
 }
 export async function vChat(view, ctx, opt = {}) {
   const { topbar, setActs, go, back, loading } = ctx;
+  await avReady;
   const room = opt.room || "public", pub = room === "public";
   const rq = `room=eq.${encodeURIComponent(room)}`;
   let msgs = [], pin = null, att = null, timer = null, menuId = null, sending = false, lastSent = 0, selHandler = null;
@@ -116,9 +130,9 @@ export async function vChat(view, ctx, opt = {}) {
       const lv = S.levelOf({ exp: m.exp, role: m.role }), t = lv.tier;
       const hid = m.hidden;
       return `<div class="msg ${mine ? "mine" : ""}">
-      ${!mine ? `<span class="m-av" style="background:${RING[t]};visibility:${head ? "visible" : "hidden"}${t >= 6 ? ";box-shadow:0 0 10px rgba(242,179,61,.45)" : ""}"><span>${avInner(m)}</span></span>` : ""}
+      ${!mine ? (head ? chatAv(m, lv) : `<span class="m-avc"></span>`) : ""}
       <div class="m-col">
-        ${head ? `<span class="m-head">${esc(mine ? "Kamu" : m.name)}${m.verified ? VB : ""}${m.role === "developer" ? `<span class="pill-dev">DEV</span>` : m.role === "moderator" ? `<span class="pill-mod">MOD</span>` : ""}<span class="m-rank" style="background:${RANK_BG[t]};color:${RANK_FG[t]}">${lv.rank}</span></span>` : ""}
+        ${head ? `<span class="m-head">${esc(mine ? "Kamu" : m.name)}${m.verified ? VB : ""}${m.role === "developer" ? `<span class="pill-dev">DEV</span>` : m.role === "moderator" ? `<span class="pill-mod">MOD</span>` : ""}${rankBadge(lv, "sm")}</span>` : ""}
         ${m.image_path ? `<button class="m-img ${m.image_spoiler && !revealed.has(m.id + ":img") ? "spo" : ""}" data-c="img" data-id="${m.id}"><img src="${esc(api.publicUrl("chat-images", m.image_path))}" alt="" loading="lazy">${m.image_spoiler && !revealed.has(m.id + ":img") ? `<span class="spo-cap"><span class="spo-tag">${icon("eye", 15)}Spoiler</span><span class="xs">Ketuk untuk melihat</span></span>` : ""}</button>` : ""}
         ${m.body ? `<span class="bubble">${bodyHtml(m)}</span>` : ""}
         ${hid && staff ? `<span class="m-hid">${icon("eye", 13)}Disembunyikan dari pengguna · hanya terlihat staf</span>` : ""}

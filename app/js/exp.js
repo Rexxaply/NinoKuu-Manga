@@ -4,7 +4,7 @@
 import * as api from "./api.js";
 import * as S from "./store.js";
 import * as N from "./native.js";
-import { esc, icon, $, $$, toast } from "./ui.js";
+import { esc, icon, $, $$, toast, rankBadge, rankText } from "./ui.js";
 
 // login beruntun ke-n: minggu 1 = 10…40, tiap minggu kotak +10, mulai minggu ke-5 sama dengan minggu ke-4
 export const slotOf = (n) => ((n - 1) % 7) + 1;
@@ -161,7 +161,7 @@ function ladderHtml(lv, L) {
   const chips = [];
   for (let i = 1; i <= 99; i++) {
     const t = S.levelOf({ exp: totalFor(i) });
-    chips.push(`<div class="lad ${i === lv.lv ? "me" : ""} ${i < lv.lv ? "past" : ""}" data-lv="${i}"><b>Lv.${i}</b><span class="lad-r t${t.tier}">${t.rank}</span>
+    chips.push(`<div class="lad ${i === lv.lv ? "me" : ""} ${i < lv.lv ? "past" : ""}" data-lv="${i}"><b>Lv.${i}</b>${rankBadge(t, "xs")}
       <span class="xs">${num(totalFor(i))} EXP</span><span class="mu xs">${i < 99 ? `+${num(S.need(i))} ke Lv.${i + 1}` : "Maksimal"}</span></div>`);
   }
   return `<div class="card col g6"><span class="row g8"><span class="gold">${icon("chart", 18, 2)}</span><b>Tangga level</b></span>
@@ -169,7 +169,7 @@ function ladderHtml(lv, L) {
   <div class="lad-row" id="ladRow">${chips.join("")}</div>
   <h2 class="cap">Tangga rank</h2>
   <div class="group">${L.RANK_INFO.map(([n, a, b, c, t], i) => `<div class="rank-row ${i === lv.ri ? "me" : ""} ${i > lv.ri ? "lock" : ""}">${L.avatarHtml(S.state.profile, lv, 46, { tier: t, ini: S.state.profile?.name || n, noMedal: true })}
-      <span class="rc-mid"><b style="color:${c}">${n}</b><span class="mu xs">Lv ${a}–${b} · mulai ${num(totalFor(a))} EXP</span></span><span class="xs b ${i === lv.ri ? "gold" : i < lv.ri ? "ok" : "mu"}">${i === lv.ri ? "RANK-MU" : i < lv.ri ? "Terlewati" : "Terkunci"}</span></div>`).join("")}</div>`;
+      <span class="rc-mid">${rankText(n, t)}<span class="mu xs">Lv ${a}–${b} · mulai ${num(totalFor(a))} EXP</span></span><span class="xs b ${i === lv.ri ? "gold" : i < lv.ri ? "ok" : "mu"}">${i === lv.ri ? "RANK-MU" : i < lv.ri ? "Terlewati" : "Terkunci"}</span></div>`).join("")}</div>`;
 }
 
 const dayLabel = (iso) => {
@@ -411,7 +411,17 @@ export async function drawRecap(data, days) {
   const nx = avx + AS + 78;
   c.fillStyle = "#F2F4F8"; c.font = f(700, 44); c.fillText(fit(c, p?.name || "Pembaca", X + CW - 64 - nx), nx, avy + 60);
   const pill = (x, y, txt, bg, fg, ls = 0) => { c.font = f(800, 27); sp(ls); const w = c.measureText(txt).width + 36; rr(c, x, y, w, 50, 16); c.fillStyle = bg; c.fill(); c.fillStyle = fg; c.fillText(txt, x + 18, y + 35); sp(0); return w; };
-  let px = nx; px += pill(px, avy + 86, `Lv. ${lv.lv}`, "rgba(242,179,61,.18)", "#F2B33D") + 12; pill(px, avy + 86, lv.rank.toUpperCase(), "rgba(224,36,43,.22)", "#FF8A8E", 1.5);
+  let px = nx; px += pill(px, avy + 86, `Lv. ${lv.lv}`, "rgba(242,179,61,.18)", "#F2B33D") + 12;
+  // label rank: border & warna mengikuti bingkai (sama dengan di aplikasi)
+  const RC = ["#C9D2E3", "#F0BE84", "#FF9A66", "#6FD0FF", "#4FE3B8", "#8FA5FF", "#C49BFF", "#FF8DBB", "#F7C14E"][lv.tier] || "#C9D2E3";
+  { const txt = lv.rank.toUpperCase(); c.font = f(800, 27); sp(1.5); const w = c.measureText(txt).width + 36, y0 = avy + 86;
+    rr(c, px, y0, w, 50, 16); c.fillStyle = RC + "2E"; c.fill(); c.strokeStyle = RC + "B0"; c.lineWidth = 2.5; c.stroke();
+    if (lv.tier >= 6) { c.save(); c.shadowColor = RC; c.shadowBlur = 16; c.strokeStyle = RC + "60"; c.stroke(); c.restore(); }
+    if (lv.tier === 8) { const gg = c.createLinearGradient(px, 0, px + w, 0); gg.addColorStop(0, "#C8871A"); gg.addColorStop(.45, "#FFF1BF"); gg.addColorStop(.6, "#F7C14E"); gg.addColorStop(1, "#C8871A"); c.fillStyle = gg; }
+    else if (lv.tier >= 6) { const gg = c.createLinearGradient(px, 0, px + w, 0); gg.addColorStop(0, RC); gg.addColorStop(.5, "#ffffff"); gg.addColorStop(1, RC); c.fillStyle = gg; }
+    else c.fillStyle = RC;
+    c.fillText(txt, px + 18, y0 + 35); sp(0);
+    if (lv.tier === 8) [[.18, .25], [.72, .7], [.95, .3]].forEach(([fx, fy]) => { const sx2 = px + w * fx, sy2 = y0 + 50 * fy, rg = c.createRadialGradient(sx2, sy2, 0, sx2, sy2, 9); rg.addColorStop(0, "#fff"); rg.addColorStop(.35, "#FFE29A"); rg.addColorStop(1, "rgba(255,226,154,0)"); c.fillStyle = rg; c.beginPath(); c.arc(sx2, sy2, 9, 0, 7); c.fill(); }); }
   c.font = f(800, 32); const sTxt = `🔥 ${st?.streak ?? 0} hari`, sw = c.measureText(sTxt).width + 44;
   px = X + CW - 56 - sw; rr(c, px, Y + 44, sw, 56, 28); c.fillStyle = "rgba(255,120,60,.16)"; c.fill(); c.strokeStyle = "rgba(255,140,80,.5)"; c.lineWidth = 2; c.stroke(); c.fillStyle = "#FFB27A"; c.fillText(sTxt, px + 22, Y + 82);
   // judul (rata kiri, sama dengan kartu di aplikasi)

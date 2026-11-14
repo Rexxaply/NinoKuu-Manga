@@ -60,3 +60,8 @@ export function errBox(e, retryAct = "retry") {
     ${blocked ? `<a class="btn primary" href="${APK_URL}" target="_blank" rel="noopener">${icon("down", 16, 2)}Unduh APK Ninokuu</a>` : ""}<button class="btn ghost" data-act="${retryAct}">${icon("refresh", 16)}Coba lagi</button></div>`;
 }
 export const loading = (n = 6, cls = "sk-row") => `<div class="sk-wrap">${Array.from({ length: n }, () => `<div class="${cls} sk"></div>`).join("")}</div>`;
+
+// label rank: border & warna mengikuti bingkai avatar; Archmage/Hero of Legend berkilau, Dragon Emperor kilau emas berjalan.
+// Mode Ringan (body.nk-lite) mematikan animasinya.
+export const rankBadge = (lv, cls = "") => `<span class="rk-b t${lv.tier} ${cls}"><span class="rk-tx">${esc(lv.rank)}</span></span>`;
+export const rankText = (name, tier) => `<b class="rk-t t${tier}"><span class="rk-tx">${esc(name)}</span></b>`;
