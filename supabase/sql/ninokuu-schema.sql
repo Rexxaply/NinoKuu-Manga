@@ -858,4 +858,18 @@ $$;
 revoke all on function public.dev_cleanup(text, int) from public, anon;
 grant execute on function public.dev_cleanup(text, int) to authenticated;
 
+-- =====================================================================
+-- 12. Kunci server (Edge Function: cron, notifikasi HP, pembersihan) butuh akses penuh.
+--     Proyek Supabase baru tidak lagi memberi izin ini otomatis untuk tabel buatan sendiri;
+--     tanpa ini server tidak bisa membaca daftar HP (tes notifikasi: "HP belum terdaftar")
+--     dan tidak bisa menulis notifikasi ke lonceng. service_role hanya dipakai di server.
+-- =====================================================================
+grant usage on schema public to service_role;
+grant all on all tables in schema public to service_role;
+grant all on all sequences in schema public to service_role;
+grant execute on all functions in schema public to service_role;
+alter default privileges in schema public grant all on tables to service_role;
+alter default privileges in schema public grant all on sequences to service_role;
+alter default privileges in schema public grant execute on functions to service_role;
+
 commit;

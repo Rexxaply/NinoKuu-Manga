@@ -11,7 +11,7 @@
 // kalau satu sumber rusak, isi secret KOMIKU_SITE / KIRYUU_SITE / SHNGM_SITE / WEST_SITE dengan domain barunya.
 import { createClient } from "npm:@supabase/supabase-js@2.76.1";
 
-const VERSION = "1.1.1";
+const VERSION = "1.1.2";
 const NAME = "ninokuu-api";
 const SOURCES = ["komiku", "kiryuu", "shinigami", "westmanga"] as const;
 type Source = typeof SOURCES[number];
@@ -799,7 +799,10 @@ Deno.serve(async (req) => {
 
     // Tes notifikasi ke HP sendiri (Lainnya → Kirim tes / Panel developer)
     if (action === "test_push") {
-      const tokens = await tokensOf([user.id]);
+      // baca langsung (bukan tokensOf) supaya error izin database terlihat, tidak dikira "belum terdaftar"
+      const { data: devs, error: dbErr } = await admin.from("devices").select("token").eq("user_id", user.id);
+      if (dbErr) return json({ ok: false, devices: 0, error: `Server tidak bisa membaca tabel devices (${dbErr.message}). Jalankan ulang ninokuu-schema.sql di SQL Editor.` }, 500);
+      const tokens = (devs || []).map((d: any) => String(d.token));
       if (!tokens.length) return json({ ok: false, devices: 0, error: "HP ini belum terdaftar untuk notifikasi. Buka aplikasi, izinkan notifikasi, lalu coba lagi." }, 404);
       let r: { sent: number; errors: string[] };
       try { r = await pushTokens(tokens, { title: "Tes notifikasi Ninokuu", body: "Notifikasi chapter baru akan muncul seperti ini.", url: "ninokuu://home", tag: "test" }); }
