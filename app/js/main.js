@@ -24,6 +24,7 @@ const DEPTH = { home: 0, search: 0, fav: 0, more: 0, detail: 1, page: 1, chapter
 let prevName = "home", prevTab = "home";
 async function render() {
   if (cleanup) { try { cleanup(); } catch {} cleanup = null; }
+  closeNotif();
   scrollMem.set(route.key, window.scrollY);
   route = { ...parse(), key: location.hash || "#/home" };
   const owner = { detail: null, reader: null, chapters: null, page: "more" }[route.name];
@@ -85,7 +86,7 @@ async function vHome() {
   const last = S.history()[0];
   view.innerHTML = `
 <header class="top"><img class="logo" src="icons/logo.png" alt="Ninokuu" width="110" height="34">
-  <span class="top-r"><button class="gl-btn" data-act="soon" aria-label="Chat publik">${icon("msg", 20)}</button><button class="gl-btn" data-act="soon" aria-label="Notifikasi">${icon("bell", 21)}</button></span></header>
+  <span class="top-r"><a class="gl-btn" href="#/chat" aria-label="Chat publik">${icon("msg", 20)}</a><button class="gl-btn" data-act="bell" aria-label="Notifikasi" aria-expanded="false">${icon("bell", 21)}<span class="bell-n" id="bellN" hidden></span></button></span></header>
 <section class="hello"><h1>${greeting()}${name ? `, <span class="gold">${esc(name)}</span>` : ""}</h1>
   <button class="quote" data-act="quote" title="Ketuk untuk kutipan lain">“${esc(QUOTES[qi])}”</button></section>
 ${last ? `<section class="sec s16"><h2 class="cap">Lanjut baca</h2>
@@ -134,14 +135,65 @@ ${last ? `<section class="sec s16"><h2 class="cap">Lanjut baca</h2>
   };
   setActs({
     quote: (el) => { qi = (qi + 1) % QUOTES.length; el.classList.add("fade"); setTimeout(() => { el.textContent = `“${QUOTES[qi]}”`; el.classList.remove("fade"); }, 200); },
-    soon: () => soon("Chat publik dan notifikasi hadir di bagian berikutnya."),
+    bell: () => openNotif(),
     src: (el) => { homeSrc = el.dataset.v; const y = window.scrollY; vHome().then(() => window.scrollTo(0, y)); },
     updView: (el) => { S.setSetting("updView", S.state.settings.updView === "grid" ? "list" : "grid"); el.outerHTML = viewBtn(S.state.settings.updView === "grid", "updView"); drawUpd(); },
     more: () => { page++; loadUpd(true); },
     retry: () => vHome(),
   });
-  loadPop(); loadUpd();
+  loadPop(); loadUpd(); refreshBell();
 }
+
+/* ---------- notifikasi (lonceng): maks 30, 7 hari terakhir ---------- */
+let notifs = [];
+const readSet = new Set(api.lsGet("notifRead", []));
+const saveRead = () => api.lsSet("notifRead", [...readSet].slice(-200));
+async function loadNotifs() {
+  if (!S.loggedIn()) { notifs = []; return; }
+  notifs = (await api.rest("notifications?select=id,title,body,source,comic_id,chapter,cover,created_at&order=created_at.desc&limit=30").catch(() => null)) || notifs;
+}
+async function refreshBell() {
+  await loadNotifs();
+  const n = notifs.filter((x) => !readSet.has(x.id)).length, el = $("#bellN");
+  if (el) { el.hidden = !n; el.textContent = n > 9 ? "9+" : String(n); }
+}
+async function openNotif() {
+  closeNotif();
+  const wrap = document.createElement("div");
+  wrap.id = "notif";
+  const draw = () => {
+    const unread = notifs.some((x) => !readSet.has(x.id));
+    wrap.innerHTML = `<button class="pop-bg" data-n="close" aria-label="Tutup notifikasi"></button>
+  <div class="pop glass" role="dialog" aria-label="Notifikasi">
+    <div class="pop-h"><span class="cap m0">Notifikasi</span>${unread ? `<button class="link-red sm" data-n="readall">Tandai dibaca</button>` : ""}</div>
+    <div class="pop-list">${!S.loggedIn() ? `<p class="pop-empty">Masuk untuk menerima notifikasi chapter baru dari komik yang loncengnya kamu nyalakan.<br><a class="gold b" href="#/more">Masuk</a></p>`
+      : notifs.length ? notifs.map((x) => `<button class="pop-i ${readSet.has(x.id) ? "" : "unread"}" data-n="open" data-id="${x.id}">
+          <span class="pop-cv">${x.cover ? `<img src="${esc(x.cover)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : icon(x.comic_id ? "book" : "mega", 15)}</span>
+          <span class="rc-mid g1"><span class="t1 pop-t">${esc(x.title)}</span><span class="t1 mu xs">${esc(x.body || "")} · ${esc(ago(x.created_at))}</span></span>
+          ${readSet.has(x.id) ? "" : `<span class="dot" aria-label="Belum dibaca"></span>`}</button>`).join("")
+      : `<p class="pop-empty">Belum ada notifikasi. Nyalakan lonceng di info komik.</p>`}</div>
+    <div class="pop-f"><span class="mu xs">Maks 30 · 7 hari</span>${notifs.length ? `<button class="mu xs b" data-n="clear">Hapus semua</button>` : ""}</div></div>`;
+  };
+  draw();
+  document.body.appendChild(wrap);
+  $("[data-act=bell]")?.setAttribute("aria-expanded", "true");
+  wrap.addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-n]"); if (!b) return;
+    const a = b.dataset.n;
+    if (a === "close") closeNotif();
+    if (a === "readall") { notifs.forEach((x) => readSet.add(x.id)); saveRead(); draw(); refreshBell(); }
+    if (a === "open") {
+      const x = notifs.find((y) => String(y.id) === b.dataset.id); readSet.add(x.id); saveRead(); closeNotif(); refreshBell();
+      go(x.source && x.comic_id ? comicHref(x.source, x.comic_id) : "#/chat");
+    }
+    if (a === "clear") {
+      if (!confirm("Hapus semua notifikasi? Lonceng di tiap komik tetap menyala.")) return;
+      try { await api.rest("notifications?id=gt.0", { method: "DELETE" }); notifs = []; draw(); refreshBell(); toast("Notifikasi dihapus"); } catch (er) { toast(er.message); }
+    }
+  });
+  if (S.loggedIn()) { await loadNotifs(); if (document.getElementById("notif")) draw(); }
+}
+function closeNotif() { document.getElementById("notif")?.remove(); $("[data-act=bell]")?.setAttribute("aria-expanded", "false"); }
 
 /* ---------- Pencarian (hasil muncul sambil mengetik) ---------- */
 let sState = { q: "", src: "komiku", type: "" };
@@ -519,20 +571,37 @@ const mrow = (ic, label, sub, act, opt = {}) => {
   return act ? `<button class="mrow ${opt.danger ? "danger" : ""}" data-act="${act}">${inner}${opt.danger ? "" : `<span class="mu">${icon("chev", 18)}</span>`}</button>` : `<div class="mrow">${inner}</div>`;
 };
 const group = (t, inner) => `<section class="sec s20"><h2 class="cap">${t}</h2><div class="group">${inner}</div></section>`;
-const avatarHtml = (p, lv, size = "") => `<span class="avatar ${size} t${lv.tier}"><span>${esc((p?.name || "?")[0].toUpperCase())}</span></span>`;
+// bingkai avatar kosmik dari prototipe (dimuat sekali saat dibutuhkan); cadangan: cincin warna sederhana
+let AVM = null;
+async function loadAvatars() {
+  if (!AVM) {
+    AVM = await import("./avatars.js").catch(() => null);
+    if (AVM && !document.getElementById("nk-sprite")) { const d = document.createElement("div"); d.id = "nk-sprite"; d.innerHTML = AVM.SPRITE; document.body.prepend(d); }
+  }
+  return AVM;
+}
+const SIZE_CLS = { 116: "xl", 46: "sm", 40: "sm" };
+const avatarHtml = (p, lv, size = 56, opt = {}) => {
+  const ini = esc((opt.ini || p?.name || "?").trim()[0]?.toUpperCase() || "?");
+  const tier = opt.tier ?? lv.tier;
+  if (AVM) return `<span class="av-wrap s${size}">${AVM.AV[size][tier].replaceAll("%I%", ini).replaceAll("%L%", opt.noMedal ? "" : String(opt.lv ?? lv.lv))}</span>`;
+  return `<span class="avatar ${SIZE_CLS[size] || ""} t${tier}"><span>${ini}</span></span>`;
+};
+const rankPill = (lv, big = false) => `<span class="rank-pill ${big ? "big" : ""} t${lv.tier} ${lv.tier >= 4 ? "nk-bshine" : ""}" style="--d:${(2.4 - lv.tier * .15).toFixed(2)}s">${lv.rank}</span>`;
 const badges = (p) => `${p?.verified ? `<span class="verif" title="Terverifikasi">${icon("check", 10, 3.2)}</span>` : ""}${p?.role === "developer" ? `<span class="pill-dev">DEV</span>` : p?.role === "moderator" ? `<span class="pill-mod">MOD</span>` : ""}`;
-function vMore() {
+async function vMore() {
+  await loadAvatars();
   const p = S.state.profile, lv = S.levelOf(p), user = api.currentUser(), st = S.state.settings;
   const gfx = st.gfx || "Normal";
   view.innerHTML = `
 <div class="page-h"><h1>Lainnya</h1></div>
 ${!api.configured ? `<div class="note warn mx">${icon("info", 18)}<span>Aplikasi belum tersambung ke server (config.js kosong).</span></div>` : ""}
 ${user ? `<button class="me mx" data-act="level">${avatarHtml(p, lv)}
-    <span class="rc-mid g5"><span class="me-name"><b class="t1">${esc(p?.name || "Memuat…")}</b>${badges(p)}<span class="rank-pill t${lv.tier}">${lv.rank}</span></span>
-      <span class="mu sm">Lv ${lv.lv}${lv.max ? " · level maksimal" : ` · ${(lv.need - lv.cur).toLocaleString("id-ID")} EXP lagi ke Lv ${lv.lv + 1}`}</span>
+    <span class="rc-mid g5"><span class="me-name"><b class="t1">${esc(p?.name || "Memuat…")}</b>${badges(p)}</span>
+      <span class="row g8 mu sm">${rankPill(lv)}Lv ${lv.lv}${lv.max ? " · level maksimal" : ` · ${(lv.need - lv.cur).toLocaleString("id-ID")} EXP lagi ke Lv ${lv.lv + 1}`}</span>
       <span class="prog"><span style="width:${lv.max ? 100 : pct(lv.cur, lv.need)}%"></span></span></span><span class="mu">${icon("chev", 18)}</span></button>
   ${group("Akun", mrow("user", "Nama tampilan", esc(p?.name || ""), "goName") + mrow("msg", "Email", esc(user.email || ""), "goEmail") + mrow("key", "Ganti password", "", "goPass") + mrow("out", "Keluar", "", "logout", { danger: true }))}`
-  : `<div class="guest mx">${avatarHtml(null, S.levelOf(null))}<span class="rc-mid g4"><b class="b16">Tamu</b><span class="mu sm">Belum masuk · level, rank, dan koleksi belum tersimpan di akun</span></span></div>
+  : `<div class="guest mx">${avatarHtml(null, S.levelOf(null), 56, { ini: "T", noMedal: true })}<span class="rc-mid g4"><b class="b16">Tamu</b><span class="mu sm">Belum masuk · level, rank, dan koleksi belum tersimpan di akun</span></span></div>
   <div class="auth mx"><b class="b17">${authMode === "up" ? "Daftar akun Ninokuu" : authMode === "reset" ? "Lupa password" : "Masuk ke Ninokuu"}</b>
     <span class="mu sm">${authMode === "reset" ? "Kami kirim link ke emailmu untuk membuat password baru." : "Masuk agar koleksi, riwayat baca, dan pengaturan tersinkron di semua perangkatmu."}</span>
     <form id="auth" class="auth-f">
@@ -576,7 +645,7 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
     about: () => go("#/p/about"), privacy: () => go("#/p/privacy"), terms: () => go("#/p/terms"),
     backup: () => go("#/p/backup"), restore: () => go("#/p/restore"),
     discord: () => soon("Server Discord Ninokuu sedang disiapkan."), trakteer: () => soon("Halaman Trakteer sedang disiapkan. Terima kasih!"),
-    gfx: (el) => { S.setSetting("gfx", el.dataset.v); vMore(); },
+    gfx: (el) => { S.setSetting("gfx", el.dataset.v); applyGfx(); vMore(); },
     rmode: (el) => { S.setSetting("readMode", el.dataset.v); vMore(); },
     dir: (el) => { S.setSetting("readDir", el.dataset.v); vMore(); },
     logout: async () => { if (!confirm("Keluar dari akun? Koleksi dan riwayatmu tetap aman di server.")) return; await S.flushHistory(); await api.signOut(); S.clearUserData(); toast("Kamu sudah keluar"); vMore(); },
@@ -591,7 +660,8 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
 
 /* ---------- halaman turunan Lainnya ---------- */
 const RANK_INFO = [["Warrior", 1, 11, "#AEB6C4"], ["Elite", 12, 22, "#F0BE84"], ["Grandmaster", 23, 33, "#FFA36B"], ["Epic", 34, 44, "#6FC3F2"], ["Legend", 45, 55, "#5DD39E"], ["Mythic", 56, 66, "#8FAEFF"], ["Honor", 67, 77, "#B48CFF"], ["Glory", 78, 88, "#FF9CC0"], ["Immortal", 89, 99, "#F2B33D"]];
-function vPage(name) {
+async function vPage(name) {
+  if (name === "level") await loadAvatars();
   const p = S.state.profile, lv = S.levelOf(p), user = api.currentUser();
   if (["name", "email", "pass"].includes(name) && !user) { go("#/more"); return; }
   let html = "";
@@ -599,15 +669,15 @@ function vPage(name) {
   if (name === "level") {
     html = topbar("Level &amp; Rank") + `<div class="px col g16 mt6">
   ${!user ? `<div class="note">${icon("key", 18)}<span>Untuk berkomentar dan mendapatkan <b>Level &amp; Rank</b>, kamu harus <a href="#/more">masuk</a> terlebih dahulu.</span></div>` : ""}
-  <div class="lv-hero">${avatarHtml(p, lv, "xl")}<span class="rank-pill big t${lv.tier}">${lv.rank}</span>
+  <div class="lv-hero">${avatarHtml(p, lv, 116)}${rankPill(lv, true)}
     <span class="lv-name">${esc(p?.name || "Tamu")}${badges(p)}</span>
     <div class="lv-bar"><div class="row sb mu xs"><span>Lv ${lv.lv}</span><span>${lv.max ? "MAKS" : `${lv.cur.toLocaleString("id-ID")} / ${lv.need.toLocaleString("id-ID")} EXP`}</span></div>
       <span class="prog l"><span style="width:${lv.max ? 100 : pct(lv.cur, lv.need)}%"></span></span>
       <span class="sm">${lv.max ? (p?.role === "developer" ? "Developer · Lv 99" : "Level maksimal 99 tercapai") : "Baca chapter baru untuk mendapat EXP (10 EXP per chapter, maks 300 per hari)"}</span></div></div>
   <h2 class="cap">Tangga rank</h2>
-  <div class="group">${RANK_INFO.map(([n, a, b, c], i) => `<div class="rank-row ${i === lv.tier ? "me" : ""} ${i > lv.tier ? "lock" : ""}"><span class="avatar sm t${i}"><span>${n[0]}</span></span>
+  <div class="group">${RANK_INFO.map(([n, a, b, c], i) => `<div class="rank-row ${i === lv.tier ? "me" : ""} ${i > lv.tier ? "lock" : ""}">${avatarHtml(p, lv, 46, { tier: i, ini: p?.name || n, noMedal: true })}
       <span class="rc-mid"><b style="color:${c}">${n}</b><span class="mu xs">Lv ${a}–${b}</span></span><span class="xs b ${i === lv.tier ? "gold" : i < lv.tier ? "ok" : "mu"}">${i === lv.tier ? "RANK-MU" : i < lv.tier ? "Terlewati" : "Terkunci"}</span></div>`).join("")}</div>
-  <p class="mu xs lh">Bingkai avatar kosmik penuh untuk tiap rank (seperti di prototipe) hadir di bagian berikutnya.</p></div>`;
+  <p class="mu xs lh">Mode efek avatar Ringan/Normal bisa diatur di Lainnya → Tampilan.</p></div>`;
   } else if (name === "name") {
     html = topbar("Nama tampilan") + `<form class="px col g14 mt6" id="pf"><p class="mu sm lh m0">Nama ini dipakai untuk sapaan di Beranda dan tampil di chat publik.</p>
   <label class="fld">Nama<input name="v" maxlength="24" required autocomplete="nickname" value="${esc(p?.name || "")}"></label><span class="err" id="perr"></span>
@@ -677,6 +747,8 @@ function vPage(name) {
 const VIEWS = { chapters: vChapters, home: vHome, search: vSearch, fav: vFav, more: vMore, detail: vDetail, reader: vReader, page: vPage };
 
 /* ---------- mulai ---------- */
+const applyGfx = () => document.body.classList.toggle("nk-lite", S.state.settings.gfx === "Ringan");
+applyGfx();
 // Posisi miring dicek dari ukuran layar fisik (tidak berubah saat keyboard muncul).
 function checkOrientation() {
   const sw = screen.width || 0, sh = screen.height || 0;
