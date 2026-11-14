@@ -109,7 +109,9 @@ export async function awardRead(src, id, chapter) {
 export async function loadProfile() {
   const u = api.currentUser();
   if (!u) return null;
-  const rows = await api.rest(`profiles?id=eq.${u.id}&select=name,exp,role,verified`);
+  // avatar_path baru ada setelah skema terbaru dijalankan → coba ulang tanpa kolom itu
+  const rows = await api.rest(`profiles?id=eq.${u.id}&select=name,exp,role,verified,avatar_path`)
+    .catch(() => api.rest(`profiles?id=eq.${u.id}&select=name,exp,role,verified`));
   state.profile = rows?.[0] || null; saveLocal(); emit();
   return state.profile;
 }

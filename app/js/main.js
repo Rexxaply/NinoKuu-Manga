@@ -47,7 +47,7 @@ async function render() {
   trackNav();
   if (cleanup) { try { cleanup(); } catch {} cleanup = null; }
   closeNotif(); closeSheet();
-  $$(".flt-host").forEach((x) => x.remove()); document.body.classList.remove("flt-open");
+  $$(".flt-host, .chs-host").forEach((x) => x.remove()); document.body.classList.remove("flt-open");
   scrollMem.set(route.key, window.scrollY);
   route = { ...parse(), key: location.hash || "#/home" };
   const owner = { detail: null, reader: null, chapters: null, chat: "home", page: "more" }[route.name];
@@ -590,7 +590,7 @@ async function vReader(src, id, chId) {
   <div class="r-zoom glass" id="rzoom" hidden>${icon("zoom", 15)}<span id="rzt"></span> · geser untuk melihat, ketuk 2× untuk normal</div>
   <div class="r-top">
     <button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 22, 2)}</button>
-    <div class="r-pill glass"><b class="t1">${esc(d.manga.title)}</b><span class="mu xs">Chapter ${esc(ch.ch)}</span></div>
+    <button class="r-pill glass" data-act="chlist" aria-label="Daftar chapter"><b class="t1">${esc(d.manga.title)}</b><span class="mu xs row g4">Chapter ${esc(ch.ch)}${icon("chev", 12, 2.4)}</span></button>
     <a class="r-round glass" href="${commentsHref(src, id, chId)}" aria-label="Komentar chapter">${icon("msg", 20)}</a>
     <button class="r-round glass" data-act="menu" aria-label="Pengaturan mode baca" aria-expanded="false">${icon("dots", 22)}</button>
   </div>
@@ -599,6 +599,7 @@ async function vReader(src, id, chId) {
     <span class="cap">Mode baca</span>
     ${[["scroll", "Scroll (webtoon)", "Gulir ke bawah, halaman tersambung", "scroll"], ["slide", "Slide (halaman)", "Geser per halaman", "slides"]].map(([k, n, dsc, ic]) =>
       `<button class="r-mode ${st.readMode === k ? "on" : ""}" role="radio" aria-checked="${st.readMode === k}" data-act="rmode" data-v="${k}"><span class="${st.readMode === k ? "redt" : "mu"}">${icon(ic, 20)}</span><span class="col grow"><b>${n}</b><span class="mu xs">${dsc}</span></span>${st.readMode === k ? `<span class="redt">${icon("check", 18, 2.4)}</span>` : ""}</button>`).join("")}
+    <button class="r-mode" data-act="chlist"><span class="gold">${icon("list", 20)}</span><span class="col grow"><b>Daftar chapter</b><span class="mu xs">${d.chapters.length} chapter · cari & pindah chapter</span></span></button>
     <button class="r-mode" data-act="rreport"><span class="redt">${icon("bug", 20)}</span><span class="col grow"><b>Laporkan masalah chapter</b><span class="mu xs">Gambar rusak, halaman hilang, dll.</span></span></button>
     ${slide ? `<span class="cap mt4">Arah geser</span><div class="seg s3">${[["rtl", "Kanan ke kiri"], ["ltr", "Kiri ke kanan"]].map(([k, n]) => `<button role="tab" aria-selected="${(rtl ? "rtl" : "ltr") === k}" data-act="rdir" data-v="${k}">${n}</button>`).join("")}</div>` : ""}
   </div>
@@ -699,6 +700,7 @@ async function vReader(src, id, chId) {
     retry: () => vReader(src, id, chId),
     menu: () => menu($(".r-menu").hidden), closeMenu: () => menu(false),
     rmode: (el) => { S.setSetting("readMode", el.dataset.v); vReader(src, id, chId); },
+    chlist: () => { menu(false); openChList(); },
     rreport: () => { menu(false); openReport({ source: src, comic_id: id, title: d.manga.title, chapter_id: chId, chapter: ch.ch }); },
     rdir: (el) => { S.setSetting("readDir", el.dataset.v); vReader(src, id, chId); },
     prev: () => prev && goReplace(readHref(src, id, prev.id)),
@@ -706,9 +708,105 @@ async function vReader(src, id, chId) {
     next: () => (next ? goReplace(readHref(src, id, next.id)) : toComic()),
   });
   cleanup = () => { clearTimeout(tapT); S.flushHistory(); };
+  // daftar chapter di pembaca: 50 per muat, bisa dicari; kolom cari di atas panel (tidak tertutup keyboard)
+  function openChList() {
+    $$(".chs-host").forEach((x) => x.remove());
+    const desc = [...d.chapters].reverse(), ci = desc.length - 1 - idx;
+    let start = Math.max(0, ci - 10), end = Math.min(desc.length, start + 50), q = "";
+    const host = document.createElement("div");
+    host.className = "chs-host";
+    host.innerHTML = `<button class="chs-bg" data-x="close" aria-label="Tutup daftar chapter"></button>
+      <div class="chs" role="dialog" aria-label="Daftar chapter">
+        <div class="chs-h"><span class="col grow g4"><b>Daftar chapter</b><span class="mu xs t1">${esc(d.manga.title)} · ${desc.length} chapter</span></span>
+          <button class="x-btn" data-x="close" aria-label="Tutup">${icon("x", 16, 2.2)}</button></div>
+        <label class="chs-q"><span class="mu">${icon("search", 18)}</span><span class="sr">Cari chapter</span>
+          <input id="chsq" type="text" inputmode="text" enterkeyhint="search" autocomplete="off" placeholder="Cari nomor atau judul chapter…">
+          <button class="chx" data-x="clr" aria-label="Hapus pencarian" hidden>${icon("x", 16, 2)}</button></label>
+        <div class="chs-list" id="chsl"></div></div>`;
+    document.body.append(host);
+    const L = $("#chsl", host), inp = $("#chsq", host);
+    const row = (c) => { const cur = c.id === chId; return `<a class="chs-i ${cur ? "cur" : ""}" href="${readHref(src, id, c.id)}" data-x="go" data-id="${esc(c.id)}">
+      <span class="col grow g2"><b>Chapter ${esc(c.ch)}</b>${c.title ? `<span class="mu xs t1">${esc(c.title)}</span>` : ""}</span>
+      ${cur ? `<span class="chs-tag">Sedang dibaca</span>` : c.at ? `<span class="mu xs">${esc(ago(c.at))}</span>` : ""}</a>`; };
+    const draw = () => {
+      if (q) {
+        const r = desc.filter((c) => matchCh(c, q));
+        L.innerHTML = r.slice(0, 50).map(row).join("") || `<div class="chs-empty">Chapter “${esc(q)}” tidak ditemukan</div>`;
+        if (r.length > 50) L.insertAdjacentHTML("beforeend", `<div class="chs-empty">Menampilkan 50 dari ${r.length} hasil · perjelas pencarian</div>`);
+        return;
+      }
+      L.innerHTML = (start > 0 ? `<button class="chs-more" data-x="prev">${icon("chev", 15, 2.2)}Muat ${Math.min(50, start)} chapter lebih baru</button>` : "")
+        + desc.slice(start, end).map(row).join("")
+        + (end < desc.length ? `<button class="chs-more" data-x="next">Muat ${Math.min(50, desc.length - end)} chapter berikutnya${icon("chev", 15, 2.2)}</button>` : "");
+    };
+    draw();
+    requestAnimationFrame(() => { const c = $(".chs-i.cur", host); if (c) L.scrollTop = c.offsetTop - L.clientHeight / 2 + c.offsetHeight / 2; });
+    inp.addEventListener("input", () => { q = inp.value.trim(); $("[data-x=clr]", host).hidden = !q; L.scrollTop = 0; draw(); });
+    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") inp.blur(); });
+    host.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-x]"); if (!b) return;
+      const a = b.dataset.x;
+      if (a === "close") host.remove();
+      else if (a === "clr") { inp.value = ""; q = ""; b.hidden = true; draw(); }
+      else if (a === "prev") { const h = L.scrollHeight, y = L.scrollTop; start = Math.max(0, start - 50); draw(); L.scrollTop = y + (L.scrollHeight - h); }
+      else if (a === "next") { end = Math.min(desc.length, end + 50); draw(); }
+      else if (a === "go") { e.preventDefault(); host.remove(); if (b.dataset.id !== chId) goReplace(readHref(src, id, b.dataset.id)); }
+    });
+  }
   roomCount(roomFor(src, id, chId)).then((n) => { const el = $("#rcmn"); if (el && n) el.textContent = n; }).catch(() => {});
   const h = S.histItem(src, id);
   if (h?.chapter_id === chId && h.page > 1) setTimeout(() => goPage(h.page), 350);
+}
+
+/* ---------- foto profil: maks 10 MB, dipotong persegi 512 px (WebP), foto lama langsung dihapus ---------- */
+const AV_MAX = 10 * 1024 * 1024;
+async function squareWebp(file, size = 512) {
+  const bmp = await createImageBitmap(file);
+  const side = Math.min(bmp.width, bmp.height), out = Math.min(size, side);
+  const c = document.createElement("canvas"); c.width = c.height = out;
+  c.getContext("2d").drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, out, out);
+  const blob = await new Promise((r) => c.toBlob(r, "image/webp", 0.86));
+  if (!blob || blob.type !== "image/webp") return { blob: await new Promise((r) => c.toBlob(r, "image/jpeg", 0.88)), ext: "jpg" };
+  return { blob, ext: "webp" };
+}
+async function setAvatar(file) {
+  const uid = api.userId(), old = S.state.profile?.avatar_path || null;
+  let path = null;
+  if (file) {
+    const { blob, ext } = await squareWebp(file);
+    path = `${uid}/${Date.now()}.${ext}`;
+    await api.upload("avatars", path, new File([blob], "foto." + ext, { type: blob.type }));
+  }
+  try { await api.rest(`profiles?id=eq.${uid}`, { method: "PATCH", body: { avatar_path: path }, prefer: "return=minimal" }); }
+  catch (e) { if (path) api.removeFile("avatars", path).catch(() => {}); throw e; }
+  // foto lama tidak dipakai lagi → hapus agar penyimpanan tetap hemat
+  if (old && old !== path) api.removeFile("avatars", old).catch(() => {});
+  await S.loadProfile();
+}
+function openPhoto() {
+  const p = S.state.profile, lv = S.levelOf(p);
+  const el = openSheet(`<span class="sheet-ttl">Foto profil</span>
+    <div class="pf-prev">${avatarHtml(p, lv, 116, { noMedal: true })}</div>
+    <span class="mu xs center pf-hint">JPG, PNG, WEBP, atau GIF · maks 10 MB · dipotong persegi di tengah</span>
+    <label class="btn primary pf-pick">${icon("img", 18)}<span class="pf-t">${p?.avatar_path ? "Ganti foto" : "Pilih foto"}</span><input type="file" id="pfile" accept="image/png,image/jpeg,image/webp,image/gif" hidden></label>
+    ${p?.avatar_path ? `<button class="sh-row red" data-s="rm">${icon("trash", 18)}Hapus foto profil</button>` : ""}
+    <button class="sh-cancel" data-s="close">Batal</button>`, async (b) => {
+    if (b.dataset.s !== "rm") return;
+    if (!confirm("Hapus foto profil? Avatar kembali memakai huruf awal nama.")) return;
+    b.disabled = true;
+    try { await setAvatar(null); closeSheet(); toast("Foto profil dihapus"); if (route.name === "more") vMore(); }
+    catch (e) { b.disabled = false; toast(e.message, 4500); }
+  });
+  $("#pfile", el).addEventListener("change", async (e) => {
+    const f = e.target.files?.[0]; e.target.value = "";
+    if (!f) return;
+    if (!/^image\/(png|jpeg|webp|gif)$/.test(f.type)) return toast("Format harus JPG, PNG, WEBP, atau GIF");
+    if (f.size > AV_MAX) return toast(`Foto terlalu besar (${(f.size / 1048576).toFixed(1).replace(".", ",")} MB). Maksimal 10 MB.`, 4000);
+    const pick = $(".pf-pick", el), t = $(".pf-t", el), was = t.textContent;
+    pick.classList.add("busy"); t.textContent = "Mengunggah…";
+    try { await setAvatar(f); closeSheet(); toast("Foto profil diperbarui"); if (route.name === "more") vMore(); }
+    catch (er) { toast(er.message, 4500); pick.classList.remove("busy"); t.textContent = was; }
+  });
 }
 
 /* ---------- status notifikasi HP di Lainnya ---------- */
@@ -811,8 +909,12 @@ const SIZE_CLS = { 116: "xl", 46: "sm", 40: "sm" };
 const avatarHtml = (p, lv, size = 56, opt = {}) => {
   const ini = esc((opt.ini || p?.name || "?").trim()[0]?.toUpperCase() || "?");
   const tier = opt.tier ?? lv.tier;
-  if (AVM) return `<span class="av-wrap s${size}">${AVM.AV[size][tier].replaceAll("%I%", ini).replaceAll("%L%", opt.noMedal ? "" : String(opt.lv ?? lv.lv))}</span>`;
-  return `<span class="avatar ${SIZE_CLS[size] || ""} t${tier}"><span>${ini}</span></span>`;
+  // foto profil ditumpuk di atas inisial (bila gagal dimuat, inisial tetap terlihat)
+  const photo = p?.avatar_path ? `<img class="av-img" src="${esc(api.publicUrl("avatars", p.avatar_path))}" alt="" decoding="async" onerror="this.remove()">` : "";
+  let tpl = AVM?.AV[size][tier];
+  if (tpl && photo) tpl = tpl.replace("position:relative;font-family", "position:static;font-family");
+  if (tpl) return `<span class="av-wrap s${size}">${tpl.replaceAll("%I%", ini + photo).replaceAll("%L%", opt.noMedal ? "" : String(opt.lv ?? lv.lv))}</span>`;
+  return `<span class="avatar ${SIZE_CLS[size] || ""} t${tier}"><span>${ini}${photo}</span></span>`;
 };
 const rankPill = (lv, big = false) => `<span class="rank-pill ${big ? "big" : ""} t${lv.tier} ${lv.tier >= 4 ? "nk-bshine" : ""}" style="--d:${(2.4 - lv.tier * .15).toFixed(2)}s">${lv.rank}</span>`;
 const badges = (p) => `${p?.verified ? `<span class="verif" title="Terverifikasi">${icon("check", 10, 3.2)}</span>` : ""}${p?.role === "developer" ? `<span class="pill-dev">DEV</span>` : p?.role === "moderator" ? `<span class="pill-mod">MOD</span>` : ""}`;
@@ -827,7 +929,7 @@ ${user ? `<button class="me mx" data-act="level">${avatarHtml(p, lv)}
     <span class="rc-mid g5"><span class="me-name"><b class="t1">${esc(p?.name || "Memuat…")}</b>${badges(p)}</span>
       <span class="row g8 mu sm">${rankPill(lv)}Lv ${lv.lv}${lv.max ? " · level maksimal" : ` · ${(lv.need - lv.cur).toLocaleString("id-ID")} EXP lagi ke Lv ${lv.lv + 1}`}</span>
       <span class="prog"><span style="width:${lv.max ? 100 : pct(lv.cur, lv.need)}%"></span></span></span><span class="mu">${icon("chev", 18)}</span></button>
-  ${group("Akun", mrow("user", "Nama tampilan", esc(p?.name || ""), "goName") + mrow("msg", "Email", esc(user.email || ""), "goEmail") + mrow("key", "Ganti password", "", "goPass") + mrow("out", "Keluar", "", "logout", { danger: true }))}`
+  ${group("Akun", mrow("img", "Foto profil", p?.avatar_path ? "Ketuk untuk mengganti · maks 10 MB" : "Belum ada · ketuk untuk menambah (maks 10 MB)", "photo") + mrow("user", "Nama tampilan", esc(p?.name || ""), "goName") + mrow("msg", "Email", esc(user.email || ""), "goEmail") + mrow("key", "Ganti password", "", "goPass") + mrow("out", "Keluar", "", "logout", { danger: true }))}`
   : `<div class="guest mx">${avatarHtml(null, S.levelOf(null), 56, { ini: "T", noMedal: true })}<span class="rc-mid g4"><b class="b16">Tamu</b><span class="mu sm">Belum masuk · level, rank, dan koleksi belum tersimpan di akun</span></span></div>
   <div class="auth mx"><b class="b17">${authMode === "up" ? "Daftar akun Ninokuu" : authMode === "reset" ? "Lupa password" : "Masuk ke Ninokuu"}</b>
     <span class="mu sm">${authMode === "reset" ? "Kami kirim link ke emailmu untuk membuat password baru." : "Masuk agar koleksi, riwayat baca, dan pengaturan tersinkron di semua perangkatmu."}</span>
@@ -875,7 +977,7 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
   });
   setActs({
     auth: (el) => { authMode = el.dataset.v; vMore(); },
-    level: () => go("#/p/level"), dev: () => go("#/p/dev"), goName: () => go("#/p/name"), goEmail: () => go("#/p/email"), goPass: () => go("#/p/pass"),
+    level: () => go("#/p/level"), dev: () => go("#/p/dev"), photo: () => openPhoto(), goName: () => go("#/p/name"), goEmail: () => go("#/p/email"), goPass: () => go("#/p/pass"),
     goHist: () => go("#/fav/hist"), goDl: () => go("#/fav/dl"),
     about: () => go("#/p/about"), privacy: () => go("#/p/privacy"), terms: () => go("#/p/terms"),
     backup: () => go("#/p/backup"), restore: () => go("#/p/restore"),
@@ -958,6 +1060,7 @@ async function checkUpdate(manual) {
   } else if (manual) toast(`Kamu sudah memakai versi terbaru (v${VERSION}).`);
 }
 
+let exitArmed = false, exitT = null;
 function startApp() {
   document.body.classList.add("is-app");
   N.onKeyboard(setKeyboard);
@@ -973,9 +1076,13 @@ function startApp() {
     if (document.getElementById("notif")) { closeNotif(); return; }
     const chatSheet = $("#host [data-c=close]"); if (chatSheet) { chatSheet.click(); return; }
     const rmenu = $(".r-menu:not([hidden])"); if (rmenu) { $("[data-act=closeMenu]")?.click(); return; }
-    if (navIdx > 0) { history.back(); return; }
+    const chs = $(".chs-host [data-x=close]"); if (chs) { chs.click(); return; }
+    // sama seperti prototipe: halaman dalam → mundur; tab lain → Beranda; Beranda → tekan sekali lagi untuk keluar
+    if (!["home", "search", "fav", "more"].includes(route.name)) { if (navIdx > 0) history.back(); else goReplace("#/home"); return; }
     if (route.name !== "home") { goReplace("#/home"); return; }
-    exit();
+    if (exitArmed) { exit(); return; }
+    exitArmed = true; toast("Tekan kembali sekali lagi untuk keluar", 2000);
+    clearTimeout(exitT); exitT = setTimeout(() => { exitArmed = false; }, 2000);
   });
   const pushQuiet = () => { if (S.loggedIn()) N.pushEnable(api.rpc, false).catch(() => {}); };
   const check = () => { if (S.loggedIn()) N.checkBlockedSources([...S.state.lib.values()], api.call).catch(() => {}); };

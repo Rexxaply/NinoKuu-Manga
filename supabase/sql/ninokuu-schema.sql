@@ -27,12 +27,17 @@ create table if not exists public.profiles (
   constraint profiles_name_len check (char_length(btrim(name)) between 1 and 30),
   constraint profiles_exp_range check (exp >= 0)
 );
+-- foto profil: berkas di bucket "avatars" (folder milik sendiri), kolom ini hanya menyimpan jalurnya
+alter table public.profiles add column if not exists avatar_path text;
+alter table public.profiles drop constraint if exists profiles_avatar_path;
+alter table public.profiles add constraint profiles_avatar_path
+  check (avatar_path is null or (char_length(avatar_path) <= 200 and avatar_path ~ '^[0-9a-f-]{36}/[A-Za-z0-9._-]+$'));
 alter table public.profiles enable row level security;
 revoke all on table public.profiles from anon, authenticated;
 -- Nama dan EXP tampil di chat publik, jadi boleh dibaca semua orang.
 grant select on table public.profiles to anon, authenticated;
 -- Pengguna hanya boleh mengganti namanya sendiri; kolom exp tidak bisa disentuh.
-grant update (name) on table public.profiles to authenticated;
+grant update (name, avatar_path) on table public.profiles to authenticated;
 
 drop policy if exists "profil dibaca publik" on public.profiles;
 create policy "profil dibaca publik" on public.profiles for select using (true);
@@ -474,7 +479,7 @@ create trigger chat_reports_hide after insert on public.chat_reports
 -- Daftar chat siap tampil (nama + EXP pengirim). Mengikuti RLS pembaca.
 create or replace view public.chat_feed with (security_invoker = true) as
 select c.id, c.user_id, p.name, p.exp, c.body, c.image_path, c.image_spoiler, c.created_at,
-       p.role, p.verified, c.hidden, c.room
+       p.role, p.verified, c.hidden, c.room, p.avatar_path
 from public.chat_messages c
 join public.profiles p on p.id = c.user_id;
 revoke all on table public.chat_feed from anon, authenticated;
@@ -786,6 +791,10 @@ begin
     'img_orphans', (select count(*) from storage.objects o where o.bucket_id = 'chat-images'
                       and not exists (select 1 from public.chat_messages m where m.image_path = o.name)),
     'img_quota', 1024 * 1024 * 1024,
+    'avatar_bytes', (select coalesce(sum((o.metadata->>'size')::bigint), 0) from storage.objects o where o.bucket_id = 'avatars'),
+    'avatar_count', (select count(*) from storage.objects o where o.bucket_id = 'avatars'),
+    'avatar_orphans', (select count(*) from storage.objects o where o.bucket_id = 'avatars'
+                         and not exists (select 1 from public.profiles p where p.avatar_path = o.name)),
     'chat_public', (select count(*) from public.chat_messages where room = 'public'),
     'comments', (select count(*) from public.chat_messages where room <> 'public'),
     'oldest_chat', (select min(created_at) from public.chat_messages where room = 'public'),
@@ -840,6 +849,12 @@ begin
     select count(*), coalesce(array_agg(o.name), '{}') into n, imgs from storage.objects o
     where o.bucket_id = 'chat-images' and not exists (select 1 from public.chat_messages m where m.image_path = o.name);
 
+  elsif p_kind = 'avatar_orphans' then
+    -- foto profil lama yang tidak dipakai siapa pun (mis. gagal terhapus saat ganti foto)
+    select count(*), coalesce(array_agg(o.name), '{}') into n, imgs from storage.objects o
+    where o.bucket_id = 'avatars' and o.created_at < pg_catalog.now() - interval '1 hour'
+      and not exists (select 1 from public.profiles p where p.avatar_path = o.name);
+
   elsif p_kind = 'notifications' then
     delete from public.notifications where created_at < cutoff;
     get diagnostics n = row_count;
@@ -867,6 +882,39 @@ end;
 $$;
 revoke all on function public.dev_cleanup(text, int) from public, anon;
 grant execute on function public.dev_cleanup(text, int) to authenticated;
+
+-- =====================================================================
+-- 11b. Foto profil: bucket publik "avatars", maks 10 MB, hanya ke folder sendiri.
+--      Aplikasi menghapus foto lama setelah foto baru tersimpan (hemat ruang).
+-- =====================================================================
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('avatars', 'avatars', true, 10485760, array['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
+on conflict (id) do update set public = excluded.public, file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+drop policy if exists "avatars unggah ke folder sendiri" on storage.objects;
+create policy "avatars unggah ke folder sendiri" on storage.objects for insert to authenticated
+  with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text);
+drop policy if exists "avatars hapus milik sendiri" on storage.objects;
+create policy "avatars hapus milik sendiri" on storage.objects for delete to authenticated
+  using (bucket_id = 'avatars' and ((storage.foldername(name))[1] = (select auth.uid())::text or (select public.is_dev())));
+
+-- jalur foto profil wajib di folder milik sendiri (tidak bisa memakai foto orang lain)
+create or replace function public.profile_avatar_guard()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if new.avatar_path is not null and new.avatar_path is distinct from old.avatar_path
+     and pg_catalog.split_part(new.avatar_path, '/', 1) <> new.id::text then
+    raise exception 'Foto profil harus berada di folder milik sendiri' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists profiles_avatar_guard on public.profiles;
+create trigger profiles_avatar_guard before update of avatar_path on public.profiles
+  for each row execute function public.profile_avatar_guard();
 
 -- =====================================================================
 -- 12. Kunci server (Edge Function: cron, notifikasi HP, pembersihan) butuh akses penuh.

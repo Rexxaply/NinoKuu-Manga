@@ -26,6 +26,8 @@ function bodyHtml(m) {
   }
   return out + esc(t.slice(last));
 }
+// isi lingkaran avatar: foto profil bila ada, selain itu huruf awal nama
+const avInner = (m) => esc((m.name || "?")[0].toUpperCase()) + (m.avatar_path ? `<img class="av-img" src="${esc(api.publicUrl("avatars", m.avatar_path))}" alt="" loading="lazy" decoding="async" onerror="this.remove()">` : "");
 const plain = (t) => String(t || "").replace(/\|\|([\s\S]+?)\|\|/g, "$1");
 
 /* ---------- kompres gambar sebelum diunggah (hemat kuota penyimpanan) ---------- */
@@ -63,7 +65,7 @@ export const roomCount = (room) => api.count(`chat_feed?select=id&room=eq.${enco
 // baris komentar ringkas (pratinjau di info komik)
 export function miniMsg(m) {
   const lv = S.levelOf({ exp: m.exp, role: m.role }), t = lv.tier;
-  return `<div class="cm"><span class="m-av" style="background:${RING[t]}"><span>${esc((m.name || "?")[0].toUpperCase())}</span></span>
+  return `<div class="cm"><span class="m-av" style="background:${RING[t]}"><span>${avInner(m)}</span></span>
     <span class="rc-mid g4"><span class="m-head">${esc(m.name)}${m.verified ? VB : ""}${m.role === "developer" ? `<span class="pill-dev">DEV</span>` : m.role === "moderator" ? `<span class="pill-mod">MOD</span>` : ""}<span class="m-rank" style="background:${RANK_BG[t]};color:${RANK_FG[t]}">${lv.rank}</span><span class="mu xs cm-t">${esc(ago(m.created_at))}</span></span>
     ${m.body ? `<span class="cm-b">${bodyHtml(m)}</span>` : ""}${m.image_path ? `<span class="mu xs row g4">${icon("img", 14)}Gambar${m.image_spoiler ? " · spoiler" : ""}</span>` : ""}</span></div>`;
 }
@@ -106,7 +108,7 @@ export async function vChat(view, ctx, opt = {}) {
       const lv = S.levelOf({ exp: m.exp, role: m.role }), t = lv.tier;
       const hid = m.hidden;
       return `<div class="msg ${mine ? "mine" : ""}">
-      ${!mine ? `<span class="m-av" style="background:${RING[t]};visibility:${head ? "visible" : "hidden"}${t >= 6 ? ";box-shadow:0 0 10px rgba(242,179,61,.45)" : ""}"><span>${esc((m.name || "?")[0].toUpperCase())}</span></span>` : ""}
+      ${!mine ? `<span class="m-av" style="background:${RING[t]};visibility:${head ? "visible" : "hidden"}${t >= 6 ? ";box-shadow:0 0 10px rgba(242,179,61,.45)" : ""}"><span>${avInner(m)}</span></span>` : ""}
       <div class="m-col">
         ${head ? `<span class="m-head">${esc(mine ? "Kamu" : m.name)}${m.verified ? VB : ""}${m.role === "developer" ? `<span class="pill-dev">DEV</span>` : m.role === "moderator" ? `<span class="pill-mod">MOD</span>` : ""}<span class="m-rank" style="background:${RANK_BG[t]};color:${RANK_FG[t]}">${lv.rank}</span></span>` : ""}
         ${m.image_path ? `<button class="m-img ${m.image_spoiler && !revealed.has(m.id + ":img") ? "spo" : ""}" data-c="img" data-id="${m.id}"><img src="${esc(api.publicUrl("chat-images", m.image_path))}" alt="" loading="lazy">${m.image_spoiler && !revealed.has(m.id + ":img") ? `<span class="spo-cap"><span class="spo-tag">${icon("eye", 15)}Spoiler</span><span class="xs">Ketuk untuk melihat</span></span>` : ""}</button>` : ""}
@@ -129,7 +131,7 @@ export async function vChat(view, ctx, opt = {}) {
       <button class="att-sp ${att.sp ? "on" : ""}" data-c="attsp" aria-pressed="${att.sp}">${icon("eye", 14)}Spoiler</button><button class="x-btn" data-c="attx" aria-label="Hapus gambar">${icon("x", 15, 2.2)}</button></div>` : ""}
     <div class="comp-row glass"><label class="c-img" aria-label="Unggah gambar (maks 30 MB)">${icon("img", 21)}<input type="file" id="pick" accept="image/png,image/jpeg,image/webp,image/gif" hidden></label>
       <input id="cin" maxlength="300" enterkeyhint="send" autocomplete="off" placeholder="${att ? "Tambahkan keterangan (opsional)…" : pub ? "Tulis pesan untuk semua pembaca…" : "Tulis komentar…"}" aria-label="Pesan">
-      <button class="c-send" data-c="send" aria-label="Kirim" disabled>${icon("send", 19, 2)}</button></div>`;
+      <button class="c-send" data-c="send" aria-label="Kirim" ${att ? "" : "disabled"}>${icon("send", 19, 2)}</button></div>`;
     const inp = $("#cin"), send = $("[data-c=send]");
     const upd = () => {
       send.disabled = !(inp.value.trim() || att);

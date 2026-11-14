@@ -583,3 +583,35 @@ body.kb-open .pad-nav { height: calc(var(--kb, 0px) + 120px); }
 .st-chip.on { background: rgba(242, 179, 61, .16); color: var(--gold); }
 .sel { height: 38px; padding: 0 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--tx); font-size: 13px; }
 .mt8 { margin-top: 8px; }
+
+/* ---------- foto profil ---------- */
+.av-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; z-index: 2; }
+.avatar > span, .m-av > span { position: relative; overflow: hidden; }
+.pf-prev { display: grid; place-items: center; padding: 8px 0 4px; }
+.pf-hint { padding: 0 12px 6px; }
+.pf-pick { position: relative; min-height: 50px; border-radius: 16px; margin: 2px 4px; cursor: pointer; }
+.pf-pick.busy { opacity: .6; pointer-events: none; }
+
+/* ---------- pembaca: judul jadi tombol daftar chapter ---------- */
+button.r-pill { text-align: left; color: var(--tx); font: inherit; cursor: pointer; }
+button.r-pill .row svg { transform: rotate(90deg); opacity: .7; }
+
+/* ---------- daftar chapter di pembaca ---------- */
+.chs-host { position: fixed; inset: 0; z-index: 50; }
+.chs-bg { position: absolute; inset: 0; background: rgba(0, 0, 0, .55); animation: fadeIn .2s; }
+.chs { position: absolute; left: 10px; right: 10px; top: calc(64px + env(safe-area-inset-top)); bottom: calc(10px + env(safe-area-inset-bottom) + var(--kb, 0px));
+  max-width: 620px; margin: 0 auto; display: flex; flex-direction: column; border-radius: 24px; overflow: hidden;
+  background: rgba(20, 27, 39, .97); border: 1px solid rgba(255, 255, 255, .12); box-shadow: 0 20px 50px rgba(0, 0, 0, .55); animation: up .24s cubic-bezier(.2, .8, .2, 1); }
+.chs-h { display: flex; align-items: center; gap: 12px; padding: 16px 16px 10px; }
+.chs-h b { font-size: 17px; }
+.chs-q { display: flex; align-items: center; gap: 8px; margin: 0 14px 10px; padding: 0 6px 0 14px; height: 48px; border-radius: 16px; background: var(--bg); border: 1px solid var(--line); }
+.chs-q input { flex: 1; min-width: 0; height: 44px; border: 0; outline: 0; background: transparent; font-size: 16px; }
+.chs-list { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 0 8px 10px; }
+.chs-i { display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 8px 12px; border-radius: 14px; color: var(--tx); }
+.chs-i + .chs-i { border-top: 1px solid rgba(39, 50, 68, .55); }
+.chs-i.cur { background: rgba(224, 36, 43, .14); border-color: transparent; }
+.chs-i.cur b { color: var(--redt); }
+.chs-tag { flex: none; padding: 3px 9px; border-radius: 9px; background: rgba(224, 36, 43, .2); color: var(--redt); font-size: 11px; font-weight: 800; }
+.chs-more { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: 46px; margin: 6px 0; border-radius: 14px; border: 1px dashed var(--line); color: var(--redt); font-size: 13.5px; font-weight: 700; }
+.chs-more:first-child svg { transform: rotate(-90deg); } .chs-more:last-child svg { transform: rotate(90deg); }
+.chs-empty { padding: 26px 12px; text-align: center; color: var(--mu); font-size: 13.5px; }
