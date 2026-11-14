@@ -161,14 +161,14 @@ function ladderHtml(lv, L) {
   const chips = [];
   for (let i = 1; i <= 99; i++) {
     const t = S.levelOf({ exp: totalFor(i) });
-    chips.push(`<div class="lad ${i === lv.lv ? "me" : ""} ${i < lv.lv ? "past" : ""}" data-lv="${i}"><b>Lv.${i}</b>${rankBadge(t, "xs")}
+    chips.push(`<div class="lad ${i === lv.lv ? "cur" : ""} ${i < lv.lv ? "past" : ""}" data-lv="${i}"><b>Lv.${i}</b>${rankBadge(t, "xs")}
       <span class="xs">${num(totalFor(i))} EXP</span><span class="mu xs">${i < 99 ? `+${num(S.need(i))} ke Lv.${i + 1}` : "Maksimal"}</span></div>`);
   }
   return `<div class="card col g6"><span class="row g8"><span class="gold">${icon("chart", 18, 2)}</span><b>Tangga level</b></span>
     <span class="mu xs lh">Angka EXP = total yang dibutuhkan untuk mencapai level itu. Tiap level butuh 40 EXP lebih banyak dari level sebelumnya.</span></div>
   <div class="lad-row" id="ladRow">${chips.join("")}</div>
   <h2 class="cap">Tangga rank</h2>
-  <div class="group">${L.RANK_INFO.map(([n, a, b, c, t], i) => `<div class="rank-row ${i === lv.ri ? "me" : ""} ${i > lv.ri ? "lock" : ""}">${L.avatarHtml(S.state.profile, lv, 46, { tier: t, ini: S.state.profile?.name || n, noMedal: true })}
+  <div class="group">${L.RANK_INFO.map(([n, a, b, c, t], i) => `<div class="rank-row ${i === lv.ri ? "cur" : ""} ${i > lv.ri ? "lock" : ""}">${L.avatarHtml(S.state.profile, lv, 46, { tier: t, ini: S.state.profile?.name || n, noMedal: true })}
       <span class="rc-mid">${rankText(n, t)}<span class="mu xs">Lv ${a}–${b} · mulai ${num(totalFor(a))} EXP</span></span><span class="xs b ${i === lv.ri ? "gold" : i < lv.ri ? "ok" : "mu"}">${i === lv.ri ? "RANK-MU" : i < lv.ri ? "Terlewati" : "Terkunci"}</span></div>`).join("")}</div>`;
 }
 
@@ -231,7 +231,7 @@ export async function vLevel(view, L, tab = "sum") {
     } else body += ladderHtml(lv, L);
     view.innerHTML = L.topbar("Level &amp; Rank") + `<div class="px col g14 mt6 lv-page">${tabs}${body}</div><div style="height:calc(40px + env(safe-area-inset-bottom))"></div>`;
     if (tab === "hist" && user) { const h = await historyHtml(); const box = $("#ehist"); if (box) box.innerHTML = h; }
-    if (tab === "lad") { const me = $("#ladRow .lad.me"); if (me) $("#ladRow").scrollLeft = me.offsetLeft - 16; }
+    if (tab === "lad") { const me = $("#ladRow .lad.cur"); if (me) $("#ladRow").scrollLeft = me.offsetLeft - 16; }
   };
   L.setActs({
     back: () => L.back("#/more"),

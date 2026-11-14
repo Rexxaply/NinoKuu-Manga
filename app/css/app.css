@@ -295,7 +295,7 @@ body[data-screen="reader"] { background: #0A0A0A; overflow: hidden; }
 .lv-name { display: flex; align-items: center; gap: 8px; font: 400 30px/1 var(--serif); }
 .lv-bar { width: 100%; max-width: 320px; display: flex; flex-direction: column; gap: 6px; }
 .rank-row { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-top: 1px solid var(--line); }
-.rank-row.me { background: rgba(242, 179, 61, .08); }
+.rank-row.cur { background: rgba(242, 179, 61, .08); }
 .rank-row.lock { opacity: .6; }
 
 /* ---------- kosong, error, memuat ---------- */
@@ -690,9 +690,9 @@ body.nav-off .xp-pill.on { transform: none; }
 .er-bar.full span { background: var(--ok); }
 .lad-row { display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 8px; scroll-snap-type: x proximity; scrollbar-width: none; }
 .lad-row::-webkit-scrollbar { display: none; }
-.lad { flex: none; width: 112px; scroll-snap-align: start; display: flex; flex-direction: column; gap: 3px; padding: 12px; border-radius: 16px; background: var(--s1); border: 1px solid var(--line); }
+.lad { flex: none; width: auto; min-width: 120px; scroll-snap-align: start; display: flex; flex-direction: column; gap: 3px; padding: 12px; border-radius: 16px; background: var(--s1); border: 1px solid var(--line); }
 .lad b { font-size: 16px; } .lad.past { opacity: .55; }
-.lad.me { border-color: var(--gold); background: linear-gradient(160deg, rgba(242, 179, 61, .16), var(--s1)); box-shadow: 0 0 0 2px rgba(242, 179, 61, .2); }
+.lad.cur { border-color: var(--gold); background: linear-gradient(160deg, rgba(242, 179, 61, .16), var(--s1)); box-shadow: 0 0 0 2px rgba(242, 179, 61, .2); }
 .lad-r { align-self: flex-start; padding: 1px 7px; border-radius: 6px; font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; background: rgba(255, 255, 255, .08); color: var(--soft); }
 .lad-r.t1, .lad-r.t2 { color: #FFB27A; } .lad-r.t3 { color: #6FC3F2; } .lad-r.t4 { color: #5DD39E; } .lad-r.t5 { color: #8FAEFF; } .lad-r.t6 { color: #B48CFF; } .lad-r.t7 { color: #FF9CC0; } .lad-r.t8 { color: var(--gold); }
 
@@ -765,12 +765,18 @@ body.nav-off .xp-pill.on { transform: none; }
 .t8 > .rk-tx { background: linear-gradient(100deg, #C8871A 0 28%, #FFF1BF 42%, #F7C14E 50%, #FFF6D8 58%, #C8871A 72% 100%); background-size: 240% 100%;
   -webkit-background-clip: text; background-clip: text; color: transparent; animation: rkShim 1.9s linear infinite; }
 .rk-b.t8 { background: linear-gradient(135deg, rgba(247, 193, 78, .22), rgba(224, 36, 43, .2)); box-shadow: 0 0 12px rgba(247, 193, 78, .45); }
-.rk-b.t8::before, .rk-b.t8::after, .rk-t.t8::before, .rk-t.t8::after { content: ""; position: absolute; top: 50%; left: -8px; width: 6px; height: 6px; margin-top: -3px; border-radius: 50%; pointer-events: none;
-  background: radial-gradient(circle, #fff 0 22%, #FFE29A 45%, transparent 70%); box-shadow: 0 0 6px 2px rgba(255, 214, 110, .75); animation: rkRun 2.6s linear infinite; }
-.rk-b.t8::after, .rk-t.t8::after { top: 28%; animation-delay: 1.3s; animation-duration: 3.1s; }
-@keyframes rkShim { from { background-position: 130% 0; } to { background-position: -130% 0; } }
-@keyframes rkRun { 0% { left: -8px; opacity: 0; transform: scale(.4); } 12% { opacity: 1; transform: scale(1.15); } 30% { opacity: .25; transform: scale(.6); }
-  48% { opacity: 1; transform: scale(1.2); } 66% { opacity: .3; transform: scale(.6); } 84% { opacity: 1; transform: scale(1.1); } 100% { left: calc(100% + 2px); opacity: 0; transform: scale(.4); } }
+.rk-b.t8::before { content: ""; position: absolute; inset: 0; pointer-events: none; transform: translateX(-110%);
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 236, 170, .55) 50%, transparent 65%); animation: rkSweep 3s ease-in-out infinite; }
+/* bintang emas kecil berjalan sambil berkelip, selalu di dalam label */
+.rk-b.t8::after, .rk-t.t8::after { content: ""; position: absolute; top: 1px; left: 3%; width: 7px; height: 7px; pointer-events: none; background: #FFF4C9;
+  clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%); animation: rkStar 3s ease-in-out infinite; }
+.rk-t.t8::after { top: -3px; width: 8px; height: 8px; }
+@keyframes rkSweep { 0%, 12% { transform: translateX(-110%); } 62%, 100% { transform: translateX(110%); } }
+@keyframes rkStar { 0% { left: 3%; opacity: 0; transform: scale(.3) rotate(0deg); } 14% { opacity: 1; transform: scale(1) rotate(45deg); }
+  34% { opacity: .35; transform: scale(.65) rotate(90deg); } 54% { opacity: 1; transform: scale(1.1) rotate(135deg); }
+  76% { opacity: .4; transform: scale(.7) rotate(180deg); } 100% { left: calc(97% - 8px); opacity: 0; transform: scale(.3) rotate(225deg); } }
+/* daftar rank: komet tidak terbang melewati baris lain */
+.rank-row .nk-comet, .lad .nk-comet { display: none; }
 /* Mode Ringan: tanpa animasi & partikel (warna & border tetap) */
 body.nk-lite .rk-tx { animation: none !important; background-position: 50% 0; }
 body.nk-lite .rk-b.t8::before, body.nk-lite .rk-b.t8::after, body.nk-lite .rk-t.t8::before, body.nk-lite .rk-t.t8::after { display: none; }
@@ -786,3 +792,6 @@ body.nk-lite .m-fr { animation: none; filter: none; will-change: auto; }
 /* animasi bingkai di luar layar dijeda */
 
 .m-avc.off .m-fr { animation-play-state: paused; }
+/* pesan sendiri: avatar di kanan */
+.mine > .m-avc { margin: 4px 4px 0 6px; }
+.mine > .m-av { margin-left: 2px; }

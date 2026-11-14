@@ -133,7 +133,7 @@ export async function vChat(view, ctx, opt = {}) {
       const lv = S.levelOf({ exp: m.exp, role: m.role }), t = lv.tier;
       const hid = m.hidden;
       return `<div class="msg ${mine ? "mine" : ""}">
-      ${!mine ? (head ? chatAv(m, lv) : `<span class="m-avc"></span>`) : ""}
+      ${head ? chatAv(m, lv) : `<span class="m-avc"></span>`}
       <div class="m-col">
         ${head ? `<span class="m-head">${esc(mine ? "Kamu" : m.name)}${m.verified ? VB : ""}${m.role === "developer" ? `<span class="pill-dev">DEV</span>` : m.role === "moderator" ? `<span class="pill-mod">MOD</span>` : ""}${rankBadge(lv, "sm")}</span>` : ""}
         ${m.image_path ? `<button class="m-img ${m.image_spoiler && !revealed.has(m.id + ":img") ? "spo" : ""}" data-c="img" data-id="${m.id}"><img src="${esc(api.publicUrl("chat-images", m.image_path))}" alt="" loading="lazy">${m.image_spoiler && !revealed.has(m.id + ":img") ? `<span class="spo-cap"><span class="spo-tag">${icon("eye", 15)}Spoiler</span><span class="xs">Ketuk untuk melihat</span></span>` : ""}</button>` : ""}

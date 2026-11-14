@@ -36,3 +36,5 @@ body.nk-lite .nk-tw,body.nk-lite .nk-ring,body.nk-lite .nk-pulse,body.nk-lite .n
 .nk-ring{animation:nkhue 2.6s ease-in-out infinite}
 .nk-tw{animation:nktw 2.2s ease-in-out infinite}
 @media (prefers-reduced-motion: reduce){.nk-spin,.nk-ring,.nk-tw{animation:none}}
+/* komet tidak tampil diam sebelum animasinya mulai (saat halaman baru dimuat) */
+.nk-comet{animation-fill-mode:backwards}
