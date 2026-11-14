@@ -917,8 +917,11 @@ create trigger profiles_avatar_guard before update of avatar_path on public.prof
 -- =====================================================================
 -- 13. EXP v2: login harian + streak, riwayat EXP (30 hari), like komik & chapter, rekap bacaan.
 --     Cara dapat EXP (semua dicek di server, tidak bisa diubah dari aplikasi):
---       login harian   Day 1–7 : 10, 15, 20, 25, 30, 35, 40 EXP (siklus 7 hari, reset tiap minggu streak)
---       7 hari beruntun        : +50 EXP bonus di Day 7
+--       login harian : nomor Day = jumlah login beruntun (Day 1, 2, … 8, 9, …).
+--                      Minggu ke-1 (Day 1–7): 10, 15, 20, 25, 30, 35, 40 EXP.
+--                      Tiap minggu berikutnya setiap kotak +10 EXP (minggu 2: 20–50, minggu 3: 30–60,
+--                      minggu 4: 40–70); minggu ke-5 dan seterusnya tetap memakai besaran minggu ke-4.
+--       7 hari beruntun : +50 EXP bonus tiap akhir minggu (Day 7, 14, 21, …)
 --       baca chapter sampai habis : +3 EXP (sekali per chapter, maks 100 chapter/hari)
 --       like seri komik       : +5 EXP (sekali per komik, maks 20/hari)
 --       like chapter          : +3 EXP (sekali per chapter, maks 30/hari)
@@ -974,6 +977,14 @@ language sql
 stable
 set search_path = ''
 as $$ select (pg_catalog.now() at time zone 'Asia/Jakarta')::date $$;
+
+-- besaran EXP login untuk login beruntun ke-n
+create or replace function public.login_exp(n integer)
+returns integer
+language sql
+immutable
+set search_path = ''
+as $$ select 5 + 5 * (((n - 1) % 7) + 1) + 10 * (least(4, ((n - 1) / 7) + 1) - 1) $$;
 
 -- tambah EXP + catat riwayat (internal, tidak bisa dipanggil aplikasi)
 create or replace function public.add_exp(p_uid uuid, p_kind text, p_amount integer, p_note text)
@@ -1042,8 +1053,8 @@ begin
   return jsonb_build_object(
     'today', today, 'streak', cur, 'best', coalesce(s.best, 0),
     'claimed', coalesce(s.last_day = today, false),
-    -- hari ke berapa yang akan/sudah diklaim hari ini (1–7)
-    'day', case when s.last_day = today then ((cur - 1) % 7) + 1 else (cur % 7) + 1 end,
+    -- login beruntun ke berapa yang akan/sudah diklaim hari ini (Day 1, 2, … 8, …)
+    'day', case when s.last_day = today then cur else cur + 1 end,
     'counts', t);
 end;
 $$;
@@ -1067,14 +1078,14 @@ begin
     return public.daily_status() || jsonb_build_object('already', true, 'gained', 0, 'bonus', 0);
   end if;
   nxt := case when s.last_day = today - 1 then s.streak + 1 else 1 end;
-  d := ((nxt - 1) % 7) + 1;
+  d := ((nxt - 1) % 7) + 1;   -- posisi dalam minggu (1–7)
   insert into public.streaks as t (user_id, streak, best, last_day, updated_at)
   values (uid, nxt, nxt, today, pg_catalog.now())
   on conflict (user_id) do update set streak = nxt, best = greatest(t.best, nxt), last_day = today, updated_at = pg_catalog.now();
-  got := public.add_exp(uid, 'login', 5 + 5 * d, 'Login harian · Day ' || d || ' · streak ' || nxt || ' hari');
+  got := public.add_exp(uid, 'login', public.login_exp(nxt), 'Login harian · Day ' || nxt || ' · minggu ke-' || (((nxt - 1) / 7) + 1));
   if d = 7 then bonus := public.add_exp(uid, 'streak7', 50, 'Bonus 7 hari beruntun'); end if;
   return jsonb_build_object('today', today, 'streak', nxt, 'best', greatest(coalesce(s.best, 0), nxt), 'claimed', true,
-    'day', d, 'gained', got, 'bonus', bonus, 'already', false);
+    'day', nxt, 'gained', got, 'bonus', bonus, 'already', false);
 end;
 $$;
 revoke all on function public.claim_daily() from public, anon;

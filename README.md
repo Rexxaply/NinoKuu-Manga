@@ -38,8 +38,8 @@ Semua EXP dihitung server (bagian 13 skema). Hari dihitung WIB, reset pukul 00.0
 
 | Aktivitas | EXP | Batas |
 |---|---|---|
-| Login harian (Day 1–7) | 10, 15, 20, 25, 30, 35, 40 | 1× per hari; lewat sehari tanpa klaim → streak mulai dari Day 1 |
-| 7 hari beruntun | +50 bonus di Day 7 | siklus mulai lagi tiap 7 hari |
+| Login harian (Day = jumlah login beruntun) | minggu 1: 10–40 · minggu 2: 20–50 · minggu 3: 30–60 · minggu 4 dst.: 40–70 | 1× per hari; lewat sehari tanpa klaim → streak mulai dari Day 1 |
+| 7 hari beruntun | +50 bonus tiap akhir minggu (Day 7, 14, 21, …) | — |
 | Baca chapter sampai habis | +3 | sekali per chapter, maks 100/hari |
 | Like seri komik | +5 | sekali per komik, maks 20/hari |
 | Like chapter | +3 | sekali per chapter, maks 30/hari |

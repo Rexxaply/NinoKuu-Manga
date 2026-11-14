@@ -6,11 +6,15 @@ import * as S from "./store.js";
 import * as N from "./native.js";
 import { esc, icon, $, $$, toast } from "./ui.js";
 
-export const loginExp = (d) => 5 + 5 * d;      // Day 1–7: 10 … 40
+// login beruntun ke-n: minggu 1 = 10…40, tiap minggu kotak +10, mulai minggu ke-5 sama dengan minggu ke-4
+export const slotOf = (n) => ((n - 1) % 7) + 1;
+export const weekOf = (n) => Math.floor((n - 1) / 7) + 1;
+export const loginExp = (n) => 5 + 5 * slotOf(n) + 10 * (Math.min(4, weekOf(n)) - 1);
+const dayExp = (n) => loginExp(n) + (slotOf(n) === 7 ? BONUS7 : 0);
 export const BONUS7 = 50;
 export const RULES = [
-  { k: "login", ic: "cal", t: "Login harian", d: "Klaim tiap hari · Day 1–7 naik dari 10 ke 40 EXP", amt: "+10–40", cap: 1 },
-  { k: "streak7", ic: "flame", t: "7 hari beruntun", d: "Bonus di Day 7 · siklus mulai lagi tiap minggu", amt: "+50", cap: 7 },
+  { k: "login", ic: "cal", t: "Login harian", d: "Minggu 1: 10–40 EXP · tiap minggu +10 per hari (maks minggu ke-4: 40–70)", amt: "+10–70", cap: 1 },
+  { k: "streak7", ic: "flame", t: "7 hari beruntun", d: "Bonus tiap akhir minggu (Day 7, 14, 21, …)", amt: "+50", cap: 7 },
   { k: "read", ic: "book", t: "Baca chapter sampai habis", d: "Sekali per chapter", amt: "+3", cap: 100 },
   { k: "like_comic", ic: "thumb", t: "Like seri komik", d: "Sekali per komik", amt: "+5", cap: 20 },
   { k: "like_chapter", ic: "thumb", t: "Like chapter", d: "Sekali per chapter", amt: "+3", cap: 30 },
@@ -59,10 +63,10 @@ window.addEventListener("nk:exp", (e) => { if (S.state.profile?.role !== "develo
 const seen = { get: () => { try { return sessionStorage.getItem("ninokuu:dailySeen"); } catch { return null; } }, set: (d) => { try { sessionStorage.setItem("ninokuu:dailySeen", d); } catch {} } };
 let dailyOpen = false;
 const tile = (d, cur, claimed) => {
-  const done = d < cur || (d === cur && claimed), now = d === cur;
-  const amt = d === 7 ? `+${loginExp(7)} EXP · bonus +${BONUS7}` : `+${loginExp(d)} EXP`;
-  return `<div class="dl-t ${d === 7 ? "w" : ""} ${done ? "done" : ""} ${now ? "now" : ""}">
-    <span class="dl-c">${done ? icon("check", 15, 3) : d === 7 ? icon("gift", 17, 2) : d}</span>
+  const done = d < cur || (d === cur && claimed), now = d === cur, last = slotOf(d) === 7;
+  const amt = last ? `+${loginExp(d)} EXP · bonus +${BONUS7}` : `+${loginExp(d)} EXP`;
+  return `<div class="dl-t ${last ? "w" : ""} ${done ? "done" : ""} ${now ? "now" : ""}">
+    <span class="dl-c">${done ? icon("check", 15, 3) : last ? icon("gift", 17, 2) : d}</span>
     <span class="col"><b>Day ${d}</b><span>${amt}</span></span></div>`;
 };
 function dailyHtml(st, phase, res) {
@@ -73,11 +77,11 @@ function dailyHtml(st, phase, res) {
   return `<div class="dl-card" role="dialog" aria-modal="true" aria-label="Login harian">
   <button class="dl-x" data-d="close" aria-label="Tutup">${icon("x", 18, 2.2)}</button>
   <div class="dl-h"><span class="dl-hic">${icon("cal", 24, 2)}</span><span class="col"><b class="dl-ttl">${phase === "done" ? "Klaim berhasil" : "Login harian"}</b>
-    <span class="dl-day">Day ${day}</span><span class="dl-st">${icon("flame", 13, 2)}Total streak: ${streak} hari</span></span></div>
+    <span class="dl-day">Day ${day} · Minggu ke-${weekOf(day)}</span><span class="dl-st">${icon("flame", 13, 2)}Total streak: ${streak} hari</span></span></div>
   ${phase === "done" ? `<span class="dl-gain">+${num(gained)} EXP</span>` : ""}
-  <div class="dl-grid">${[1, 2, 3, 4, 5, 6, 7].map((d) => tile(d, day, claimed)).join("")}</div>
-  <p class="dl-note">${icon("clock", 14)}<span>Reset setiap pukul 00.00 WIB. Lewat sehari tanpa klaim, streak mulai lagi dari Day 1.</span></p>
-  <button class="btn primary dl-btn" data-d="${claimed ? "close" : "claim"}" ${phase === "busy" ? "disabled" : ""}>${phase === "busy" ? "Memproses…" : claimed ? "Siap!" : `Klaim +${num(loginExp(day) + (day === 7 ? BONUS7 : 0))} EXP`}</button>
+  <div class="dl-grid">${[1, 2, 3, 4, 5, 6, 7].map((i) => tile((weekOf(day) - 1) * 7 + i, day, claimed)).join("")}</div>
+  <p class="dl-note">${icon("clock", 14)}<span>Reset setiap pukul 00.00 WIB. Tiap minggu EXP setiap hari naik +10 (sampai minggu ke-4). Lewat sehari tanpa klaim, streak mulai lagi dari Day 1.</span></p>
+  <button class="btn primary dl-btn" data-d="${claimed ? "close" : "claim"}" ${phase === "busy" ? "disabled" : ""}>${phase === "busy" ? "Memproses…" : claimed ? "Siap!" : `Klaim +${num(dayExp(day))} EXP`}</button>
 </div>`;
 }
 export async function openDaily(force = false) {
@@ -137,7 +141,7 @@ function rulesHtml(st) {
   const c = st?.counts || {};
   return RULES.map((r) => {
     let have = c[r.k] || 0, cap = r.cap, lab;
-    if (r.k === "streak7") { have = st ? (st.claimed ? st.day : Math.max(0, st.day - 1)) : 0; lab = `Day ${have}/7`; }
+    if (r.k === "streak7") { have = st ? (st.claimed ? slotOf(st.day) : slotOf(st.day) - 1) : 0; lab = `${have}/7 hari minggu ini`; }
     else if (r.k === "login") lab = have ? "Sudah diklaim hari ini" : "Belum diklaim hari ini";
     else lab = `${have}/${cap} hari ini`;
     const full = have >= cap;
@@ -210,8 +214,8 @@ export async function vLevel(view, L, tab = "sum") {
           <span><b>Lv.${Math.min(99, lv.lv + 1)}</b><small>Level berikutnya</small></span></div></div>
       ${user ? `<button class="daily-cta ${st?.claimed ? "done" : ""}" data-act="daily"><span class="dl-hic sm">${icon(st?.claimed ? "check" : "gift", 20, 2)}</span>
           <span class="col grow gp2"><b>${st?.claimed ? `Login harian diklaim · Day ${st.day}` : `Klaim login harian · Day ${st?.day || 1}`}</b>
-          <span class="mu xs">${st?.claimed ? "Kembali besok setelah 00.00 WIB supaya streak tidak putus" : `+${loginExp(st?.day || 1)} EXP${(st?.day || 1) === 7 ? ` + bonus ${BONUS7}` : ""} · klaim sebelum 00.00 WIB`}</span>
-          <span class="dl-dots">${[1, 2, 3, 4, 5, 6, 7].map((d) => `<i class="${st && (d < st.day || (d === st.day && st.claimed)) ? "on" : ""}"></i>`).join("")}</span></span>
+          <span class="mu xs">${st?.claimed ? `Minggu ke-${weekOf(st.day)} · kembali besok setelah 00.00 WIB supaya streak tidak putus` : `+${loginExp(st?.day || 1)} EXP${slotOf(st?.day || 1) === 7 ? ` + bonus ${BONUS7}` : ""} · minggu ke-${weekOf(st?.day || 1)} · klaim sebelum 00.00 WIB`}</span>
+          <span class="dl-dots">${[1, 2, 3, 4, 5, 6, 7].map((i) => `<i class="${st && (i < slotOf(st.day) || (i === slotOf(st.day) && st.claimed)) ? "on" : ""}"></i>`).join("")}</span></span>
           <span class="mu">${icon("chev", 18)}</span></button>
         <a class="daily-cta recap" href="#/p/recap"><span class="dl-hic sm blue">${icon("share", 20, 2)}</span><span class="col grow gp2"><b>Rekap bacaan</b><span class="mu xs">7 & 30 hari terakhir · bagikan sebagai gambar</span></span><span class="mu">${icon("chev", 18)}</span></a>` : ""}
       <h2 class="cap row g6"><span class="gold">${icon("star", 15, 2)}</span>Cara dapat EXP</h2>
