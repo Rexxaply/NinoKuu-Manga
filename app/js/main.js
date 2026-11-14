@@ -16,7 +16,7 @@ const detailCache = new Map();
 /* ---------- router ---------- */
 function parse() {
   const parts = (location.hash.replace(/^#\/?/, "") || "home").split("/").map(decodeURIComponent);
-  const map = { c: "detail", r: "reader", p: "page" };
+  const map = { c: "detail", r: "reader", p: "page", ch: "chapters" };
   return { name: map[parts[0]] || parts[0], params: parts.slice(1) };
 }
 const TABS = ["home", "search", "fav", "more"];
@@ -24,7 +24,7 @@ async function render() {
   if (cleanup) { try { cleanup(); } catch {} cleanup = null; }
   scrollMem.set(route.key, window.scrollY);
   route = { ...parse(), key: location.hash || "#/home" };
-  const owner = { detail: null, reader: null, page: "more" }[route.name];
+  const owner = { detail: null, reader: null, chapters: null, page: "more" }[route.name];
   const tab = TABS.includes(route.name) ? route.name : owner;
   document.body.dataset.screen = route.name;
   nav.hidden = route.name === "reader";
@@ -217,11 +217,17 @@ async function vDetail(src, id) {
   S.updateLibMeta(src, id, { type, latest: latest?.ch ?? null });
   const h = S.histItem(src, id);
   const first = d.chapters[0], resumeCh = h?.chapter_id && d.chapters.find((c) => c.id === h.chapter_id);
-  let descOpen = false, q = "", asc = false;
+  let descOpen = false;
   const draw = () => {
     const fav = S.inLib(src, id), bell = !!S.libItem(src, id)?.notify;
-    const base = asc ? d.chapters : d.chapters.slice().reverse();
-    const list = base.filter((c) => !q || String(c.ch ?? "").startsWith(q) || (c.title || "").toLowerCase().includes(q.toLowerCase()));
+    // ringkas: 4 chapter terbaru; bila sedang membaca chapter lama, tampilkan juga chapter itu
+    const desc = d.chapters.slice().reverse();
+    let preview = desc.slice(0, 4);
+    if (resumeCh && !preview.includes(resumeCh)) {
+      const i = desc.indexOf(resumeCh);
+      preview = [...desc.slice(0, 2), resumeCh, desc[i + 1]].filter(Boolean);
+    }
+    const chRow = chRowFor(src, id, h, latest);
     const status = { ongoing: "Berlangsung", completed: "Tamat", hiatus: "Hiatus" }[m.status] || "";
     view.innerHTML = `
 <div class="hero"><div class="hero-bg" style="background-image:url('${esc(m.cover)}')"></div>
@@ -238,22 +244,14 @@ async function vDetail(src, id) {
   </div>
   ${m.tags?.length ? `<div class="tags">${m.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</div>` : ""}
   ${m.desc ? `<p class="desc ${descOpen ? "open" : ""}" data-act="desc">${esc(m.desc)}</p>` : ""}
-  <div class="sec-h mt24"><h2>Daftar chapter</h2><button class="link-red row g6" data-act="sort">${asc ? "Terlama" : "Terbaru"} ${icon("sort", 15, 2)}</button></div>
-  ${resumeCh ? `<div class="resume-line">Terakhir dibuka · Chapter ${esc(resumeCh.ch)}</div>` : ""}
-  <label class="search sm"><span class="mu">${icon("search", 18)}</span><span class="sr">Cari chapter</span><input id="chq" inputmode="decimal" placeholder="Cari chapter…" value="${esc(q)}"></label>
-  <div class="rows">${list.map((c) => {
-    const cur = h?.chapter_id === c.id;
-    return `<a class="ch ${cur ? "cur" : ""}" href="${readHref(src, id, c.id)}"><span class="col"><b>Chapter ${esc(c.ch ?? "?")}</b>${c.title ? `<span class="mu xs">${esc(c.title)}</span>` : ""}</span><span class="mu xs">${cur ? "Terakhir dibaca" : esc(ago(c.at))}</span></a>`;
-  }).join("") || `<div class="empty"><span class="empty-ic">${icon("search", 22)}</span><b>Maaf, chapter tidak tersedia</b><span>Coba nomor chapter lain.</span></div>`}</div>
+  <div class="sec-h mt24"><h2>Chapter</h2><a class="link-red" href="${chaptersHref(src, id)}">Lihat semua (${d.chapters.length})${icon("chev", 16, 2)}</a></div>
+  <div class="ch-card">${preview.map((c) => chRow(c)).join("") || `<div class="empty"><b>Belum ada chapter</b></div>`}</div>
 </div><div class="pad-nav"></div>`;
-    const inp = $("#chq");
-    inp.addEventListener("input", () => { q = inp.value.trim(); const pos = inp.selectionStart; draw(); const n = $("#chq"); n.focus(); n.setSelectionRange(pos, pos); });
   };
   setActs({
     back: () => back(),
     retry: () => vDetail(src, id),
     desc: (el) => { descOpen = !descOpen; el.classList.toggle("open", descOpen); },
-    sort: () => { asc = !asc; draw(); },
     fav: async () => {
       try { const on = await S.toggleLib(meta); if (on) S.updateLibMeta(src, id, { type, latest: latest?.ch ?? null }); toast(on ? "Ditambahkan ke koleksi" : "Dihapus dari koleksi"); }
       catch (e) { toast(e.message); }
@@ -265,6 +263,75 @@ async function vDetail(src, id) {
       try { await S.setNotify(meta, on); S.updateLibMeta(src, id, { type, latest: latest?.ch ?? null }); toast(on ? "Notifikasi chapter baru menyala" : "Notifikasi dimatikan"); }
       catch (e) { toast(e.message); }
       draw();
+    },
+  });
+  draw();
+}
+
+// cari chapter: angka dicocokkan PERSIS (ketik 1 → hanya chapter 1, bukan 10/100/1000);
+// selain angka dicocokkan ke judul chapter
+function matchCh(c, q) {
+  q = String(q || "").trim().toLowerCase().replace(",", ".");
+  if (!q) return true;
+  const num = (q.match(/\d+(?:\.\d+)?/) || [""])[0];
+  if (num) return parseFloat(c.ch) === parseFloat(num);
+  return (c.title || "").toLowerCase().includes(q);
+}
+const chaptersHref = (src, id) => `#/ch/${src}/${encodeURIComponent(id)}`;
+// baris chapter: BARU (rilis < 3 hari), TERAKHIR DIBACA, centang bila sudah lewat
+function chRowFor(src, id, h, latest) {
+  const readN = h ? parseFloat(h.chapter) : NaN;
+  return (c, timeline = false) => {
+    const cur = h?.chapter_id === c.id, n = parseFloat(c.ch);
+    const isNew = !cur && c.at && Date.now() - Date.parse(c.at) < 3 * 864e5;
+    const read = !cur && Number.isFinite(readN) && Number.isFinite(n) && n < readN;
+    const ic = cur ? icon("bookmark", 17, 2) : isNew ? icon("star", 17) : read ? icon("eye", 17) : icon("circle", 15);
+    return `<a class="ch ${timeline ? "tl" : ""} ${cur ? "cur" : ""} ${read ? "read" : ""}" href="${readHref(src, id, c.id)}">${timeline ? `<span class="tl-ic ${cur ? "cur" : isNew ? "new" : read ? "read" : ""}">${ic}</span>` : ""}
+      <span class="col grow"><b>Chapter ${esc(c.ch ?? "?")}</b><span class="mu xs">${esc(c.title ? c.title + " · " : "")}${esc(ago(c.at))}</span></span>
+      ${isNew ? `<span class="badge-s new">BARU</span>` : ""}${cur ? `<span class="badge-s cur">TERAKHIR DIBACA</span>` : ""}${read && !timeline ? `<span class="ok">${icon("check", 18, 2.2)}</span>` : ""}
+      <span class="mu">${icon("chev", 16)}</span></a>`;
+  };
+}
+async function vChapters(src, id) {
+  view.innerHTML = topbar("Daftar chapter") + `<div class="px">${loading(8, "sk-lrow")}</div>`;
+  setActs({ back: () => back(comicHref(src, id)), retry: () => vChapters(src, id) });
+  let d;
+  try { d = cachedDetail(src, id) || (await getDetail(src, id)); } catch (e) { view.innerHTML = topbar("Daftar chapter") + errBox(e); return; }
+  if (parse().name !== "chapters") return;
+  const h = S.histItem(src, id), latest = d.chapters[d.chapters.length - 1];
+  const row = chRowFor(src, id, h, latest);
+  const STEP = 60;
+  let q = "", asc = false, shown = STEP, io = null;
+  view.innerHTML = topbar("Daftar chapter") + `<div class="px">
+  <div class="sec-h"><b class="b15">${esc(d.manga.title)}</b><span class="mu sm">${d.chapters.length} chapter</span></div>
+  ${h?.chapter_id ? `<div class="row sb resume-line"><span>Terakhir dibuka · Chapter ${esc(h.chapter)}</span><button class="link-red" data-act="find">Temukan ↓</button></div>` : ""}
+  <div class="row g8"><label class="search box grow"><span class="mu">${icon("search", 18)}</span><span class="sr">Cari chapter</span><input id="chq" inputmode="decimal" placeholder="Cari nomor chapter…"></label>
+    <button class="sq-btn lg" data-act="sort" aria-label="Urutkan">${icon("sort", 18, 2)}</button></div>
+  <div class="mu xs info" id="chinfo"></div>
+  <div id="chl" class="rows"></div><div id="chsent" style="height:1px"></div></div><div class="pad-nav"></div>`;
+  const list = () => {
+    const base = asc ? d.chapters : d.chapters.slice().reverse();
+    return base.filter((c) => matchCh(c, q));
+  };
+  const draw = () => {
+    const l = list();
+    $("#chl").innerHTML = l.slice(0, shown).map((c) => row(c, true)).join("") || `<div class="empty"><span class="empty-ic">${icon("search", 22)}</span><b>Maaf, chapter tidak tersedia</b><span>Coba nomor chapter lain.</span></div>`;
+    $("#chinfo").textContent = (q ? `${l.length} hasil · ` : "") + (asc ? "Urut dari chapter pertama" : "Urut dari chapter terbaru") + (l.length > shown ? ` · menampilkan ${shown} dari ${l.length}` : "");
+  };
+  // tampilkan bertahap (60 per gulir) agar ratusan chapter tetap ringan
+  io = new IntersectionObserver((e) => { if (e[0].isIntersecting && list().length > shown) { shown += STEP; draw(); } }, { rootMargin: "600px" });
+  io.observe($("#chsent"));
+  cleanup = () => io.disconnect();
+  const inp = $("#chq");
+  inp.addEventListener("input", () => { q = inp.value.trim(); shown = STEP; draw(); });
+  setActs({
+    back: () => back(comicHref(src, id)),
+    sort: () => { asc = !asc; shown = STEP; draw(); },
+    find: () => {
+      const l = list(), i = l.findIndex((c) => c.id === h.chapter_id);
+      if (i < 0) return;
+      if (i >= shown) { shown = i + STEP; draw(); }
+      $("#chl .ch.cur")?.scrollIntoView({ block: "center", behavior: "smooth" });
     },
   });
   draw();
@@ -292,7 +359,7 @@ async function vReader(src, id, chId) {
     : `<div class="r-pages" id="rpages">${imgs.join("")}</div><div class="r-end">${nextBtn}</div>`}
   <div class="r-bot glass">
     <a class="icon-btn ${prev ? "" : "dis"}" ${prev ? `href="${readHref(src, id, prev.id)}"` : 'aria-disabled="true"'} aria-label="Chapter sebelumnya">${icon("back", 22)}</a>
-    <a class="btn ghost sm" href="${comicHref(src, id)}">${icon("list", 16, 2)}Daftar chapter</a>
+    <a class="btn ghost sm" href="${chaptersHref(src, id)}">${icon("list", 16, 2)}Daftar chapter</a>
     <a class="icon-btn ${next ? "" : "dis"}" ${next ? `href="${readHref(src, id, next.id)}"` : 'aria-disabled="true"'} aria-label="Chapter berikutnya">${icon("chev", 22)}</a>
   </div></div>`;
   const rd = $("#rd");
@@ -528,7 +595,7 @@ function vPage(name) {
   setActs(acts2);
 }
 
-const VIEWS = { home: vHome, search: vSearch, fav: vFav, more: vMore, detail: vDetail, reader: vReader, page: vPage };
+const VIEWS = { chapters: vChapters, home: vHome, search: vSearch, fav: vFav, more: vMore, detail: vDetail, reader: vReader, page: vPage };
 
 /* ---------- mulai ---------- */
 // Posisi miring dicek dari ukuran layar fisik (tidak berubah saat keyboard muncul).
