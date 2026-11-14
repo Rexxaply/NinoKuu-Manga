@@ -308,13 +308,81 @@ export async function vRecap(view, L) {
 }
 
 /* ---------- gambar rekap 1080×1920 ---------- */
-const loadImg = (src) => new Promise((ok) => {
+const loadRaw = (src, cors) => new Promise((ok) => {
   if (!src) return ok(null);
-  const im = new Image(); im.crossOrigin = "anonymous"; im.referrerPolicy = "no-referrer";
-  const t = setTimeout(() => ok(null), 6000);
+  const im = new Image(); if (cors) im.crossOrigin = "anonymous"; im.referrerPolicy = "no-referrer";
+  const t = setTimeout(() => ok(null), 8000);
   im.onload = () => { clearTimeout(t); ok(im); }; im.onerror = () => { clearTimeout(t); ok(null); };
   im.src = src;
 });
+// gambar untuk kanvas harus boleh dibaca (CORS). Situs seperti Shinigami/WestManga menolak →
+// di APK diambil lewat jaringan HP lalu dipakai sebagai blob lokal.
+async function loadImg(src) {
+  if (!src) return null;
+  if (/^(blob:|data:)/.test(src) || !/^https?:/i.test(src) || src.startsWith(location.origin)) return loadRaw(src, false);
+  const im = await loadRaw(src, true);
+  if (im || !N.isApp) return im;
+  try { return await loadRaw(await N.imageViaNative(src), false); } catch { return null; }
+}
+// bingkai avatar kosmik (sama dengan di aplikasi) digambar ulang di kanvas: cincin, ornamen SVG, medali level
+const conic = (c, cx, cy, fromDeg, colors) => {
+  if (!c.createConicGradient) { const g = c.createLinearGradient(cx - 50, cy - 50, cx + 50, cy + 50); colors.forEach((col, i) => g.addColorStop(i / Math.max(1, colors.length - 1), col)); return g; }
+  const g = c.createConicGradient((fromDeg - 90) * Math.PI / 180, cx, cy);
+  colors.forEach((col, i) => g.addColorStop(i / Math.max(1, colors.length - 1), col)); return g;
+};
+const svgImg = async (inner, defs) => {
+  const url = URL.createObjectURL(new Blob([`<svg xmlns="http://www.w3.org/2000/svg" viewBox="-52 -52 224 224" width="448" height="448">${defs}${inner}</svg>`], { type: "image/svg+xml" }));
+  const im = await loadRaw(url, false); setTimeout(() => URL.revokeObjectURL(url), 2000); return im;
+};
+async function drawAvatar(c, ax, ay, AS, p, lv, F) {
+  const k = AS / 116, cx = ax + AS / 2, cy = ay + AS / 2;
+  const photo = p?.avatar_path ? await loadImg(api.publicUrl("avatars", p.avatar_path)) : null;
+  let M = null; try { M = await import("./avatars.js"); } catch {}
+  const tpl = M?.AV?.[116]?.[lv.tier];
+  const circle = (r, fill) => { c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2); c.fillStyle = fill; c.fill(); };
+  const inside = (r) => {
+    c.save(); c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2); c.clip();
+    if (photo) { const sc = Math.max(2 * r / photo.width, 2 * r / photo.height); c.drawImage(photo, cx - photo.width * sc / 2, cy - photo.height * sc / 2, photo.width * sc, photo.height * sc); }
+    c.restore();
+  };
+  if (!tpl) {   // cadangan: cincin emas-merah sederhana
+    const g = c.createLinearGradient(ax, ay, ax + AS, ay + AS); g.addColorStop(0, "#F2B33D"); g.addColorStop(1, "#E0242B");
+    circle(AS / 2 + 6, g); circle(AS / 2, "#1C2533"); inside(AS / 2);
+    if (!photo) { c.fillStyle = "#fff"; c.font = `800 ${Math.round(AS * 0.47)}px ${F}`; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText((p?.name || "?").trim()[0]?.toUpperCase() || "?", cx, cy + 3); c.textAlign = "left"; c.textBaseline = "alphabetic"; }
+    return;
+  }
+  const num1 = (re, d = null) => { const m = tpl.match(re); return m ? m.slice(1) : d; };
+  const pulse = num1(/nk-pulse[^>]*?inset:(-?[\d.]+)px[^>]*?closest-side,(#[0-9A-Fa-f]+)/);
+  const neb = num1(/nk3-neb[^>]*?conic-gradient\(from 0deg,([^)]*)\);box-shadow:0 0 ([\d.]+)px (rgba\([^)]*\))/);
+  const ring2 = num1(/nk3-neb[\s\S]*?<\/span><span style="position:absolute;inset:([\d.]+)px;border-radius:50%;background:([^"]+)">/);
+  const inner = num1(/inset:([\d.]+)px;border-radius:50%;overflow:hidden;background:radial-gradient\(circle at 35% 30%,(#[0-9A-Fa-f]+)/, ["6", "#1C2533"]);
+  const medal = num1(/clip-path:inherit;background:radial-gradient\(circle at 40% 30%,(#[0-9A-Fa-f]+)/, ["#F2B33D"]);
+  const glow = num1(/text-shadow:0 0 ([\d.]+)px (#[0-9A-Fa-f]+)/, ["6", "#FFFFFFaa"]);
+  const svgs = [...tpl.matchAll(/<svg[^>]*>([\s\S]*?)<\/svg>/g)].map((m) => m[1]);
+  const defs = M.SPRITE.replace(/^<svg[^>]*>/, "").replace(/<\/svg>\s*$/, "");
+  const [back, front] = await Promise.all(svgs.map((x) => svgImg(x, defs)));
+  const sx = ax - 50 * k, sw = 217 * k;
+  // cahaya berdenyut
+  if (pulse) { const r = (58 - Number(pulse[0])) * k, g = c.createRadialGradient(cx, cy, 0, cx, cy, r); const pc = pulse[1].slice(0, 7); g.addColorStop(0, pc + "66"); g.addColorStop(.72, pc + "00"); circle(r, g); }
+  if (back) c.drawImage(back, sx, ay - 50 * k, sw, sw);
+  // cincin nebula + cincin kedua
+  if (neb) { c.save(); c.shadowColor = neb[2]; c.shadowBlur = Number(neb[1]) * k; circle(58 * k, conic(c, cx, cy, 0, neb[0].split(","))); c.restore(); }
+  if (ring2) { const bg = ring2[1].startsWith("conic") ? conic(c, cx, cy, 45, ring2[1].replace(/^conic-gradient\(from 45deg,/, "").replace(/\)$/, "").split(",")) : ring2[1]; circle((58 - Number(ring2[0])) * k, bg); }
+  const ri = (58 - Number(inner[0])) * k;
+  const ig = c.createRadialGradient(ax + AS * .35, ay + AS * .3, 0, ax + AS * .35, ay + AS * .3, ri * 1.6); ig.addColorStop(0, inner[1]); ig.addColorStop(.78, "#05070D"); ig.addColorStop(1, "#05070D");
+  circle(ri, ig);
+  if (photo) inside(ri);
+  else { c.save(); c.fillStyle = "#F7F2E6"; c.shadowColor = glow[1]; c.shadowBlur = Number(glow[0]) * k; c.font = `${Math.round(48 * k)}px "Instrument Serif", Georgia, serif`; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText((p?.name || "?").trim()[0]?.toUpperCase() || "?", cx, cy + 2 * k); c.restore(); }
+  if (front) c.drawImage(front, sx, ay - 50 * k, sw, sw);
+  // medali level (segi enam) di kanan bawah
+  const txt = String(lv.lv); c.font = `800 ${10.6 * k}px ${F}`;
+  const mw = Math.max(29, c.measureText(txt).width / k + 8) * k, mh = 29 * k, mx = ax + 120 * k - mw, my = ay + 118 * k - mh;
+  const hex = (x, y, w, h) => { c.beginPath(); c.moveTo(x + w * .25, y); c.lineTo(x + w * .75, y); c.lineTo(x + w, y + h / 2); c.lineTo(x + w * .75, y + h); c.lineTo(x + w * .25, y + h); c.lineTo(x, y + h / 2); c.closePath(); };
+  hex(mx, my, mw, mh); c.fillStyle = conic(c, mx + mw / 2, my + mh / 2, 30, ["#F2D27A", "#7A5A1C", "#FFF4D1", "#F2D27A", "#9A7426", "#F2D27A"]); c.fill();
+  const b = 1.9 * k; hex(mx + b, my + b, mw - 2 * b, mh - 2 * b);
+  const mg = c.createRadialGradient(mx + mw * .4, my + mh * .3, 0, mx + mw * .4, my + mh * .3, mw * .8); mg.addColorStop(0, medal[0]); mg.addColorStop(.85, "#05070D"); mg.addColorStop(1, "#05070D"); c.fillStyle = mg; c.fill();
+  c.fillStyle = "#FFF4D1"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText(txt, mx + mw / 2, my + mh / 2 + .5 * k); c.textAlign = "left"; c.textBaseline = "alphabetic";
+}
 const rr = (c, x, y, w, h, r) => { c.beginPath(); c.roundRect ? c.roundRect(x, y, w, h, r) : c.rect(x, y, w, h); };
 function fit(c, text, max) { let t = String(text || ""); if (c.measureText(t).width <= max) return t; while (t && c.measureText(t + "…").width > max) t = t.slice(0, -1); return t + "…"; }
 
@@ -335,35 +403,36 @@ export async function drawRecap(data, days) {
   const X = 60, Y = 110, CW = W - 120, CH = 1690;
   rr(c, X, Y, CW, CH, 56); c.fillStyle = "rgba(20,27,39,.82)"; c.fill(); c.strokeStyle = "rgba(255,255,255,.08)"; c.lineWidth = 2; c.stroke();
   const ax = X + 64, bw = CW - 128;
-  // avatar
-  const av = p?.avatar_path ? await loadImg(api.publicUrl("avatars", p.avatar_path)) : null;
-  const ay = Y + 64, AS = 140;
-  c.save(); c.beginPath(); c.arc(ax + AS / 2, ay + AS / 2, AS / 2 + 6, 0, 7); g = c.createLinearGradient(ax, ay, ax + AS, ay + AS); g.addColorStop(0, "#F2B33D"); g.addColorStop(1, "#E0242B"); c.fillStyle = g; c.fill();
-  c.beginPath(); c.arc(ax + AS / 2, ay + AS / 2, AS / 2, 0, 7); c.clip();
-  if (av) c.drawImage(av, ax, ay, AS, AS); else { c.fillStyle = "#1C2533"; c.fillRect(ax, ay, AS, AS); c.fillStyle = "#fff"; c.font = f(800, 66); c.textAlign = "center"; c.textBaseline = "middle"; c.fillText((p?.name || "?").trim()[0]?.toUpperCase() || "?", ax + AS / 2, ay + AS / 2 + 4); }
-  c.restore(); c.textAlign = "left"; c.textBaseline = "alphabetic";
-  c.fillStyle = "#F2F4F8"; c.font = f(800, 52); c.fillText(fit(c, p?.name || "Pembaca", 440), ax + AS + 36, ay + 62);
+  // avatar dengan bingkai rank (bingkai melebar ±45% di luar lingkaran)
+  const AS = 128, avx = ax + 40, avy = Y + 84;
+  await drawAvatar(c, avx, avy, AS, p, lv, F);
+  const nx = avx + AS + 78;
+  c.fillStyle = "#F2F4F8"; c.font = f(800, 50); c.fillText(fit(c, p?.name || "Pembaca", X + CW - 64 - nx), nx, avy + 62);
   const pill = (x, y, txt, bg, fg) => { c.font = f(800, 28); const w = c.measureText(txt).width + 40; rr(c, x, y, w, 52, 26); c.fillStyle = bg; c.fill(); c.fillStyle = fg; c.fillText(txt, x + 20, y + 36); return w; };
-  let px = ax + AS + 36; px += pill(px, ay + 86, `Lv. ${lv.lv}`, "rgba(242,179,61,.18)", "#F2B33D") + 12; pill(px, ay + 86, lv.rank.toUpperCase(), "rgba(224,36,43,.22)", "#FF8A8E");
+  let px = nx; px += pill(px, avy + 86, `Lv. ${lv.lv}`, "rgba(242,179,61,.18)", "#F2B33D") + 12; pill(px, avy + 86, lv.rank.toUpperCase(), "rgba(224,36,43,.22)", "#FF8A8E");
   c.font = f(800, 30); const sTxt = `🔥 ${st?.streak ?? 0} hari`, sw = c.measureText(sTxt).width + 44;
-  rr(c, X + CW - 64 - sw, ay + 4, sw, 60, 30); c.fillStyle = "rgba(255,120,60,.16)"; c.fill(); c.strokeStyle = "rgba(255,140,80,.5)"; c.stroke(); c.fillStyle = "#FFB27A"; c.fillText(sTxt, X + CW - 64 - sw + 22, ay + 45);
-  // judul
-  c.fillStyle = "#A3ACBD"; c.font = f(800, 28); c.fillText(`NINOKUU  ·  ${days} HARI TERAKHIR`, ax, 390);
-  c.fillStyle = "#fff"; c.font = f(800, 96); c.fillText(`Rekap ${days} Hari`, ax, 490);
-  g = c.createLinearGradient(ax, 0, ax + 80, 0); g.addColorStop(0, "#F2B33D"); g.addColorStop(1, "#E0242B"); c.fillStyle = g; rr(c, ax, 536, 80, 10, 5); c.fill();
-  c.fillStyle = "#F2B33D"; c.font = f(700, 38); c.fillText(range(data.from, data.to), ax + 104, 554);
+  px = X + CW - 56 - sw; rr(c, px, Y + 44, sw, 56, 28); c.fillStyle = "rgba(255,120,60,.16)"; c.fill(); c.strokeStyle = "rgba(255,140,80,.5)"; c.lineWidth = 2; c.stroke(); c.fillStyle = "#FFB27A"; c.fillText(sTxt, px + 22, Y + 82);
+  // judul (di tengah, lebih besar)
+  c.textAlign = "center";
+  c.fillStyle = "#A3ACBD"; c.font = f(800, 30); c.fillText(`NINOKUU  ·  ${days} HARI TERAKHIR`, W / 2, 438);
+  c.fillStyle = "#fff"; c.font = f(800, 118); c.fillText(`Rekap ${days} Hari`, W / 2, 548);
+  c.font = f(700, 40); const rt = range(data.from, data.to), rw = c.measureText(rt).width;
+  g = c.createLinearGradient(W / 2 - rw / 2 - 74, 0, W / 2 - rw / 2 - 18, 0); g.addColorStop(0, "#F2B33D"); g.addColorStop(1, "#E0242B");
+  c.fillStyle = g; rr(c, W / 2 - rw / 2 - 74, 588, 56, 8, 4); c.fill(); rr(c, W / 2 + rw / 2 + 18, 588, 56, 8, 4); c.fill();
+  c.fillStyle = "#F2B33D"; c.fillText(rt, W / 2, 606);
+  c.textAlign = "left";
   // angka besar
-  let y = 596; rr(c, ax, y, bw, 220, 34); c.fillStyle = "rgba(255,255,255,.05)"; c.fill(); c.strokeStyle = "rgba(255,255,255,.08)"; c.stroke();
+  let y = 650; rr(c, ax, y, bw, 210, 34); c.fillStyle = "rgba(255,255,255,.05)"; c.fill(); c.strokeStyle = "rgba(255,255,255,.08)"; c.stroke();
   c.fillStyle = "rgba(255,255,255,.1)"; c.fillRect(ax + bw / 2, y + 36, 2, 148);
-  const big = (x, v, lab, sub, col) => { c.fillStyle = col; c.font = f(800, 100); c.fillText(num(v), x, y + 112); c.fillStyle = "#F2F4F8"; c.font = f(800, 30); c.fillText(lab, x, y + 160); c.fillStyle = "#A3ACBD"; c.font = f(500, 28); c.fillText(sub, x, y + 196); };
+  const big = (x, v, lab, sub, col) => { c.fillStyle = col; c.font = f(800, 100); c.fillText(num(v), x, y + 106); c.fillStyle = "#F2F4F8"; c.font = f(800, 30); c.fillText(lab, x, y + 150); c.fillStyle = "#A3ACBD"; c.font = f(500, 28); c.fillText(sub, x, y + 184); };
   big(ax + 40, data.chapters, "CHAPTER", "dibaca sampai habis", "#F2B33D"); big(ax + bw / 2 + 40, data.series, "SERIES", "judul berbeda", "#FF6B70");
   // grafik per hari
-  c.fillStyle = "#A3ACBD"; c.font = f(700, 28); c.fillText("Chapter per hari", ax, 880);
-  y = 900; const pd = data.per_day || [], mx = Math.max(1, ...pd), gw = bw / Math.max(1, pd.length), gh = 120;
+  c.fillStyle = "#A3ACBD"; c.font = f(700, 28); c.fillText("Chapter per hari", ax, 912);
+  y = 930; const pd = data.per_day || [], mx = Math.max(1, ...pd), gw = bw / Math.max(1, pd.length), gh = 120;
   pd.forEach((n, i) => { const h = n ? Math.max(10, (n / mx) * gh) : 6; g = c.createLinearGradient(0, y + gh - h, 0, y + gh); g.addColorStop(0, n ? "#F2B33D" : "rgba(255,255,255,.12)"); g.addColorStop(1, n ? "#E0242B" : "rgba(255,255,255,.12)"); c.fillStyle = g; rr(c, ax + i * gw + gw * 0.18, y + gh - h, gw * 0.64, h, Math.min(10, gw * 0.3)); c.fill(); });
   // judul teratas
-  c.fillStyle = "#A3ACBD"; c.font = f(700, 28); c.fillText("Paling sering dibaca", ax, 1076);
-  y = 1098; const cw = (bw - 40) / 3, chh = 250;
+  c.fillStyle = "#A3ACBD"; c.font = f(700, 28); c.fillText("Paling sering dibaca", ax, 1104);
+  y = 1126; const cw = (bw - 40) / 3, chh = 240;
   if (data.top?.length) {
     const covers = await Promise.all(data.top.map((t) => loadImg(t.cover)));
     data.top.forEach((t, i) => {
@@ -377,13 +446,13 @@ export async function drawRecap(data, days) {
     });
   } else { c.fillStyle = "#A3ACBD"; c.font = f(500, 28); c.fillText("Belum ada chapter yang selesai dibaca di periode ini.", ax, y + 40); }
   // statistik kecil
-  y = 1460; rr(c, ax, y, bw, 150, 30); c.fillStyle = "rgba(255,255,255,.05)"; c.fill();
+  y = 1484; rr(c, ax, y, bw, 150, 30); c.fillStyle = "rgba(255,255,255,.05)"; c.fill();
   const minis = [[num(data.exp), "EXP", "#F2B33D"], [num(data.likes), "Like", "#6FC3F2"], [num(data.saved), "Koleksi", "#FF6B70"], [`${data.active}/${days}`, "Hari aktif", "#5DD39E"]];
   minis.forEach(([v, n, col], i) => { const cx = ax + (bw / 4) * (i + 0.5); c.textAlign = "center"; c.fillStyle = col; c.font = f(800, 50); c.fillText(v, cx, y + 82); c.fillStyle = "#A3ACBD"; c.font = f(600, 26); c.fillText(n, cx, y + 122); });
   c.textAlign = "left";
   // merek
   const logo = await loadImg("icons/icon-192.png");
-  const by = 1666;
+  const by = 1680;
   if (logo) { c.save(); rr(c, ax, by, 64, 64, 16); c.clip(); c.drawImage(logo, ax, by, 64, 64); c.restore(); }
   c.fillStyle = "#fff"; c.font = f(800, 42); c.fillText("Ninokuu", ax + (logo ? 84 : 0), by + 46);
   c.fillStyle = "#A3ACBD"; c.font = f(500, 26); c.textAlign = "right"; c.fillText("manga · manhwa · manhua", X + CW - 64, by + 44); c.textAlign = "left";
