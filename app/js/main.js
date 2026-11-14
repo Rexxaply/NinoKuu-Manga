@@ -6,6 +6,7 @@ import { DOCS } from "./docs.js";
 import * as N from "./native.js";
 import { openFilter, activeCount, genreName, STATUS_NAME } from "./filters.js";
 import { vChat, vDev, roomFor, roomPreview, roomCount, miniMsg, bindSpoilers } from "./chat.js";
+import * as X from "./exp.js";
 import { esc, icon, $, $$, toast, ago, SOURCES, srcName, TYPES, typeName, cover, comicHref, readHref, greeting, errBox, loading } from "./ui.js";
 
 const VERSION = window.NINOKUU_CONFIG?.VERSION || "1.0.0";
@@ -401,6 +402,7 @@ async function vDetail(src, id) {
     <a class="btn primary grow" href="${resumeCh ? readHref(src, id, resumeCh.id) : first ? readHref(src, id, first.id) : "#"}">${icon("play", 18, 2)}${resumeCh ? "Lanjut Ch. " + esc(resumeCh.ch) : "Mulai baca"}</a>
     <button class="round-btn ${fav ? "on" : ""}" data-act="fav" aria-pressed="${fav}" aria-label="${fav ? "Hapus dari koleksi" : "Tambah ke koleksi"}">${icon(fav ? "heartF" : "heart", 22)}</button>
     <button class="round-btn ${bell ? "on gold" : ""}" data-act="bell" aria-pressed="${bell}" aria-label="${bell ? "Matikan notifikasi" : "Nyalakan notifikasi chapter baru"}">${icon(bell ? "bellF" : "bell", 22)}</button>
+    ${likeBtn(lk)}
   </div>
   ${m.tags?.length ? `<div class="tags">${m.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</div>` : ""}
   ${m.desc ? `<p class="desc ${descOpen ? "open" : ""}" data-act="desc">${esc(m.desc)}</p>` : ""}
@@ -414,7 +416,9 @@ async function vDetail(src, id) {
     bindSpoilers($("#cmprev"));
     onBarScroll();
   };
-  let cmList = null, cmN = 0;
+  let cmList = null, cmN = 0, lk = null, lkBusy = false;
+  const paintLike = () => { const b = $("[data-act=like]"); if (b) b.outerHTML = likeBtn(lk); };
+  S.likeInfo(src, id, "").then((i) => { if (i && parse().name === "detail") { lk = i; paintLike(); } });
   const onBarScroll = () => { const b = $("#dbar"); if (b) b.classList.toggle("solid", window.scrollY > 120); };
   window.addEventListener("scroll", onBarScroll, { passive: true });
   cleanup = () => window.removeEventListener("scroll", onBarScroll);
@@ -427,6 +431,15 @@ async function vDetail(src, id) {
     desc: (el) => { descOpen = !descOpen; el.classList.toggle("open", descOpen); },
     dl: dlSoon,
     report: () => openReport({ source: src, comic_id: id, title: m.title }),
+    like: async () => {
+      if (!S.loggedIn()) { toast("Masuk dulu untuk memberi like."); return; }
+      if (lkBusy) return; lkBusy = true;
+      const old = lk || { n: 0, liked: false }, on = !old.liked;
+      lk = { n: Math.max(0, old.n + (on ? 1 : -1)), liked: on }; paintLike();
+      try { await S.setLike(src, id, "", m.title, on); if (on) toast("Kamu menyukai komik ini"); }
+      catch (e) { lk = old; paintLike(); toast(e.message); }
+      lkBusy = false;
+    },
     fav: async () => {
       try { const on = await S.toggleLib(meta); if (on) S.updateLibMeta(src, id, { type, latest: latest?.ch ?? null }); toast(on ? "Ditambahkan ke koleksi" : "Dihapus dari koleksi"); }
       catch (e) { toast(e.message); }
@@ -447,6 +460,9 @@ async function vDetail(src, id) {
   draw();
 }
 
+const chLike = (lk) => `<button class="btn ghost rlike like-b ${lk?.liked ? "on" : ""}" data-act="like" aria-pressed="${!!lk?.liked}">${icon(lk?.liked ? "thumbF" : "thumb", 18)}${lk?.liked ? "Kamu suka chapter ini" : "Suka chapter ini"}${lk?.n ? `<span class="cm-n">${lk.n}</span>` : ""}</button>`;
+// tombol like (komik di detail, chapter di pembaca); angka = jumlah like semua pembaca
+const likeBtn = (lk, cls = "round-btn") => `<button class="${cls} like-b ${lk?.liked ? "on" : ""}" data-act="like" aria-pressed="${!!lk?.liked}" aria-label="${lk?.liked ? "Batal suka" : "Suka"}">${icon(lk?.liked ? "thumbF" : "thumb", 21)}${lk?.n ? `<span class="lk-n">${lk.n > 999 ? (lk.n / 1000).toFixed(1).replace(".0", "") + "rb" : lk.n}</span>` : ""}</button>`;
 // cari chapter: angka dicocokkan PERSIS (ketik 1 → hanya chapter 1, bukan 10/100/1000);
 // selain angka dicocokkan ke judul chapter
 function matchCh(c, q) {
@@ -585,8 +601,8 @@ async function vReader(src, id, chId) {
   const imgs = p.images.map((im, i) => `<img class="r-img" data-i="${i + 1}" src="${esc(im.direct ? im.u : api.pageUrl(im.p))}"${im.direct ? ` data-direct="${esc(im.u)}"` : ""} alt="Halaman ${i + 1}" ${i > 2 ? 'loading="lazy"' : ""} decoding="async" referrerpolicy="no-referrer" draggable="false">`);
   const mainLabel = next ? `Lanjut ke Chapter ${esc(next.ch)}` : "Kembali ke info komik";
   view.innerHTML = `<div class="reader ui ${slide ? "slide" : ""}" id="rd">
-  ${slide ? `<div class="r-slides" id="rbox" dir="${rtl ? "rtl" : "ltr"}">${imgs.map((im) => `<div class="r-slide">${im}</div>`).join("")}<div class="r-slide r-endslide"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span><a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini</a></div></div>`
-    : `<div class="r-scroll" id="rbox"><div class="r-pages" id="rpages">${imgs.join("")}<div class="r-endtxt"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span><a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini<span class="cm-n" id="rcmn"></span></a></div></div></div>`}
+  ${slide ? `<div class="r-slides" id="rbox" dir="${rtl ? "rtl" : "ltr"}">${imgs.map((im) => `<div class="r-slide">${im}</div>`).join("")}<div class="r-slide r-endslide"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span>${chLike(null)}<a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini</a></div></div>`
+    : `<div class="r-scroll" id="rbox"><div class="r-pages" id="rpages">${imgs.join("")}<div class="r-endtxt"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span>${chLike(null)}<a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini<span class="cm-n" id="rcmn"></span></a></div></div></div>`}
   <div class="r-zoom glass" id="rzoom" hidden>${icon("zoom", 15)}<span id="rzt"></span> · geser untuk melihat, ketuk 2× untuk normal</div>
   <div class="r-top">
     <button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 22, 2)}</button>
@@ -619,10 +635,22 @@ async function vReader(src, id, chId) {
   }));
   const meta = { source: src, comic_id: id, title: d.manga.title, cover: d.manga.cover, chapter: ch.ch, chapter_id: ch.id, pages: total, type: typeFromTags(d.manga.tags) };
   S.saveHistory({ ...meta, page: 1 });
-  S.awardRead(src, id, ch.ch);
+  // EXP baca: hanya setelah chapter dibaca sampai habis (akhir chapter terlihat)
+  let awarded = false;
+  const finish = () => { if (awarded) return; awarded = true; S.awardRead(src, id, ch.ch); };
+  const endEl = $(".r-endtxt, .r-endslide", rd);
+  if (endEl && "IntersectionObserver" in window) {
+    const io = new IntersectionObserver((es) => { if (es.some((x) => x.isIntersecting)) { finish(); io.disconnect(); } }, { root: box, threshold: 0.2 });
+    io.observe(endEl);
+  }
+  // like chapter (jumlah dari server, diperbarui optimis)
+  let lk = null, lkBusy = false;
+  const paintLike = () => $$(".rlike", rd).forEach((b) => { b.outerHTML = chLike(lk); });
+  S.likeInfo(src, id, ch.ch).then((i) => { if (i && parse().name === "reader") { lk = i; paintLike(); } });
   let curPage = 1;
   const setPage = (i) => {
     if (i < 1 || i > total) return;
+    if (i === total && slide) finish();
     const pc = total > 1 ? ((i - 1) / (total - 1)) * 100 : 100;
     $("#rfill").style.width = pc + "%"; $("#rknob").style.left = pc + "%"; $("#rtrack").setAttribute("aria-valuenow", i);
     if (i !== curPage) { curPage = i; $("#rpg").textContent = i; S.saveHistory({ ...meta, page: i }); }
@@ -698,6 +726,14 @@ async function vReader(src, id, chId) {
   setActs({
     back: toComic,
     retry: () => vReader(src, id, chId),
+    like: async () => {
+      if (!S.loggedIn()) { toast("Masuk dulu untuk memberi like."); return; }
+      if (lkBusy) return; lkBusy = true;
+      const old = lk || { n: 0, liked: false }, on = !old.liked;
+      lk = { n: Math.max(0, old.n + (on ? 1 : -1)), liked: on }; paintLike();
+      try { await S.setLike(src, id, ch.ch, d.manga.title, on); } catch (e) { lk = old; paintLike(); toast(e.message); }
+      lkBusy = false;
+    },
     menu: () => menu($(".r-menu").hidden), closeMenu: () => menu(false),
     rmode: (el) => { S.setSetting("readMode", el.dataset.v); vReader(src, id, chId); },
     chlist: () => { menu(false); openChList(); },
@@ -942,7 +978,7 @@ ${user ? `<button class="me mx" data-act="level">${avatarHtml(p, lv)}
     </form>
     ${authMode === "in" ? `<button class="btn ghost" data-act="auth" data-v="up">Belum punya akun? Daftar</button><button class="link" data-act="auth" data-v="reset">Lupa password?</button>` : `<button class="btn ghost" data-act="auth" data-v="in">Sudah punya akun? Masuk</button>`}</div>`}
 ${["developer", "moderator"].includes(p?.role) ? group("Developer", mrow("dev", "Panel developer", p.role === "developer" ? "Moderasi, pengumuman, statistik" : "Moderasi chat", "dev")) : ""}
-${group("Bacaanmu", mrow("star", "Level &amp; Rank", user ? `${lv.rank} · Lv ${lv.lv}` : "Masuk untuk mulai naik level", "level") + mrow("clock", "Riwayat baca", `${S.history().length} judul`, "goHist") + mrow("down", "Unduhan", N.isApp ? "Segera hadir di pembaruan berikutnya" : "Tersedia di aplikasi APK", "goDl"))}
+${group("Bacaanmu", mrow("star", "Level &amp; Rank", user ? `${lv.rank} · Lv ${lv.lv}${X.cachedStatus() ? ` · 🔥 ${X.cachedStatus().streak} hari` : ""}` : "Masuk untuk mulai naik level", "level") + (user ? mrow("share", "Rekap bacaan", "7 & 30 hari · bagikan sebagai gambar", "recap") : "") + mrow("clock", "Riwayat baca", `${S.history().length} judul`, "goHist") + mrow("down", "Unduhan", N.isApp ? "Segera hadir di pembaruan berikutnya" : "Tersedia di aplikasi APK", "goDl"))}
 <section class="sec s20"><h2 class="cap">Tampilan</h2><div class="card col g12"><span class="b145">Mode efek avatar</span>
   ${seg([{ id: "Ringan", name: "Ringan" }, { id: "Normal", name: "Normal" }], gfx, "gfx", "s2")}
   <span class="mu xs lh">${gfx === "Ringan" ? "Partikel dikurangi; komet, aurora, dan awan nebula dimatikan. Hemat baterai, cocok untuk HP spek rendah." : "Bingkai avatar kosmik penuh dengan partikel dan animasi."}</span></div></section>
@@ -971,13 +1007,14 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
         if (r.confirm) { toast("Cek email untuk konfirmasi akun, lalu masuk.", 4500); authMode = "in"; vMore(); return; }
       } else await api.signIn(f.get("email"), f.get("pw"));
       await S.syncAfterLogin().catch(() => {});
-      toast("Berhasil masuk"); vMore();
+      toast("Berhasil masuk"); vMore(); window.dispatchEvent(new Event("nk:login"));
       if (N.pushSupported()) N.pushEnable(api.rpc, true).then(() => { if (route.name === "more") vMore(); }).catch(() => {});
     } catch (ex) { err.textContent = ex.message; btn.disabled = false; }
   });
+  if (user && !X.cachedStatus()) X.loadStatus().then((ds) => { const el = $("button.mrow[data-act=level] .mu.sm"); if (ds && el && route.name === "more" && !el.textContent.includes("🔥")) el.textContent += ` · 🔥 ${ds.streak} hari`; });
   setActs({
     auth: (el) => { authMode = el.dataset.v; vMore(); },
-    level: () => go("#/p/level"), dev: () => go("#/p/dev"), photo: () => openPhoto(), goName: () => go("#/p/name"), goEmail: () => go("#/p/email"), goPass: () => go("#/p/pass"),
+    level: () => go("#/p/level"), recap: () => go("#/p/recap"), dev: () => go("#/p/dev"), photo: () => openPhoto(), goName: () => go("#/p/name"), goEmail: () => go("#/p/email"), goPass: () => go("#/p/pass"),
     goHist: () => go("#/fav/hist"), goDl: () => go("#/fav/dl"),
     about: () => go("#/p/about"), privacy: () => go("#/p/privacy"), terms: () => go("#/p/terms"),
     backup: () => go("#/p/backup"), restore: () => go("#/p/restore"),
@@ -1077,6 +1114,8 @@ function startApp() {
     const chatSheet = $("#host [data-c=close]"); if (chatSheet) { chatSheet.click(); return; }
     const rmenu = $(".r-menu:not([hidden])"); if (rmenu) { $("[data-act=closeMenu]")?.click(); return; }
     const chs = $(".chs-host [data-x=close]"); if (chs) { chs.click(); return; }
+    const ip = $(".img-prev"); if (ip) { ip.click(); return; }
+    if (X.closeDaily()) return;
     // sama seperti prototipe: halaman dalam → mundur; tab lain → Beranda; Beranda → tekan sekali lagi untuk keluar
     if (!["home", "search", "fav", "more"].includes(route.name)) { if (navIdx > 0) history.back(); else goReplace("#/home"); return; }
     if (route.name !== "home") { goReplace("#/home"); return; }
@@ -1097,24 +1136,13 @@ function startApp() {
 const RANK_INFO = [["Warrior", 1, 11, "#AEB6C4"], ["Elite", 12, 22, "#F0BE84"], ["Grandmaster", 23, 33, "#FFA36B"], ["Epic", 34, 44, "#6FC3F2"], ["Legend", 45, 55, "#5DD39E"], ["Mythic", 56, 66, "#8FAEFF"], ["Honor", 67, 77, "#B48CFF"], ["Glory", 78, 88, "#FF9CC0"], ["Immortal", 89, 99, "#F2B33D"]];
 async function vPage(name) {
   if (name === "dev") return vDev(view, ctx());
-  if (name === "level") await loadAvatars();
   const p = S.state.profile, lv = S.levelOf(p), user = api.currentUser();
   if (["name", "email", "pass"].includes(name) && !user) { go("#/more"); return; }
   let html = "";
   const acts2 = { back: () => back("#/more") };
-  if (name === "level") {
-    html = topbar("Level &amp; Rank") + `<div class="px col g16 mt6">
-  ${!user ? `<div class="note">${icon("key", 18)}<span>Untuk berkomentar dan mendapatkan <b>Level &amp; Rank</b>, kamu harus <a href="#/more">masuk</a> terlebih dahulu.</span></div>` : ""}
-  <div class="lv-hero">${avatarHtml(p, lv, 116)}${rankPill(lv, true)}
-    <span class="lv-name">${esc(p?.name || "Tamu")}${badges(p)}</span>
-    <div class="lv-bar"><div class="row sb mu xs"><span>Lv ${lv.lv}</span><span>${lv.max ? "MAKS" : `${lv.cur.toLocaleString("id-ID")} / ${lv.need.toLocaleString("id-ID")} EXP`}</span></div>
-      <span class="prog l"><span style="width:${lv.max ? 100 : pct(lv.cur, lv.need)}%"></span></span>
-      <span class="sm">${lv.max ? (p?.role === "developer" ? "Developer · Lv 99" : "Level maksimal 99 tercapai") : "Baca chapter baru untuk mendapat EXP (10 EXP per chapter, maks 300 per hari)"}</span></div></div>
-  <h2 class="cap">Tangga rank</h2>
-  <div class="group">${RANK_INFO.map(([n, a, b, c], i) => `<div class="rank-row ${i === lv.tier ? "me" : ""} ${i > lv.tier ? "lock" : ""}">${avatarHtml(p, lv, 46, { tier: i, ini: p?.name || n, noMedal: true })}
-      <span class="rc-mid"><b style="color:${c}">${n}</b><span class="mu xs">Lv ${a}–${b}</span></span><span class="xs b ${i === lv.tier ? "gold" : i < lv.tier ? "ok" : "mu"}">${i === lv.tier ? "RANK-MU" : i < lv.tier ? "Terlewati" : "Terkunci"}</span></div>`).join("")}</div>
-  <p class="mu xs lh">Mode efek avatar Ringan/Normal bisa diatur di Lainnya → Tampilan.</p></div>`;
-  } else if (name === "name") {
+  if (name === "level") { cleanup = await X.vLevel(view, lctx()); return; }
+  if (name === "recap") { await X.vRecap(view, lctx()); return; }
+  if (name === "name") {
     html = topbar("Nama tampilan") + `<form class="px col g14 mt6" id="pf"><p class="mu sm lh m0">Nama ini dipakai untuk sapaan di Beranda dan tampil di chat publik.</p>
   <label class="fld">Nama<input name="v" maxlength="24" required autocomplete="nickname" value="${esc(p?.name || "")}"></label><span class="err" id="perr"></span>
   <button class="btn primary">Simpan</button></form>`;
@@ -1181,6 +1209,7 @@ async function vPage(name) {
 }
 
 const ctx = () => ({ topbar, setActs, go, back, loading });
+const lctx = () => ({ ...ctx(), avatarHtml, rankPill, badges, loadAvatars, RANK_INFO });
 const VIEWS = { chat: async () => { cleanup = await vChat(view, ctx()); }, comments: (s, i) => vComments(s, i), chcomments: (s, i, c) => vComments(s, i, c), chapters: vChapters, home: vHome, search: vSearch, fav: vFav, more: vMore, detail: vDetail, reader: vReader, page: vPage };
 
 /* ---------- mulai ---------- */
@@ -1214,6 +1243,7 @@ if (!N.isApp && "serviceWorker" in navigator && location.protocol === "https:") 
   } catch (e) { toast(e.message, 4500); }
   render();
   if (N.isApp) startApp();
+  X.startDaily();
   // bingkai avatar (berkas besar) dimuat di latar belakang agar menu Lainnya langsung tampil
   setTimeout(() => (window.requestIdleCallback || setTimeout)(() => loadAvatars()), 1200);
 })();

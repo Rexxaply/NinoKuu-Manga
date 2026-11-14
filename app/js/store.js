@@ -48,8 +48,11 @@ export async function toggleLib(m) {
   }
   const row = { source: m.source, comic_id: m.comic_id, title: m.title.slice(0, 300), cover: (m.cover || "").slice(0, 1000), notify: false, added_at: new Date().toISOString() };
   state.lib.set(k, row); saveLocal(); emit();
-  if (loggedIn()) await api.rest("library?on_conflict=user_id,source,comic_id", { method: "POST", body: row, prefer: "resolution=merge-duplicates,return=minimal" })
-    .catch((e) => { state.lib.delete(k); saveLocal(); emit(); throw e; });
+  if (loggedIn()) {
+    await api.rest("library?on_conflict=user_id,source,comic_id", { method: "POST", body: row, prefer: "resolution=merge-duplicates,return=minimal" })
+      .catch((e) => { state.lib.delete(k); saveLocal(); emit(); throw e; });
+    refreshExp();
+  }
   return true;
 }
 // lonceng: butuh login karena notifikasi dikirim server ke HP
@@ -98,11 +101,30 @@ export async function flushHistory() {
 }
 const histRow = (h) => ({ source: h.source, comic_id: h.comic_id, title: (h.title || "").slice(0, 300), cover: (h.cover || "").slice(0, 1000),
   chapter: String(h.chapter ?? "").slice(0, 40) || "?", page: Math.max(1, Math.min(10000, h.page || 1)), read_at: h.read_at });
-// satu chapter = sekali EXP (dicek server). Profil diperbarui setelahnya.
+// chapter dibaca sampai habis = sekali EXP (dicek server). Profil diperbarui setelahnya.
 export async function awardRead(src, id, chapter) {
   if (!loggedIn() || chapter == null) return;
   await api.rest("read_log?on_conflict=user_id,source,comic_id,chapter", { method: "POST", body: { source: src, comic_id: id, chapter: String(chapter).slice(0, 40) }, prefer: "resolution=ignore-duplicates,return=minimal" }).catch(() => {});
-  loadProfile().catch(() => {});
+  refreshExp();
+}
+// muat ulang profil; bila EXP bertambah, kabari layar (pil "+EXP" & progres level)
+export async function refreshExp() {
+  const before = Number(state.profile?.exp) || 0;
+  const p = await loadProfile().catch(() => null);
+  const after = Number(p?.exp) || 0;
+  if (p && after > before) window.dispatchEvent(new CustomEvent("nk:exp", { detail: { from: before, to: after } }));
+}
+
+/* ---------- like komik & chapter (chapter "" = seri komik) ---------- */
+export async function likeInfo(src, id, chapter = "") {
+  return api.rpc("like_info", { p_source: src, p_comic: id, p_chapter: String(chapter ?? "") }).catch(() => null);
+}
+export async function setLike(src, id, chapter, title, on) {
+  if (!loggedIn()) throw new Error("Masuk dulu untuk memberi like.");
+  const ch = String(chapter ?? "").slice(0, 40);
+  if (on) await api.rest("likes?on_conflict=user_id,source,comic_id,chapter", { method: "POST", body: { source: src, comic_id: id, chapter: ch, title: (title || "").slice(0, 300) }, prefer: "resolution=ignore-duplicates,return=minimal" });
+  else await api.rest(`likes?source=eq.${enc(src)}&comic_id=eq.${enc(id)}&chapter=eq.${enc(ch)}`, { method: "DELETE" });
+  if (on) refreshExp();
 }
 
 /* ---------- profil ---------- */

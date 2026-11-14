@@ -190,8 +190,8 @@ create policy "riwayat milik sendiri" on public.history for all to authenticated
 -- =====================================================================
 -- 4. EXP dari membaca. Aplikasi cukup menjalankan
 --      insert into read_log (source, comic_id, chapter) values (...) on conflict do nothing
---    setiap kali satu chapter selesai dibuka. Satu chapter hanya memberi EXP sekali, maksimal 300 EXP per hari,
---    level dihitung di aplikasi dari total EXP (maks level 99).
+--    setiap kali satu chapter selesai dibaca sampai habis. Satu chapter hanya memberi EXP sekali;
+--    besaran & batas harian diatur grant_exp (bagian 13). Level dihitung di aplikasi (maks 99).
 -- =====================================================================
 create table if not exists public.read_log (
   user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
@@ -229,20 +229,11 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
-declare
-  per_chapter constant integer := 10;
-  daily_cap constant integer := 300;
-  max_exp constant integer := 1000000;
-  today date := (pg_catalog.now() at time zone 'Asia/Jakarta')::date;
-  got integer;
+declare t text;
 begin
-  insert into public.exp_daily as d (user_id, day, gained) values (new.user_id, today, per_chapter)
-  on conflict (user_id, day) do update set gained = d.gained + per_chapter
-    where d.gained + per_chapter <= daily_cap
-  returning gained into got;
-  if got is not null then
-    update public.profiles set exp = least(exp + per_chapter, max_exp) where id = new.user_id;
-  end if;
+  -- judul diambil dari riwayat baca (untuk tampilan Riwayat EXP); aturan EXP ada di grant_exp (bagian 13)
+  select h.title into t from public.history h where h.user_id = new.user_id and h.source = new.source and h.comic_id = new.comic_id;
+  perform public.grant_exp(new.user_id, 'read', null, pg_catalog.concat_ws(' · ', t, 'Ch. ' || new.chapter));
   return null;
 end;
 $$;
@@ -485,19 +476,26 @@ join public.profiles p on p.id = c.user_id;
 revoke all on table public.chat_feed from anon, authenticated;
 grant select on table public.chat_feed to anon, authenticated;
 
--- Pembersihan berkala (dipanggil cron Edge Function): chat publik lebih dari 30 hari dan
--- komentar komik/chapter lebih dari 180 hari dihapus.
+-- Pembersihan berkala (dipanggil cron Edge Function): chat publik lebih dari 30 hari,
+-- komentar komik/chapter lebih dari 180 hari, dan riwayat EXP lebih dari 30 hari dihapus.
 -- File gambarnya dihapus oleh Edge Function lewat Storage API.
 create or replace function public.chat_cleanup(older_than interval default interval '30 days')
 returns setof text
-language sql
+language plpgsql
 security definer
 set search_path = ''
 as $$
+begin
+  -- riwayat EXP hanya disimpan 30 hari (hemat ruang); total EXP di profil tidak berubah
+  if pg_catalog.to_regclass('public.exp_log') is not null then
+    delete from public.exp_log where created_at < pg_catalog.now() - interval '30 days';
+  end if;
+  return query
   delete from public.chat_messages
   where (room = 'public' and created_at < pg_catalog.now() - older_than)
      or (room <> 'public' and created_at < pg_catalog.now() - interval '180 days')
   returning image_path;
+end;
 $$;
 revoke all on function public.chat_cleanup(interval) from public, anon, authenticated;
 grant execute on function public.chat_cleanup(interval) to service_role;
@@ -915,6 +913,285 @@ $$;
 drop trigger if exists profiles_avatar_guard on public.profiles;
 create trigger profiles_avatar_guard before update of avatar_path on public.profiles
   for each row execute function public.profile_avatar_guard();
+
+-- =====================================================================
+-- 13. EXP v2: login harian + streak, riwayat EXP (30 hari), like komik & chapter, rekap bacaan.
+--     Cara dapat EXP (semua dicek di server, tidak bisa diubah dari aplikasi):
+--       login harian   Day 1–7 : 10, 15, 20, 25, 30, 35, 40 EXP (siklus 7 hari, reset tiap minggu streak)
+--       7 hari beruntun        : +50 EXP bonus di Day 7
+--       baca chapter sampai habis : +3 EXP (sekali per chapter, maks 100 chapter/hari)
+--       like seri komik       : +5 EXP (sekali per komik, maks 20/hari)
+--       like chapter          : +3 EXP (sekali per chapter, maks 30/hari)
+--       simpan ke koleksi     : +3 EXP (sekali per komik, maks 20/hari)
+--     Hari dihitung WIB (reset pukul 00.00 WIB).
+-- =====================================================================
+create table if not exists public.exp_log (
+  id bigint generated always as identity primary key,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  kind text not null,
+  amount integer not null,
+  total_after integer not null,
+  note text,
+  created_at timestamptz not null default now(),
+  constraint exp_log_kind check (kind in ('login', 'streak7', 'read', 'like_comic', 'like_chapter', 'library')),
+  constraint exp_log_note_len check (char_length(coalesce(note, '')) <= 400)
+);
+create index if not exists exp_log_user_time on public.exp_log (user_id, created_at desc);
+alter table public.exp_log enable row level security;
+revoke all on table public.exp_log from anon, authenticated;
+grant select on table public.exp_log to authenticated;
+drop policy if exists "riwayat exp milik sendiri" on public.exp_log;
+create policy "riwayat exp milik sendiri" on public.exp_log for select to authenticated
+  using ((select auth.uid()) = user_id);
+
+-- penanda "EXP sudah pernah diberikan" (like/koleksi): permanen agar tidak bisa di-like ulang demi EXP
+create table if not exists public.exp_once (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  k text not null,
+  created_at timestamptz not null default now(),
+  primary key (user_id, k)
+);
+alter table public.exp_once enable row level security;
+revoke all on table public.exp_once from anon, authenticated;
+
+create table if not exists public.streaks (
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  streak integer not null default 0,
+  best integer not null default 0,
+  last_day date,
+  updated_at timestamptz not null default now()
+);
+alter table public.streaks enable row level security;
+revoke all on table public.streaks from anon, authenticated;
+grant select on table public.streaks to authenticated;
+drop policy if exists "streak milik sendiri" on public.streaks;
+create policy "streak milik sendiri" on public.streaks for select to authenticated
+  using ((select auth.uid()) = user_id);
+
+create or replace function public.wib_today()
+returns date
+language sql
+stable
+set search_path = ''
+as $$ select (pg_catalog.now() at time zone 'Asia/Jakarta')::date $$;
+
+-- tambah EXP + catat riwayat (internal, tidak bisa dipanggil aplikasi)
+create or replace function public.add_exp(p_uid uuid, p_kind text, p_amount integer, p_note text)
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare tot integer;
+begin
+  update public.profiles set exp = least(exp + p_amount, 1000000) where id = p_uid returning exp into tot;
+  if tot is null then return 0; end if;
+  insert into public.exp_log (user_id, kind, amount, total_after, note)
+  values (p_uid, p_kind, p_amount, tot, pg_catalog.left(p_note, 400));
+  return p_amount;
+end;
+$$;
+revoke all on function public.add_exp(uuid, text, integer, text) from public, anon, authenticated;
+
+-- aturan EXP aktivitas: besaran, batas harian, dan "sekali saja" (p_once)
+create or replace function public.grant_exp(p_uid uuid, p_kind text, p_once text, p_note text)
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  amt integer; cap integer; n integer;
+  day_start timestamptz := (public.wib_today()::timestamp) at time zone 'Asia/Jakarta';
+begin
+  select r.a, r.c into amt, cap from (values ('read', 3, 100), ('like_comic', 5, 20), ('like_chapter', 3, 30), ('library', 3, 20))
+    as r(k, a, c) where r.k = p_kind;
+  if amt is null or p_uid is null then return 0; end if;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext('exp:' || p_uid::text));
+  select pg_catalog.count(*) into n from public.exp_log l
+    where l.user_id = p_uid and l.kind = p_kind and l.created_at >= day_start;
+  if n >= cap then return 0; end if;
+  if p_once is not null then
+    insert into public.exp_once (user_id, k) values (p_uid, pg_catalog.left(p_once, 400)) on conflict do nothing;
+    if not found then return 0; end if;
+  end if;
+  return public.add_exp(p_uid, p_kind, amt, p_note);
+end;
+$$;
+revoke all on function public.grant_exp(uuid, text, text, text) from public, anon, authenticated;
+
+-- status login harian + progres EXP hari ini (untuk popup & halaman Level)
+create or replace function public.daily_status()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  uid uuid := auth.uid(); today date := public.wib_today(); s public.streaks; alive boolean; cur integer;
+  day_start timestamptz := (public.wib_today()::timestamp) at time zone 'Asia/Jakarta'; t jsonb;
+begin
+  if uid is null then return null; end if;
+  select * into s from public.streaks where user_id = uid;
+  alive := s.last_day is not null and s.last_day >= today - 1;
+  cur := case when alive then s.streak else 0 end;
+  select coalesce(jsonb_object_agg(k, n), '{}'::jsonb) into t from (
+    select l.kind as k, pg_catalog.count(*) as n from public.exp_log l
+    where l.user_id = uid and l.created_at >= day_start group by l.kind) x;
+  return jsonb_build_object(
+    'today', today, 'streak', cur, 'best', coalesce(s.best, 0),
+    'claimed', coalesce(s.last_day = today, false),
+    -- hari ke berapa yang akan/sudah diklaim hari ini (1–7)
+    'day', case when s.last_day = today then ((cur - 1) % 7) + 1 else (cur % 7) + 1 end,
+    'counts', t);
+end;
+$$;
+revoke all on function public.daily_status() from public, anon;
+grant execute on function public.daily_status() to authenticated;
+
+create or replace function public.claim_daily()
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  uid uuid := auth.uid(); today date := public.wib_today(); s public.streaks; nxt integer; d integer;
+  got integer := 0; bonus integer := 0;
+begin
+  if uid is null then raise exception 'Masuk dulu untuk klaim login harian' using errcode = '42501'; end if;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext('exp:' || uid::text));
+  select * into s from public.streaks where user_id = uid for update;
+  if s.last_day = today then
+    return public.daily_status() || jsonb_build_object('already', true, 'gained', 0, 'bonus', 0);
+  end if;
+  nxt := case when s.last_day = today - 1 then s.streak + 1 else 1 end;
+  d := ((nxt - 1) % 7) + 1;
+  insert into public.streaks as t (user_id, streak, best, last_day, updated_at)
+  values (uid, nxt, nxt, today, pg_catalog.now())
+  on conflict (user_id) do update set streak = nxt, best = greatest(t.best, nxt), last_day = today, updated_at = pg_catalog.now();
+  got := public.add_exp(uid, 'login', 5 + 5 * d, 'Login harian · Day ' || d || ' · streak ' || nxt || ' hari');
+  if d = 7 then bonus := public.add_exp(uid, 'streak7', 50, 'Bonus 7 hari beruntun'); end if;
+  return jsonb_build_object('today', today, 'streak', nxt, 'best', greatest(coalesce(s.best, 0), nxt), 'claimed', true,
+    'day', d, 'gained', got, 'bonus', bonus, 'already', false);
+end;
+$$;
+revoke all on function public.claim_daily() from public, anon;
+grant execute on function public.claim_daily() to authenticated;
+
+-- Like seri komik (chapter = '') dan like chapter. Jumlah like dibaca lewat like_info.
+create table if not exists public.likes (
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  source text not null,
+  comic_id text not null,
+  chapter text not null default '',
+  title text,
+  created_at timestamptz not null default now(),
+  primary key (user_id, source, comic_id, chapter),
+  constraint likes_len check (char_length(source) <= 40 and char_length(comic_id) <= 300
+    and char_length(chapter) <= 40 and char_length(coalesce(title, '')) <= 300)
+);
+create index if not exists likes_target_idx on public.likes (source, comic_id, chapter);
+alter table public.likes enable row level security;
+revoke all on table public.likes from anon, authenticated;
+grant select, delete on table public.likes to authenticated;
+grant insert (source, comic_id, chapter, title) on table public.likes to authenticated;
+drop policy if exists "like dibaca sendiri" on public.likes;
+create policy "like dibaca sendiri" on public.likes for select to authenticated using ((select auth.uid()) = user_id);
+drop policy if exists "like ditulis sendiri" on public.likes;
+create policy "like ditulis sendiri" on public.likes for insert to authenticated with check ((select auth.uid()) = user_id);
+drop policy if exists "like dihapus sendiri" on public.likes;
+create policy "like dihapus sendiri" on public.likes for delete to authenticated using ((select auth.uid()) = user_id);
+
+create or replace function public.award_like_exp()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform public.grant_exp(new.user_id, case when new.chapter = '' then 'like_comic' else 'like_chapter' end,
+    'like:' || new.source || ':' || new.comic_id || ':' || new.chapter,
+    case when new.chapter = '' then pg_catalog.concat_ws(' · ', new.title, 'like komik')
+         else pg_catalog.concat_ws(' · ', new.title, 'Ch. ' || new.chapter) end);
+  return null;
+end;
+$$;
+revoke all on function public.award_like_exp() from public, anon, authenticated;
+drop trigger if exists likes_award on public.likes;
+create trigger likes_award after insert on public.likes for each row execute function public.award_like_exp();
+
+create or replace function public.like_info(p_source text, p_comic text, p_chapter text default '')
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select jsonb_build_object(
+    'n', (select pg_catalog.count(*) from public.likes l where l.source = p_source and l.comic_id = p_comic and l.chapter = coalesce(p_chapter, '')),
+    'liked', coalesce((select true from public.likes l where l.user_id = auth.uid() and l.source = p_source
+      and l.comic_id = p_comic and l.chapter = coalesce(p_chapter, '')), false));
+$$;
+revoke all on function public.like_info(text, text, text) from public;
+grant execute on function public.like_info(text, text, text) to anon, authenticated;
+
+-- simpan komik ke koleksi
+create or replace function public.award_library_exp()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform public.grant_exp(new.user_id, 'library', 'lib:' || new.source || ':' || new.comic_id,
+    pg_catalog.concat_ws(' · ', new.title, 'disimpan ke koleksi'));
+  return null;
+end;
+$$;
+revoke all on function public.award_library_exp() from public, anon, authenticated;
+drop trigger if exists library_award on public.library;
+create trigger library_award after insert on public.library for each row execute function public.award_library_exp();
+
+-- Rekap bacaan 7 / 30 hari (untuk kartu yang bisa dibagikan)
+create or replace function public.my_recap(p_days integer default 7)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  uid uuid := auth.uid(); n integer := case when p_days >= 30 then 30 else 7 end;
+  d0 date := public.wib_today() - (case when p_days >= 30 then 30 else 7 end) + 1;
+  since timestamptz := (d0::timestamp) at time zone 'Asia/Jakarta';
+  r jsonb;
+begin
+  if uid is null then return null; end if;
+  select jsonb_build_object(
+    'days', n, 'from', d0, 'to', public.wib_today(),
+    'chapters', (select pg_catalog.count(*) from public.read_log where user_id = uid and read_at >= since),
+    'series', (select pg_catalog.count(distinct (source, comic_id)) from public.read_log where user_id = uid and read_at >= since),
+    'exp', (select coalesce(sum(amount), 0) from public.exp_log where user_id = uid and created_at >= since),
+    'likes', (select pg_catalog.count(*) from public.likes where user_id = uid and created_at >= since),
+    'saved', (select pg_catalog.count(*) from public.library where user_id = uid and added_at >= since),
+    'active', (select pg_catalog.count(distinct (read_at at time zone 'Asia/Jakarta')::date) from public.read_log where user_id = uid and read_at >= since),
+    'per_day', (select coalesce(jsonb_agg(c order by g), '[]'::jsonb) from (
+        select g, (select pg_catalog.count(*) from public.read_log where user_id = uid
+          and (read_at at time zone 'Asia/Jakarta')::date = g::date) as c
+        from pg_catalog.generate_series(d0::timestamp, public.wib_today()::timestamp, interval '1 day') g) x),
+    'top', (select coalesce(jsonb_agg(jsonb_build_object('source', t.source, 'comic_id', t.comic_id, 'n', t.c,
+        'title', h.title, 'cover', h.cover) order by t.c desc), '[]'::jsonb)
+      from (select source, comic_id, pg_catalog.count(*) as c from public.read_log
+            where user_id = uid and read_at >= since group by source, comic_id order by c desc limit 3) t
+      left join public.history h on h.user_id = uid and h.source = t.source and h.comic_id = t.comic_id)
+  ) into r;
+  return r;
+end;
+$$;
+revoke all on function public.my_recap(integer) from public, anon;
+grant execute on function public.my_recap(integer) to authenticated;
 
 -- =====================================================================
 -- 12. Kunci server (Edge Function: cron, notifikasi HP, pembersihan) butuh akses penuh.

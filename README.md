@@ -32,6 +32,23 @@ dan "Admin" dicadangkan untuk akun resmi.
 Semua tabel memakai RLS. Hak bawaan `anon`/`authenticated` dicabut lalu diberikan seperlunya;
 EXP, notifikasi, dan status sembunyi pesan hanya diubah oleh trigger/fungsi di server.
 
+### EXP, streak, dan like
+
+Semua EXP dihitung server (bagian 13 skema). Hari dihitung WIB, reset pukul 00.00.
+
+| Aktivitas | EXP | Batas |
+|---|---|---|
+| Login harian (Day 1–7) | 10, 15, 20, 25, 30, 35, 40 | 1× per hari; lewat sehari tanpa klaim → streak mulai dari Day 1 |
+| 7 hari beruntun | +50 bonus di Day 7 | siklus mulai lagi tiap 7 hari |
+| Baca chapter sampai habis | +3 | sekali per chapter, maks 100/hari |
+| Like seri komik | +5 | sekali per komik, maks 20/hari |
+| Like chapter | +3 | sekali per chapter, maks 30/hari |
+| Simpan komik ke koleksi | +3 | sekali per komik, maks 20/hari |
+
+Like yang dibatalkan lalu diberikan lagi tidak memberi EXP kedua kali (`exp_once`). Riwayat EXP (`exp_log`)
+disimpan 30 hari lalu dihapus oleh cron pembersihan; total EXP di profil tidak berkurang. Rekap 7/30 hari
+diambil lewat `my_recap` dan bisa dibagikan sebagai gambar 9:16.
+
 ## Edge Function `ninokuu-api`
 
 [`supabase/functions/ninokuu-api/index.ts`](supabase/functions/ninokuu-api/index.ts) — jelajah, detail, dan halaman chapter
