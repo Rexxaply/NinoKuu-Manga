@@ -46,13 +46,21 @@ async function compress(file) {
 }
 
 /* ---------- pengumuman tersemat di chat publik ---------- */
-// hanya yang disematkan dan belum lewat masa sematnya; pengguna bisa menyembunyikan untuk dirinya sendiri
+// hanya yang disematkan dan belum lewat masa sematnya. Pengguna biasa bisa menyembunyikan untuk dirinya
+// sendiri selama 24 jam (setelah itu muncul lagi); Developer melepasnya untuk semua pengguna.
+const HIDE_MS = 24 * 3600e3;
+const hiddenPins = () => {
+  const h = api.lsGet("annHidden", {});
+  const o = h && !Array.isArray(h) && typeof h === "object" ? h : {};   // format lama (daftar id) diabaikan
+  return Object.fromEntries(Object.entries(o).filter(([, t]) => Date.now() - t < HIDE_MS));
+};
+const hidePin = (id) => api.lsSet("annHidden", { ...hiddenPins(), [id]: Date.now() });
 async function activePin() {
   const now = encodeURIComponent(`(pinned_until.is.null,pinned_until.gt."${new Date().toISOString()}")`);
   const rows = await api.rest(`announcements?select=id,title,body,created_at,pinned_until&pinned=eq.true&or=${now}&order=created_at.desc&limit=3`)
     .catch(() => api.rest("announcements?select=id,title,body,created_at&pinned=eq.true&order=created_at.desc&limit=3").catch(() => []));
-  const hidden = api.lsGet("annHidden", []);
-  return (rows || []).find((a) => !hidden.includes(a.id)) || null;
+  const hidden = hiddenPins();
+  return (rows || []).find((a) => !hidden[a.id]) || null;
 }
 
 /* ---------- Ruang obrolan: chat publik, komentar komik, komentar chapter ---------- */
@@ -102,7 +110,7 @@ export async function vChat(view, ctx, opt = {}) {
     $("#chat").innerHTML = `${pub ? `<div class="chat-info"><span class="online-dot"></span>${active || 1} pembaca aktif · Jaga obrolan tetap sopan, tandai spoiler.</div>`
       : `<a class="room-h" href="${esc(opt.backHref || "#/home")}">${opt.cover || ""}<span class="rc-mid g4"><b class="t1">${esc(opt.sub || "")}</b><span class="mu xs">${msgs.length ? msgs.length + (msgs.length >= 100 ? "+" : "") + " komentar" : "Belum ada komentar"} · tandai spoiler dengan ||teks||</span></span></a>`}
   ${pin ? `<div class="pin" data-c="pinx"><span class="pin-ic">${icon("mega", 18)}</span><span class="rc-mid g4"><span class="pin-cap">Pengumuman · Developer · ${esc(ago(pin.created_at))}</span><b>${esc(pin.title)}</b>${pin.body ? `<span class="mu sm pre pin-body">${esc(pin.body)}</span>` : ""}</span>
-      <button class="x-btn" data-c="${isDev() ? "unpin" : "pinhide"}" aria-label="${isDev() ? "Lepas pengumuman untuk semua pengguna" : "Sembunyikan pengumuman"}">${icon("x", 14, 2.2)}</button></div>` : ""}
+      <button class="x-btn" data-c="${isDev() ? "unpin" : "pinhide"}" aria-label="${isDev() ? "Lepas pengumuman untuk semua pengguna" : "Sembunyikan pengumuman selama 24 jam"}">${icon("x", 14, 2.2)}</button></div>` : ""}
   ${msgs.map((m) => {
       const mine = m.user_id === me, head = !prev || prev.user_id !== m.user_id; prev = m;
       const lv = S.levelOf({ exp: m.exp, role: m.role }), t = lv.tier;
@@ -214,7 +222,7 @@ export async function vChat(view, ctx, opt = {}) {
     else if (a === "mban") { if (!confirm(`Blokir ${m.name}? Semua pesannya disembunyikan dan dia tidak bisa menulis di chat publik.`)) return; run(() => api.rpc("mod_restrict", { p_user: m.user_id, p_ban: true }), `${m.name} diblokir dari chat`); }
     else if (a === "pinx") b.classList.toggle("open");
     else if (a === "unpin") { if (!confirm("Lepas pengumuman ini dari chat publik untuk semua pengguna?")) return; run(() => api.rest(`announcements?id=eq.${pin.id}`, { method: "PATCH", body: { pinned: false }, prefer: "return=minimal" }), "Pengumuman dilepas dari chat untuk semua pengguna"); }
-    else if (a === "pinhide") { api.lsSet("annHidden", [...api.lsGet("annHidden", []), pin.id].slice(-50)); pin = null; draw(); toast("Pengumuman disembunyikan"); }
+    else if (a === "pinhide") { hidePin(pin.id); pin = null; draw(); toast("Pengumuman disembunyikan dari layarmu selama 24 jam", 3000); }
   });
   setActs({ back: () => back(opt.backHref || "#/home") });
   // keyboard muncul → tetap lihat pesan terakhir
