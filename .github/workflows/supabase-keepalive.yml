@@ -34,7 +34,7 @@ jobs:
           ok=0
           for i in 1 2 3; do
             code=$(curl -sS -o /tmp/out.txt -w '%{http_code}' -X POST "$URL/rest/v1/rpc/keepalive_ping" \
-              -H "apikey: $SUPABASE_ANON_KEY" -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+              -H "apikey: $SUPABASE_ANON_KEY" \
               -H "Content-Type: application/json" -d '{}' || echo 000)
             echo "Percobaan $i → HTTP $code"; cat /tmp/out.txt; echo
             if [ "$code" = "200" ]; then ok=1; break; fi
