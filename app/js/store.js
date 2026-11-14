@@ -62,7 +62,22 @@ export async function setNotify(m, on) {
     .catch((e) => { row.notify = !on; saveLocal(); emit(); throw e; });
 }
 
+// info tambahan yang hanya disimpan di HP: tipe komik & chapter terbaru (untuk label "New update")
+export function updateLibMeta(src, id, meta) {
+  const k = keyOf(src, id), row = state.lib.get(k);
+  if (!row) return;
+  const changed = Object.entries(meta).some(([kk, v]) => v != null && row[kk] !== v);
+  if (!changed) return;
+  Object.entries(meta).forEach(([kk, v]) => { if (v != null) row[kk] = v; });
+  saveLocal(); emit();
+}
+
 /* ---------- riwayat & EXP ---------- */
+export async function clearHistory() {
+  const old = state.hist;
+  state.hist = new Map(); saveLocal(); emit();
+  if (loggedIn()) await api.rest("history?source=neq.__", { method: "DELETE" }).catch((e) => { state.hist = old; saveLocal(); emit(); throw e; });
+}
 export const histItem = (src, id) => state.hist.get(keyOf(src, id));
 export const history = () => [...state.hist.values()].sort((a, b) => (b.read_at || "").localeCompare(a.read_at || ""));
 let histTimer = null;
@@ -120,7 +135,8 @@ export async function pull() {
     api.rest("library?select=source,comic_id,title,cover,notify,added_at&order=added_at.desc&limit=2000"),
     api.rest("history?select=source,comic_id,title,cover,chapter,page,read_at&order=read_at.desc&limit=300"),
   ]);
-  state.lib = new Map((lib || []).map((r) => [keyOf(r.source, r.comic_id), r]));
+  const oldLib = state.lib;
+  state.lib = new Map((lib || []).map((r) => { const k = keyOf(r.source, r.comic_id); return [k, { ...oldLib.get(k), ...r }]; }));
   const local = state.hist;
   state.hist = new Map((hist || []).map((r) => { const k = keyOf(r.source, r.comic_id); return [k, { ...local.get(k), ...r }]; }));
   saveLocal(); emit();

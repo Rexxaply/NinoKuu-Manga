@@ -1,7 +1,7 @@
 // Ninokuu service worker: kerangka aplikasi bisa dibuka offline, gambar komik disimpan sementara.
-const VER = "ninokuu-app-1.0.0";
+const VER = "ninokuu-app-1.0.1";
 const IMG = "ninokuu-img-v1";
-const SHELL = ["./", "index.html", "config.js", "css/app.css", "js/main.js", "js/api.js", "js/store.js", "js/ui.js", "js/assets.js", "icons/logo.png", "icons/icon-192.png", "manifest.webmanifest"];
+const SHELL = ["./", "index.html", "config.js", "css/app.css", "js/main.js", "js/api.js", "js/store.js", "js/ui.js", "js/assets.js", "js/docs.js", "icons/logo.png", "icons/icon-192.png", "manifest.webmanifest"];
 const IMG_MAX = 400;
 
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(VER).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
