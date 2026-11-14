@@ -135,6 +135,14 @@ export async function upload(bucket, path, file) {
   return `${BASE}/storage/v1/object/public/${bucket}/${path}`;
 }
 
+export async function removeFile(bucket, path) {
+  const t = await accessToken();
+  const r = await fetch(`${BASE}/storage/v1/object/${bucket}`, { method: "DELETE", headers: { apikey: KEY, Authorization: "Bearer " + t, "Content-Type": "application/json" }, body: JSON.stringify({ prefixes: [path] }) });
+  if (!r.ok) throw await readErr(r);
+}
+export const publicUrl = (bucket, path) => `${BASE}/storage/v1/object/public/${bucket}/${path.split("/").map(encodeURIComponent).join("/")}`;
+export const userId = () => session?.user?.id || null;
+
 /* ---------- Edge Function ninokuu-api ---------- */
 export async function call(action, payload = {}) {
   const t = (await accessToken()) || KEY;

@@ -3,6 +3,7 @@ import * as api from "./api.js";
 import * as S from "./store.js";
 import { QUOTES } from "./assets.js";
 import { DOCS } from "./docs.js";
+import { vChat, vDev } from "./chat.js";
 import { esc, icon, $, $$, toast, ago, SOURCES, srcName, TYPES, typeName, cover, comicHref, readHref, greeting, errBox, loading } from "./ui.js";
 
 const VERSION = window.NINOKUU_CONFIG?.VERSION || "1.0.0";
@@ -20,14 +21,14 @@ function parse() {
   return { name: map[parts[0]] || parts[0], params: parts.slice(1) };
 }
 const TABS = ["home", "search", "fav", "more"];
-const DEPTH = { home: 0, search: 0, fav: 0, more: 0, detail: 1, page: 1, chapters: 2, reader: 3 };
+const DEPTH = { home: 0, search: 0, fav: 0, more: 0, detail: 1, page: 1, chat: 1, chapters: 2, reader: 3 };
 let prevName = "home", prevTab = "home";
 async function render() {
   if (cleanup) { try { cleanup(); } catch {} cleanup = null; }
   closeNotif();
   scrollMem.set(route.key, window.scrollY);
   route = { ...parse(), key: location.hash || "#/home" };
-  const owner = { detail: null, reader: null, chapters: null, page: "more" }[route.name];
+  const owner = { detail: null, reader: null, chapters: null, chat: "home", page: "more" }[route.name];
   const tab = TABS.includes(route.name) ? route.name : owner;
   document.body.dataset.screen = route.name;
   // navigasi bawah: indikator bergeser ke tab aktif; disembunyikan (meluncur turun) di luar layar utama tab
@@ -612,6 +613,7 @@ ${user ? `<button class="me mx" data-act="level">${avatarHtml(p, lv)}
       <button class="btn primary" type="submit" ${api.configured ? "" : "disabled"}>${authMode === "up" ? "Daftar" : authMode === "reset" ? "Kirim link" : "Masuk"}</button>
     </form>
     ${authMode === "in" ? `<button class="btn ghost" data-act="auth" data-v="up">Belum punya akun? Daftar</button><button class="link" data-act="auth" data-v="reset">Lupa password?</button>` : `<button class="btn ghost" data-act="auth" data-v="in">Sudah punya akun? Masuk</button>`}</div>`}
+${["developer", "moderator"].includes(p?.role) ? group("Developer", mrow("dev", "Panel developer", p.role === "developer" ? "Moderasi, pengumuman, statistik" : "Moderasi chat", "dev")) : ""}
 ${group("Bacaanmu", mrow("star", "Level &amp; Rank", user ? `${lv.rank} · Lv ${lv.lv}` : "Masuk untuk mulai naik level", "level") + mrow("clock", "Riwayat baca", `${S.history().length} judul`, "goHist") + mrow("down", "Unduhan", "Tersedia di aplikasi APK", "goDl"))}
 <section class="sec s20"><h2 class="cap">Tampilan</h2><div class="card col g12"><span class="b145">Mode efek avatar</span>
   ${seg([{ id: "Ringan", name: "Ringan" }, { id: "Normal", name: "Normal" }], gfx, "gfx", "s2")}
@@ -640,7 +642,7 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
   });
   setActs({
     auth: (el) => { authMode = el.dataset.v; vMore(); },
-    level: () => go("#/p/level"), goName: () => go("#/p/name"), goEmail: () => go("#/p/email"), goPass: () => go("#/p/pass"),
+    level: () => go("#/p/level"), dev: () => go("#/p/dev"), goName: () => go("#/p/name"), goEmail: () => go("#/p/email"), goPass: () => go("#/p/pass"),
     goHist: () => go("#/fav/hist"), goDl: () => go("#/fav/dl"),
     about: () => go("#/p/about"), privacy: () => go("#/p/privacy"), terms: () => go("#/p/terms"),
     backup: () => go("#/p/backup"), restore: () => go("#/p/restore"),
@@ -661,6 +663,7 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
 /* ---------- halaman turunan Lainnya ---------- */
 const RANK_INFO = [["Warrior", 1, 11, "#AEB6C4"], ["Elite", 12, 22, "#F0BE84"], ["Grandmaster", 23, 33, "#FFA36B"], ["Epic", 34, 44, "#6FC3F2"], ["Legend", 45, 55, "#5DD39E"], ["Mythic", 56, 66, "#8FAEFF"], ["Honor", 67, 77, "#B48CFF"], ["Glory", 78, 88, "#FF9CC0"], ["Immortal", 89, 99, "#F2B33D"]];
 async function vPage(name) {
+  if (name === "dev") return vDev(view, ctx());
   if (name === "level") await loadAvatars();
   const p = S.state.profile, lv = S.levelOf(p), user = api.currentUser();
   if (["name", "email", "pass"].includes(name) && !user) { go("#/more"); return; }
@@ -744,7 +747,8 @@ async function vPage(name) {
   setActs(acts2);
 }
 
-const VIEWS = { chapters: vChapters, home: vHome, search: vSearch, fav: vFav, more: vMore, detail: vDetail, reader: vReader, page: vPage };
+const ctx = () => ({ topbar, setActs, go, back, loading });
+const VIEWS = { chat: async () => { cleanup = await vChat(view, ctx()); }, chapters: vChapters, home: vHome, search: vSearch, fav: vFav, more: vMore, detail: vDetail, reader: vReader, page: vPage };
 
 /* ---------- mulai ---------- */
 const applyGfx = () => document.body.classList.toggle("nk-lite", S.state.settings.gfx === "Ringan");
