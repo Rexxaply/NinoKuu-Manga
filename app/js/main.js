@@ -40,6 +40,7 @@ function trackNav() {
   navStack[i] = h; navIdx = i; replacing = false;
   try { sessionStorage.setItem(NAVK, JSON.stringify(navStack.slice(0, i + 1))); } catch {}
 }
+let renderSeq = 0;
 async function render() {
   trackNav();
   if (cleanup) { try { cleanup(); } catch {} cleanup = null; }
@@ -59,9 +60,17 @@ async function render() {
   // arah animasi: masuk lebih dalam / tab di kanan = dari kanan; kembali = dari kiri
   const depth = DEPTH[route.name] ?? 0, prevDepth = DEPTH[prevName] ?? 0;
   const fwd = depth !== prevDepth ? depth > prevDepth : TABS.indexOf(route.name) >= TABS.indexOf(prevName);
-  view.classList.remove("in", "in-f", "in-b"); void view.offsetWidth; view.classList.add("in", fwd ? "in-f" : "in-b");
   prevName = route.name; if (tab) prevTab = tab;
-  await (VIEWS[route.name] || VIEWS.home)(...route.params);
+  // animasi masuk dimulai setelah layar baru terisi, supaya layar lama tidak ikut "meluncur lagi"
+  const my = ++renderSeq;
+  view.classList.remove("in", "in-f", "in-b");
+  view.innerHTML = "";
+  let animated = false;
+  const animate = () => { if (animated || my !== renderSeq) return; animated = true; void view.offsetWidth; view.classList.add("in", fwd ? "in-f" : "in-b"); };
+  const job = (VIEWS[route.name] || VIEWS.home)(...route.params);
+  if (view.childElementCount) animate();
+  await job;
+  animate();
   const y = scrollMem.get(route.key);
   requestAnimationFrame(() => window.scrollTo(0, y || 0));
 }
@@ -901,4 +910,6 @@ if ("serviceWorker" in navigator && location.protocol === "https:") navigator.se
     }
   } catch (e) { toast(e.message, 4500); }
   render();
+  // bingkai avatar (berkas besar) dimuat di latar belakang agar menu Lainnya langsung tampil
+  setTimeout(() => (window.requestIdleCallback || setTimeout)(() => loadAvatars()), 1200);
 })();
