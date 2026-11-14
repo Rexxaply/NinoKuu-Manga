@@ -11,7 +11,7 @@
 // kalau satu sumber rusak, isi secret KOMIKU_SITE / KIRYUU_SITE / SHNGM_SITE / WEST_SITE dengan domain barunya.
 import { createClient } from "npm:@supabase/supabase-js@2.76.1";
 
-const VERSION = "1.1.0";
+const VERSION = "1.1.1";
 const NAME = "ninokuu-api";
 const SOURCES = ["komiku", "kiryuu", "shinigami", "westmanga"] as const;
 type Source = typeof SOURCES[number];
@@ -575,7 +575,13 @@ async function fcmSend(token: string, p: Push) {
   });
   if (r.ok) return;
   const t = await r.text();
-  throw Object.assign(new Error(`FCM ${r.status}: ${t.slice(0, 200)}`), { gone: r.status === 404 || /UNREGISTERED|registration-token-not-registered/i.test(t) });
+  // hanya token yang benar-benar tidak terdaftar lagi yang dihapus (bukan 404 karena proyek/kunci salah)
+  const gone = /UNREGISTERED|registration-token-not-registered/i.test(t);
+  let msg = `FCM ${r.status}: ${t.replace(/\s+/g, " ").slice(0, 180)}`;
+  if (/SENDER_ID_MISMATCH|SenderId mismatch/i.test(t)) msg = `Kunci FCM_SERVICE_ACCOUNT milik proyek Firebase "${a.project}", tapi aplikasi memakai proyek Firebase lain. Buat kunci dari proyek Firebase yang sama dengan google-services.json aplikasi.`;
+  else if (r.status === 404 && !gone) msg = `Proyek Firebase "${a.project}" tidak ditemukan atau Firebase Cloud Messaging API belum aktif. Periksa FCM_SERVICE_ACCOUNT.`;
+  else if (r.status === 403 && /PERMISSION_DENIED|cloudmessaging|disabled/i.test(t)) msg = `Firebase Cloud Messaging API belum aktif di proyek "${a.project}" atau kunci tidak punya izin.`;
+  throw Object.assign(new Error(msg), { gone });
 }
 // kirim ke banyak token sekaligus (8 paralel); token mati dihapus dari tabel devices
 async function pushTokens(tokens: string[], p: Push) {
@@ -737,7 +743,9 @@ Deno.serve(async (req) => {
     if (req.method === "GET") {
       const img = url.searchParams.get("img");
       if (img) return await proxyImage(img, url.searchParams.get("ref") || "", url.searchParams.get("sig") || "", url.searchParams.get("c") === "1");
-      return json({ ok: true, name: NAME, version: VERSION, sources: SOURCES, serverKey: !!SERVICE_KEY, fcm: !!Deno.env.get("FCM_SERVICE_ACCOUNT") });
+      let fcmProject: string | null = null;
+      try { fcmProject = JSON.parse(Deno.env.get("FCM_SERVICE_ACCOUNT") || "null")?.project_id || null; } catch { fcmProject = "json-tidak-valid"; }
+      return json({ ok: true, name: NAME, version: VERSION, sources: SOURCES, serverKey: !!SERVICE_KEY, fcm: !!Deno.env.get("FCM_SERVICE_ACCOUNT"), fcmProject });
     }
     if (!SERVICE_KEY) return json({ error: "Edge Function tidak menemukan kunci server Supabase (SUPABASE_SERVICE_ROLE_KEY)." }, 500);
     const body = await req.json().catch(() => ({}));
@@ -793,8 +801,10 @@ Deno.serve(async (req) => {
     if (action === "test_push") {
       const tokens = await tokensOf([user.id]);
       if (!tokens.length) return json({ ok: false, devices: 0, error: "HP ini belum terdaftar untuk notifikasi. Buka aplikasi, izinkan notifikasi, lalu coba lagi." }, 404);
-      const r = await pushTokens(tokens, { title: "Tes notifikasi Ninokuu", body: "Notifikasi chapter baru akan muncul seperti ini.", url: "ninokuu://home", tag: "test" });
-      return json({ ok: r.sent > 0, devices: tokens.length, ...r });
+      let r: { sent: number; errors: string[] };
+      try { r = await pushTokens(tokens, { title: "Tes notifikasi Ninokuu", body: "Notifikasi chapter baru akan muncul seperti ini.", url: "ninokuu://home", tag: "test" }); }
+      catch (e: any) { return json({ ok: false, devices: tokens.length, sent: 0, error: String(e?.message || e) }); }
+      return json({ ok: r.sent > 0, devices: tokens.length, ...r, ...(r.sent ? {} : { error: r.errors[0] || "HP ini tidak lagi terdaftar di Firebase. Buka aplikasi lalu coba lagi." }) });
     }
 
     // Developer: jalankan cron sekarang (mengabaikan jeda 10 menit)

@@ -711,12 +711,14 @@ async function vReader(src, id, chId) {
 }
 
 /* ---------- status notifikasi HP di Lainnya ---------- */
+let lastPushErr = "";
 function showPush(st) {
   const el = $("#pushst"); if (!el) return;
   const err = N.pushError();
   el.textContent = { on: "Aktif · HP terdaftar · ketuk untuk kirim tes", off: "Mati · ketuk untuk mengaktifkan", denied: "Diblokir di pengaturan HP",
     unsupported: "Tidak tersedia", busy: "Mendaftarkan HP…", unreg: "Izin aktif, tapi HP belum terdaftar · ketuk untuk daftar ulang",
-    login: "Izin aktif · masuk dulu agar notifikasi terkirim", error: "Gagal mendaftar" + (err ? ": " + err : "") + " · ketuk untuk coba lagi" }[st] || st;
+    login: "Izin aktif · masuk dulu agar notifikasi terkirim",
+    server: "HP terdaftar, tapi server gagal mengirim" + (lastPushErr ? ": " + lastPushErr : "") + " · ketuk untuk coba lagi", error: "Gagal mendaftar" + (err ? ": " + err : "") + " · ketuk untuk coba lagi" }[st] || st;
 }
 async function refreshPushStatus() {
   const st = await N.pushStatus();
@@ -889,9 +891,12 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
         const test = () => api.call("test_push").catch((e) => ({ ok: false, error: e.message }));
         let r = await test();
         // server belum mengenal HP ini → daftar ulang sekali lalu coba lagi
-        if (!r.ok && /belum terdaftar/i.test(r.error || "")) { await N.pushEnable(api.rpc, false, true); r = await test(); }
-        showPush(r.ok ? "on" : "unreg");
-        toast(r.ok ? "Tes notifikasi dikirim. Cek bilah notifikasi HP." : r.error || "Tes notifikasi gagal", 4500);
+        if (!r.ok && /belum terdaftar|tidak lagi terdaftar/i.test(r.error || "")) { await N.pushEnable(api.rpc, false, true); r = await test(); }
+        const err = r.error || r.errors?.[0] || "";
+        // HP sudah terdaftar tapi server gagal mengirim → masalah di pengaturan Firebase server, bukan di HP
+        showPush(r.ok ? "on" : /belum terdaftar|tidak lagi terdaftar/i.test(err) ? "unreg" : "server");
+        if (!r.ok) lastPushErr = err;
+        toast(r.ok ? "Tes notifikasi dikirim. Cek bilah notifikasi HP." : "Tes gagal: " + (err || "server tidak bisa mengirim notifikasi"), 7000);
       } catch (e) { showPush("error"); toast("Pendaftaran notifikasi gagal: " + e.message, 5000); }
     },
     discord: () => soon("Server Discord Ninokuu sedang disiapkan."), trakteer: () => soon("Halaman Trakteer sedang disiapkan. Terima kasih!"),
