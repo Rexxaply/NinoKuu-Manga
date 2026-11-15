@@ -404,14 +404,16 @@ async function vDetail(src, id) {
     const chRow = chRowFor(src, id, h, latest);
     const ST = { ongoing: ["Berlangsung", "ok"], completed: ["Tamat", "blue"], hiatus: ["Hiatus", "gold"], dropped: ["Dihentikan", "red"] }[m.status];
     const views = Number(m.views) > 0 ? compactNum(m.views) : "";
-    const cell = (ic, label, val, cls = "") => `<div class="inf-c"><span class="inf-l">${icon(ic, 13)}${label}</span><b class="${val ? cls : "inf-na"}">${val ? esc(val) : "Tidak ada info"}</b></div>`;
-    const infoGrid = `<div class="inf-grid">${cell("circle", "Status", ST?.[0], "inf-" + (ST?.[1] || ""))}${cell("eye", "Dilihat", views)}${cell("book", "Penerbit", m.publisher)}${cell("user", "Penulis", m.author)}</div>`;
+    // satu baris info ringkas di bawah judul; yang tidak tersedia dari sumber tidak ditampilkan
+    const infoLine = [ST && `<span class="inf-st inf-${ST[1]}">${esc(ST[0])}</span>`, views && `<span title="Dilihat di situs sumber">${icon("eye", 14)}${esc(views)}</span>`,
+      m.publisher && `<span>${icon("book", 13)}<i>${esc(m.publisher)}</i></span>`, m.author && `<span>${icon("user", 13)}<i>${esc(m.author)}</i></span>`].filter(Boolean).join("");
     view.innerHTML = `
 <div class="dbar" id="dbar"><button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 21, 2)}</button><span class="dbar-t">${esc(m.title)}</span>
   <button class="r-round glass" data-act="dl" aria-label="Unduh chapter">${icon("down", 20, 2)}</button><button class="pill-btn glass" data-act="report">${icon("bug", 17)}Laporkan</button></div>
 <div class="hero has-bar"><div class="hero-bg" style="background-image:url('${esc(m.cover)}')"></div>
   <div class="hero-in">${cover(m.cover, m.title, "det")}
     <div class="hero-t"><span class="meta"><span class="tag-s">${esc(srcName(src))}</span>${type ? `<span>${esc(typeName(type))}</span>` : ""}</span><h1>${esc(m.title)}</h1>
+      ${infoLine ? `<span class="inf-line">${infoLine}</span>` : ""}
       <span class="mu sm">${d.chapters.length} chapter${latest?.at ? " · update " + esc(ago(latest.at)) : ""}</span></div></div></div>
 <div class="px">
   <div class="act-row">
@@ -420,7 +422,6 @@ async function vDetail(src, id) {
     <button class="round-btn ${bell ? "on gold" : ""}" data-act="bell" aria-pressed="${bell}" aria-label="${bell ? "Matikan notifikasi" : "Nyalakan notifikasi chapter baru"}">${icon(bell ? "bellF" : "bell", 22)}</button>
     ${likeBtn(lk)}
   </div>
-  ${infoGrid}
   ${m.tags?.length ? `<div class="tags">${m.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</div>` : ""}
   ${m.desc ? `<p class="desc ${descOpen ? "open" : ""}" data-act="desc">${esc(m.desc)}</p>` : ""}
   <div class="sec-h mt24"><h2>Chapter</h2><a class="link-red" href="${chaptersHref(src, id)}">Lihat semua (${d.chapters.length})${icon("chev", 16, 2)}</a></div>
