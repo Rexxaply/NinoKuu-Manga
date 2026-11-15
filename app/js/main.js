@@ -380,6 +380,14 @@ function cachedDetail(src, id) {
   try { const s = sessionStorage.getItem("ninokuu:d:" + k); if (s) { const d = JSON.parse(s); detailCache.set(k, { at: 0, data: d }); return d; } } catch {}
   return null;
 }
+// halaman komik: latar berhenti di baris tombol "Mulai baca"; judul yang terpotong (maks. 2 baris)
+// ditulis lengkap di bawah genre
+function fitDetail() {
+  const bg = $("#dtbg"), row = $(".act-row"), t = $("#dtTitle"), full = $("#dtFull");
+  if (bg && row) bg.style.height = Math.round(row.getBoundingClientRect().bottom - view.getBoundingClientRect().top + 28) + "px";
+  if (t && full) full.hidden = t.scrollHeight <= t.clientHeight + 2;
+}
+addEventListener("resize", () => { if (parse().name === "detail") fitDetail(); });
 async function vDetail(src, id) {
   view.innerHTML = `<div class="bar"><button class="icon-btn glass" data-act="back" aria-label="Kembali">${icon("back", 22)}</button></div>${loading(1, "sk-hero")}<div class="px">${loading(8, "sk-lrow")}</div>`;
   setActs({ back: () => back(), retry: () => vDetail(src, id) });
@@ -414,7 +422,7 @@ async function vDetail(src, id) {
 <div class="dt-bg ${heroCol ? "tinted" : ""}" id="dtbg" aria-hidden="true"${heroCol ? ` style="--hc:${heroCol}"` : ""}><div class="dt-img" style="background-image:url('${esc(m.cover)}')"></div><div class="dt-tint"></div></div>
 <div class="hero has-bar dt">
   <div class="hero-in">${cover(m.cover, m.title, "det")}
-    <div class="hero-t"><span class="meta"><span class="tag-s">${esc(srcName(src))}</span>${type ? `<span>${esc(typeName(type))}</span>` : ""}</span><h1>${esc(m.title)}</h1>
+    <div class="hero-t"><span class="meta"><span class="tag-s">${esc(srcName(src))}</span>${type ? `<span>${esc(typeName(type))}</span>` : ""}</span><h1 id="dtTitle" title="${esc(m.title)}">${esc(m.title)}</h1>
       ${infoLine ? `<span class="inf-line">${infoLine}</span>` : ""}
       <span class="mu sm">${d.chapters.length} chapter${latest?.at ? " · update " + esc(ago(latest.at)) : ""}</span></div></div></div>
 <div class="px dt-body">
@@ -425,6 +433,7 @@ async function vDetail(src, id) {
     ${likeBtn(lk)}
   </div>
   ${m.tags?.length ? `<div class="tags">${m.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</div>` : ""}
+  <h2 class="dt-full" id="dtFull" hidden>${esc(m.title)}</h2>
   ${m.desc ? `<p class="desc ${descOpen ? "open" : ""}" data-act="desc">${esc(m.desc)}</p>` : ""}
   <div class="sec-h mt24"><h2>Chapter</h2><a class="link-red" href="${chaptersHref(src, id)}">Lihat semua (${d.chapters.length})${icon("chev", 16, 2)}</a></div>
   <div class="ch-card">${preview.map((c) => chRow(c)).join("") || `<div class="empty"><b>Belum ada chapter</b></div>`}</div>
@@ -437,6 +446,7 @@ async function vDetail(src, id) {
     // latar mengikuti warna cover (dihitung sekali, lalu disimpan)
     if (!heroCol) X.coverColor(m.cover).then((c) => { const el = $("#dtbg"); if (c && el && parse().name === "detail") { el.style.setProperty("--hc", c); el.classList.add("tinted"); } });
     onBarScroll();
+    fitDetail();
   };
   let cmList = null, cmN = 0, lk = null, lkBusy = false;
   const paintLike = () => { const b = $("[data-act=like]"); if (b) b.outerHTML = likeBtn(lk); };
