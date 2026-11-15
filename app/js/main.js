@@ -402,6 +402,7 @@ async function vDetail(src, id) {
       preview = [...desc.slice(0, 2), resumeCh, desc[i + 1]].filter(Boolean);
     }
     const chRow = chRowFor(src, id, h, latest);
+    const heroCol = X.cachedCoverColor(m.cover);
     const ST = { ongoing: ["Berlangsung", "ok"], completed: ["Tamat", "blue"], hiatus: ["Hiatus", "gold"], dropped: ["Dihentikan", "red"] }[m.status];
     const views = Number(m.views) > 0 ? compactNum(m.views) : "";
     // satu baris info ringkas di bawah judul; yang tidak tersedia dari sumber tidak ditampilkan
@@ -410,7 +411,7 @@ async function vDetail(src, id) {
     view.innerHTML = `
 <div class="dbar" id="dbar"><button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 21, 2)}</button><span class="dbar-t">${esc(m.title)}</span>
   <button class="r-round glass" data-act="dl" aria-label="Unduh chapter">${icon("down", 20, 2)}</button><button class="pill-btn glass" data-act="report">${icon("bug", 17)}Laporkan</button></div>
-<div class="hero has-bar"><div class="hero-bg" style="background-image:url('${esc(m.cover)}')"></div>
+<div class="hero has-bar ${heroCol ? "tinted" : ""}" id="hero"${heroCol ? ` style="--hc:${heroCol}"` : ""}><div class="hero-bg" style="background-image:url('${esc(m.cover)}')"></div>
   <div class="hero-in">${cover(m.cover, m.title, "det")}
     <div class="hero-t"><span class="meta"><span class="tag-s">${esc(srcName(src))}</span>${type ? `<span>${esc(typeName(type))}</span>` : ""}</span><h1>${esc(m.title)}</h1>
       ${infoLine ? `<span class="inf-line">${infoLine}</span>` : ""}
@@ -432,6 +433,8 @@ async function vDetail(src, id) {
 </div><div style="height:calc(120px + env(safe-area-inset-bottom))"></div>
 <div class="rfab-wrap"><a class="rfab glass" href="${resumeCh ? readHref(src, id, resumeCh.id) : first ? readHref(src, id, first.id) : chaptersHref(src, id)}"><span class="rfab-ic">${icon("play", 18, 2)}</span><b class="redt">${resumeCh ? "Lanjut baca" : "Mulai baca"}</b><span class="grow">${resumeCh ? "Chapter " + esc(resumeCh.ch) : first ? "Chapter " + esc(first.ch) : ""}</span><span class="redt">${icon("chev", 20, 2)}</span></a></div>`;
     bindSpoilers($("#cmprev")); watchAvatars($("#cmprev"));
+    // latar mengikuti warna cover (dihitung sekali, lalu disimpan)
+    if (!heroCol) X.coverColor(m.cover).then((c) => { const el = $("#hero"); if (c && el && parse().name === "detail") { el.style.setProperty("--hc", c); el.classList.add("tinted"); } });
     onBarScroll();
   };
   let cmList = null, cmN = 0, lk = null, lkBusy = false;

@@ -925,3 +925,9 @@ body.nk-lite .rk-b.t6::before, body.nk-lite .rk-b.t7::before { display: none; }
 .inf-st { font-weight: 700; } .inf-st::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; margin-right: 2px; }
 .inf-ok { color: var(--ok); } .inf-blue { color: #6FB3FF; } .inf-gold { color: var(--gold); } .inf-red { color: var(--redt); }
 .inf-line i { font-style: normal; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* latar halaman komik mengikuti warna cover */
+.hero-bg { transition: opacity .5s; }
+.hero::before { content: ""; position: absolute; inset: 0; background: linear-gradient(to bottom, var(--hc, transparent) 0%, color-mix(in srgb, var(--hc, transparent) 55%, var(--bg)) 55%, var(--bg) 100%); opacity: 0; transition: opacity .5s; }
+.hero.tinted::before { opacity: 1; }
+.hero.tinted .hero-bg { opacity: 0; }
+.hero.tinted::after { background: linear-gradient(to bottom, rgba(11, 16, 24, .05), transparent 60%, var(--bg) 100%); }

@@ -333,6 +333,37 @@ async function loadImg(src) {
   if (im || !N.isApp) return im;
   try { return await loadRaw(await N.imageViaNative(src), false); } catch { return null; }
 }
+// warna latar halaman komik dari cover: rata-rata berbobot saturasi (abaikan piksel nyaris hitam/putih),
+// lalu kecerahan & saturasi dibatasi supaya teks putih tetap terbaca. Disimpan per URL cover.
+const CC_KEY = "ninokuu:coverColor";
+const ccMap = (() => { try { return JSON.parse(localStorage.getItem(CC_KEY)) || {}; } catch { return {}; } })();
+const ccKey = (src) => String(src).replace(/[?&](sig|t|v)=[^&]*/g, "").slice(-160);
+export const cachedCoverColor = (src) => (src ? ccMap[ccKey(src)] || null : null);
+export async function coverColor(src) {
+  if (!src) return null;
+  const k = ccKey(src); if (ccMap[k]) return ccMap[k];
+  const im = await loadImg(src); if (!im) return null;
+  let d;
+  try { const c = document.createElement("canvas"); c.width = c.height = 24; const x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(im, 0, 0, 24, 24); d = x.getImageData(0, 0, 24, 24).data; }
+  catch { return null; }                                  // gambar tanpa izin CORS → tetap memakai latar lama
+  let r = 0, g = 0, b = 0, w = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    const R = d[i], G = d[i + 1], B = d[i + 2], mx = Math.max(R, G, B), mn = Math.min(R, G, B);
+    if (d[i + 3] < 128 || mx < 24 || mn > 235) continue;
+    const wt = 0.15 + (mx ? (mx - mn) / mx : 0);          // warna yang lebih "hidup" lebih berpengaruh
+    r += R * wt; g += G * wt; b += B * wt; w += wt;
+  }
+  if (!w) return null;
+  r /= w * 255; g /= w * 255; b /= w * 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, dd = mx - mn;
+  let h = 0, sat = dd ? dd / (1 - Math.abs(2 * l - 1)) : 0;
+  if (dd) h = (mx === r ? ((g - b) / dd) % 6 : mx === g ? (b - r) / dd + 2 : (r - g) / dd + 4) * 60;
+  const col = `hsl(${Math.round((h + 360) % 360)} ${Math.round(Math.min(sat, 0.62) * 100)}% ${Math.round(Math.min(Math.max(l, 0.24), 0.36) * 100)}%)`;
+  ccMap[k] = col;
+  const keys = Object.keys(ccMap); if (keys.length > 400) keys.slice(0, keys.length - 400).forEach((x) => delete ccMap[x]);
+  try { localStorage.setItem(CC_KEY, JSON.stringify(ccMap)); } catch {}
+  return col;
+}
 // bingkai avatar kosmik (sama dengan di aplikasi) digambar ulang di kanvas: cincin, ornamen SVG, medali level
 const conic = (c, cx, cy, fromDeg, colors) => {
   if (!c.createConicGradient) { const g = c.createLinearGradient(cx - 50, cy - 50, cx + 50, cy + 50); colors.forEach((col, i) => g.addColorStop(i / Math.max(1, colors.length - 1), col)); return g; }
