@@ -152,10 +152,14 @@ jobs:
             m = m.replace(/android:allowBackup="true"/, `android:allowBackup="false"`);
             if (!m.includes("android:allowBackup")) m = m.replace(/<application\b/, `<application\n        android:allowBackup="false"`);
             if (!m.includes("android:fullBackupContent")) m = m.replace(/<application\b/, `<application\n        android:fullBackupContent="false"`);
+            // unduhan chapter ke Documents/Ninokuu: izin penyimpanan hanya untuk Android 10 ke bawah
+            if (!m.includes("WRITE_EXTERNAL_STORAGE")) m = m.replace("</manifest>", `    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />\n</manifest>`);
+            if (!m.includes("READ_EXTERNAL_STORAGE")) m = m.replace("</manifest>", `    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />\n</manifest>`);
+            if (!m.includes("requestLegacyExternalStorage")) m = m.replace(/<application\b/, `<application\n        android:requestLegacyExternalStorage="true"`);
             fs.writeFileSync(mf, m);'
           grep -q 'android:allowBackup="false"' android/app/src/main/AndroidManifest.xml || { echo "::error::allowBackup belum false"; exit 1; }
           grep -n "ninokuu_bg" android/app/src/main/res/values/styles.xml | head -3
-          grep -n "POST_NOTIFICATIONS\|ic_stat_ninokuu\|screenOrientation" android/app/src/main/AndroidManifest.xml
+          grep -n "POST_NOTIFICATIONS\|EXTERNAL_STORAGE\|ic_stat_ninokuu\|screenOrientation" android/app/src/main/AndroidManifest.xml
 
       - name: Tanda tangan & versi
         run: |
