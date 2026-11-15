@@ -925,10 +925,21 @@ body.nk-lite .rk-b.t6::before, body.nk-lite .rk-b.t7::before { display: none; }
 .inf-st { font-weight: 700; } .inf-st::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; margin-right: 2px; }
 .inf-ok { color: var(--ok); } .inf-blue { color: #6FB3FF; } .inf-gold { color: var(--gold); } .inf-red { color: var(--redt); }
 .inf-line i { font-style: normal; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-/* latar halaman komik mengikuti warna cover */
-.hero-bg { transition: opacity .5s; }
-.hero::before { content: ""; position: absolute; inset: 0; background: linear-gradient(to bottom, var(--hc, transparent) 0%, color-mix(in srgb, var(--hc, transparent) 55%, var(--bg)) 55%, var(--bg) 100%); opacity: 0; transition: opacity .5s; }
-.hero.tinted::before { opacity: 1; }
-.hero.tinted .hero-bg { opacity: 0; }
-.hero.tinted::after { background: linear-gradient(to bottom, rgba(11, 16, 24, .05), transparent 60%, var(--bg) 100%); }
+/* latar halaman komik: cover buram yang lebih terang & berwarna + cahaya warna dominan cover,
+   membentang dari atas sampai bagian tombol, genre, dan sinopsis */
+#view { position: relative; }
+.dt-bg { position: absolute; left: 0; right: 0; top: 0; height: min(980px, 118vh); overflow: hidden; pointer-events: none; z-index: 0; }
+.dt-img { position: absolute; inset: -70px; background-size: cover; background-position: center 28%; filter: blur(38px) saturate(1.55) brightness(.68); transform: scale(1.18); }
+.dt-bg::before { content: ""; position: absolute; inset: 0; opacity: 0; transition: opacity .6s;
+  background: radial-gradient(130% 62% at 30% 8%, color-mix(in srgb, var(--hc, transparent) 72%, transparent) 0%, transparent 72%),
+              radial-gradient(90% 50% at 95% 30%, color-mix(in srgb, var(--hc, transparent) 45%, transparent) 0%, transparent 70%); }
+.dt-bg.tinted::before { opacity: 1; }
+.dt-img { z-index: 0; } .dt-tint { position: absolute; inset: 0; z-index: 1; background: var(--hc, transparent); mix-blend-mode: color; opacity: 0; transition: opacity .6s; }
+.dt-bg.tinted .dt-tint { opacity: .85; }
+.dt-bg::before { z-index: 2; } .dt-bg::after { z-index: 3; }
+.dt-bg::after { content: ""; position: absolute; inset: 0;
+  background: linear-gradient(to bottom, rgba(11, 16, 24, .10) 0%, rgba(11, 16, 24, .22) 38%, rgba(11, 16, 24, .62) 70%, var(--bg) 100%); }
+.hero.dt { overflow: visible; }
+.hero.dt::after { display: none; }
+.hero.dt, .dt-body { position: relative; z-index: 1; }
 .r-main.last { background: rgba(17, 23, 34, .92); border: 1px solid rgba(255, 255, 255, .08); color: #8A93A8; box-shadow: none; cursor: default; }

@@ -335,7 +335,7 @@ async function loadImg(src) {
 }
 // warna latar halaman komik dari cover: rata-rata berbobot saturasi (abaikan piksel nyaris hitam/putih),
 // lalu kecerahan & saturasi dibatasi supaya teks putih tetap terbaca. Disimpan per URL cover.
-const CC_KEY = "ninokuu:coverColor";
+const CC_KEY = "ninokuu:coverColor2";
 const ccMap = (() => { try { return JSON.parse(localStorage.getItem(CC_KEY)) || {}; } catch { return {}; } })();
 const ccKey = (src) => String(src).replace(/[?&](sig|t|v)=[^&]*/g, "").slice(-160);
 export const cachedCoverColor = (src) => (src ? ccMap[ccKey(src)] || null : null);
@@ -350,7 +350,7 @@ export async function coverColor(src) {
   for (let i = 0; i < d.length; i += 4) {
     const R = d[i], G = d[i + 1], B = d[i + 2], mx = Math.max(R, G, B), mn = Math.min(R, G, B);
     if (d[i + 3] < 128 || mx < 24 || mn > 235) continue;
-    const wt = 0.15 + (mx ? (mx - mn) / mx : 0);          // warna yang lebih "hidup" lebih berpengaruh
+    const sv = mx ? (mx - mn) / mx : 0, wt = 0.04 + sv * sv * 3;   // warna yang mencolok jauh lebih berpengaruh
     r += R * wt; g += G * wt; b += B * wt; w += wt;
   }
   if (!w) return null;
@@ -358,7 +358,7 @@ export async function coverColor(src) {
   const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, dd = mx - mn;
   let h = 0, sat = dd ? dd / (1 - Math.abs(2 * l - 1)) : 0;
   if (dd) h = (mx === r ? ((g - b) / dd) % 6 : mx === g ? (b - r) / dd + 2 : (r - g) / dd + 4) * 60;
-  const col = `hsl(${Math.round((h + 360) % 360)} ${Math.round(Math.min(sat, 0.62) * 100)}% ${Math.round(Math.min(Math.max(l, 0.24), 0.36) * 100)}%)`;
+  const col = `hsl(${Math.round((h + 360) % 360)} ${Math.round((sat < 0.06 ? sat : Math.min(Math.max(sat, 0.42), 0.68)) * 100)}% ${Math.round(Math.min(Math.max(l, 0.24), 0.36) * 100)}%)`;
   ccMap[k] = col;
   const keys = Object.keys(ccMap); if (keys.length > 400) keys.slice(0, keys.length - 400).forEach((x) => delete ccMap[x]);
   try { localStorage.setItem(CC_KEY, JSON.stringify(ccMap)); } catch {}

@@ -11,7 +11,7 @@
 // kalau satu sumber rusak, isi secret KOMIKU_SITE / KIRYUU_SITE / SHNGM_SITE / WEST_SITE dengan domain barunya.
 import { createClient } from "npm:@supabase/supabase-js@2.76.1";
 
-const VERSION = "1.3.1";
+const VERSION = "1.3.2";
 const NAME = "ninokuu-api";
 const SOURCES = ["komiku", "kiryuu", "shinigami", "westmanga"] as const;
 type Source = typeof SOURCES[number];
@@ -48,7 +48,7 @@ const SELF = `${SUPABASE_URL}/functions/v1/${NAME}`;
 
 /* ---------- fetch aman ---------- */
 const WEB_UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36";
-const WEB_MAX_HTML = 6 * 1024 * 1024;
+const WEB_MAX_HTML = 16 * 1024 * 1024;     // dibaca bertahap; HTML yang lebih besar dipotong, JSON ditolak
 const WEB_MAX_IMG = 30 * 1024 * 1024;
 const webErr = (msg: string, status = 502) => Object.assign(new Error(msg), { status });
 
@@ -73,6 +73,24 @@ async function fetchSafe(u: URL, init: RequestInit, timeoutMs?: number): Promise
     if (r.status === 303 || ((r.status === 301 || r.status === 302) && m !== "GET" && m !== "HEAD")) opt = { ...opt, method: "GET", body: undefined };
   }
   throw webErr("Terlalu banyak pengalihan (redirect)", 400);
+}
+// baca isi balasan sedikit demi sedikit sampai batas: komik dengan ribuan chapter bisa membuat halaman
+// sangat besar. HTML dipotong di batas (bagian awal sudah berisi info komik & chapter terbaru), JSON ditolak.
+async function readCapped(r: Response, max: number, strict: boolean): Promise<string> {
+  if (!r.body) return "";
+  const rd = r.body.getReader(), parts: Uint8Array[] = []; let n = 0, cut = false;
+  for (;;) {
+    const { done, value } = await rd.read();
+    if (done) break;
+    if (n + value.length > max) {
+      if (strict) { await rd.cancel().catch(() => {}); throw webErr("Data dari sumber terlalu besar untuk dimuat"); }
+      parts.push(value.subarray(0, max - n)); n = max; cut = true; await rd.cancel().catch(() => {}); break;
+    }
+    parts.push(value); n += value.length;
+  }
+  const all = new Uint8Array(n); let o = 0; for (const p of parts) { all.set(p, o); o += p.length; }
+  const t = new TextDecoder().decode(all);
+  return cut ? t + "\n<!-- dipotong Ninokuu -->" : t;
 }
 // tolak alamat lokal/privat agar server tidak bisa dipakai mengintip jaringan internal
 function safeUrl(raw: string): URL {
@@ -99,9 +117,7 @@ async function webFetch(raw: string | URL, opt: { referer?: string; json?: boole
   let r: Response, final: URL;
   try { ({ r, url: final } = await fetchSafe(u, { method: opt.method || "GET", headers, body: opt.body }, opt.timeout || 15000)); }
   catch (e: any) { if (e?.status === 400) throw e; throw webErr(`${u.hostname} tidak bisa dihubungi (${e.message})`); }
-  if (Number(r.headers.get("content-length") || 0) > WEB_MAX_HTML) throw webErr("Halaman terlalu besar");
-  const text = await r.text();
-  if (text.length > WEB_MAX_HTML) throw webErr("Halaman terlalu besar");
+  const text = await readCapped(r, WEB_MAX_HTML, !!opt.json);
   if (!r.ok) {
     if ((r.status === 403 || r.status === 503) && /cloudflare|cf-ray|just a moment|challenge-platform/i.test(text + (r.headers.get("server") || "")))
       throw Object.assign(webErr(`${u.hostname} dilindungi Cloudflare dan menolak server.`, 403), { blocked: true });

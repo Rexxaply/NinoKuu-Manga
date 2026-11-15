@@ -411,12 +411,13 @@ async function vDetail(src, id) {
     view.innerHTML = `
 <div class="dbar" id="dbar"><button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 21, 2)}</button><span class="dbar-t">${esc(m.title)}</span>
   <button class="r-round glass" data-act="dl" aria-label="Unduh chapter">${icon("down", 20, 2)}</button><button class="pill-btn glass" data-act="report">${icon("bug", 17)}Laporkan</button></div>
-<div class="hero has-bar ${heroCol ? "tinted" : ""}" id="hero"${heroCol ? ` style="--hc:${heroCol}"` : ""}><div class="hero-bg" style="background-image:url('${esc(m.cover)}')"></div>
+<div class="dt-bg ${heroCol ? "tinted" : ""}" id="dtbg" aria-hidden="true"${heroCol ? ` style="--hc:${heroCol}"` : ""}><div class="dt-img" style="background-image:url('${esc(m.cover)}')"></div><div class="dt-tint"></div></div>
+<div class="hero has-bar dt">
   <div class="hero-in">${cover(m.cover, m.title, "det")}
     <div class="hero-t"><span class="meta"><span class="tag-s">${esc(srcName(src))}</span>${type ? `<span>${esc(typeName(type))}</span>` : ""}</span><h1>${esc(m.title)}</h1>
       ${infoLine ? `<span class="inf-line">${infoLine}</span>` : ""}
       <span class="mu sm">${d.chapters.length} chapter${latest?.at ? " · update " + esc(ago(latest.at)) : ""}</span></div></div></div>
-<div class="px">
+<div class="px dt-body">
   <div class="act-row">
     <a class="btn primary grow" href="${resumeCh ? readHref(src, id, resumeCh.id) : first ? readHref(src, id, first.id) : "#"}">${icon("play", 18, 2)}${resumeCh ? "Lanjut Ch. " + esc(resumeCh.ch) : "Mulai baca"}</a>
     <button class="round-btn ${fav ? "on" : ""}" data-act="fav" aria-pressed="${fav}" aria-label="${fav ? "Hapus dari koleksi" : "Tambah ke koleksi"}">${icon(fav ? "heartF" : "heart", 22)}</button>
@@ -434,7 +435,7 @@ async function vDetail(src, id) {
 <div class="rfab-wrap"><a class="rfab glass" href="${resumeCh ? readHref(src, id, resumeCh.id) : first ? readHref(src, id, first.id) : chaptersHref(src, id)}"><span class="rfab-ic">${icon("play", 18, 2)}</span><b class="redt">${resumeCh ? "Lanjut baca" : "Mulai baca"}</b><span class="grow">${resumeCh ? "Chapter " + esc(resumeCh.ch) : first ? "Chapter " + esc(first.ch) : ""}</span><span class="redt">${icon("chev", 20, 2)}</span></a></div>`;
     bindSpoilers($("#cmprev")); watchAvatars($("#cmprev"));
     // latar mengikuti warna cover (dihitung sekali, lalu disimpan)
-    if (!heroCol) X.coverColor(m.cover).then((c) => { const el = $("#hero"); if (c && el && parse().name === "detail") { el.style.setProperty("--hc", c); el.classList.add("tinted"); } });
+    if (!heroCol) X.coverColor(m.cover).then((c) => { const el = $("#dtbg"); if (c && el && parse().name === "detail") { el.style.setProperty("--hc", c); el.classList.add("tinted"); } });
     onBarScroll();
   };
   let cmList = null, cmN = 0, lk = null, lkBusy = false;
