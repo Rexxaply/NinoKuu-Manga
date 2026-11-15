@@ -260,6 +260,8 @@ function openLink(u, go) {
 export function onPushOpen(go) {
   PN()?.addListener("pushNotificationActionPerformed", (a) => openLink(String(a?.notification?.data?.url || ""), go));
 }
+// aplikasi dibuka lagi dari latar belakang (event bawaan Capacitor)
+export function onResume(fn) { plugin("App")?.addListener("resume", () => fn()); }
 // tautan ninokuu://… dari browser (mis. tombol "Kembali ke aplikasi" setelah verifikasi email)
 export function onUrlOpen(go) {
   plugin("App")?.addListener("appUrlOpen", (e) => { const u = String(e?.url || ""); if (/^ninokuu:/i.test(u)) openLink(u, go); });

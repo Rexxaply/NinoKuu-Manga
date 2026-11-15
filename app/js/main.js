@@ -1279,6 +1279,23 @@ api.onAuth((s) => { if (!s) S.clearUserData(); });
 if (S.loggedIn()) { S.loadProfile().catch(() => {}); S.pull().catch(() => {}); }
 S.subscribe(() => { if (route.name === "fav" && !document.activeElement?.matches?.("#fq")) vFav(); });
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") S.flushHistory(); });
+// Android WebView kadang tidak menggambar ulang area gulir (halaman komik) setelah aplikasi dibuka lagi dari
+// latar belakang: layar gelap kosong sampai digeser. Geser 1 px lalu kembalikan untuk memaksa gambar ulang.
+function repaintScrollers() {
+  const nudge = (el) => { if (!el) return; const y = el.scrollTop, x = el.scrollLeft;
+    if (el.scrollHeight > el.clientHeight) { el.scrollTop = y + (y > 0 ? -1 : 1); el.scrollTop = y; }
+    else if (el.scrollWidth > el.clientWidth) { el.scrollLeft = x + (x > 0 ? -1 : 1); el.scrollLeft = x; } };
+  document.querySelectorAll(".r-scroll, .r-slides").forEach(nudge);
+  nudge(document.scrollingElement);
+  view.style.transform = "translateZ(0)";
+  requestAnimationFrame(() => { view.style.transform = ""; });
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  // permukaan WebView kadang baru siap sedikit setelah aplikasi tampil, jadi diulang sekali lagi
+  requestAnimationFrame(repaintScrollers); setTimeout(repaintScrollers, 350);
+});
+N.onResume(() => { requestAnimationFrame(repaintScrollers); setTimeout(repaintScrollers, 350); });
 // APK: berkas sudah ada di dalam aplikasi, service worker tidak diperlukan
 if (!N.isApp && "serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
 (async () => {
