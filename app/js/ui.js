@@ -1,6 +1,6 @@
 // Bantuan tampilan kecil: escape HTML, ikon, toast, waktu relatif, sampul.
 import { ICONS } from "./assets.js";
-import { isApp, APK_URL } from "./native.js";
+import { isApp, SITE_URL } from "./native.js";
 
 export const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 export const icon = (name, size = 22, sw = 1.8) =>
@@ -57,7 +57,7 @@ export function errBox(e, retryAct = "retry") {
   const blocked = !isApp && (e?.blocked || /Cloudflare/i.test(m));
   const msg = blocked ? "Sumber ini menolak server Ninokuu. Pilih sumber lain, atau pasang aplikasi Android: di APK sumber ini dibuka langsung dari HP." : m;
   return `<div class="empty"><span class="empty-ic">${icon(blocked ? "shield" : "info", 24)}</span><b>${blocked ? "Sumber tidak bisa dijangkau dari web" : "Gagal memuat"}</b><span>${esc(msg)}</span>
-    ${blocked ? `<a class="btn primary" href="${APK_URL}" target="_blank" rel="noopener">${icon("down", 16, 2)}Unduh APK Ninokuu</a>` : ""}<button class="btn ghost" data-act="${retryAct}">${icon("refresh", 16)}Coba lagi</button></div>`;
+    ${blocked ? `<a class="btn primary" href="${SITE_URL}" target="_blank" rel="noopener">${icon("down", 16, 2)}Unduh APK Ninokuu</a>` : ""}<button class="btn ghost" data-act="${retryAct}">${icon("refresh", 16)}Coba lagi</button></div>`;
 }
 export const loading = (n = 6, cls = "sk-row") => `<div class="sk-wrap">${Array.from({ length: n }, () => `<div class="${cls} sk"></div>`).join("")}</div>`;
 

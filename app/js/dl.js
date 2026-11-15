@@ -333,7 +333,7 @@ export async function vDownload(view, c, src, id) {
   setActs({ back: () => back(`#/c/${src}/${encodeURIComponent(id)}`) });
   view.innerHTML = topbar("Unduh chapter") + `<div class="px col g12 mt6">${c.loading(4, "sk-lrow")}</div>`;
   if (!supported()) {
-    view.innerHTML = topbar("Unduh chapter") + `<div class="px col g12 mt6"><div class="empty"><span class="empty-ic">${icon("down", 24)}</span><b>Unduhan ada di aplikasi APK</b><span>Versi web tidak bisa menyimpan file ke folder HP. Pasang aplikasi Android Ninokuu untuk membaca offline.</span><a class="btn primary" href="${esc(N.APK_URL)}">${icon("down", 18, 2)}Unduh APK Ninokuu</a></div></div>`;
+    view.innerHTML = topbar("Unduh chapter") + `<div class="px col g12 mt6"><div class="empty"><span class="empty-ic">${icon("down", 24)}</span><b>Unduhan ada di aplikasi APK</b><span>Versi web tidak bisa menyimpan file ke folder HP. Pasang aplikasi Android Ninokuu untuk membaca offline.</span><a class="btn primary" href="${esc(N.SITE_URL)}" target="_blank" rel="noopener">${icon("down", 18, 2)}Unduh APK Ninokuu</a></div></div>`;
     return;
   }
   let d; try { d = await getDetail(src, id); } catch (e) { d = offlineDetail(src, id); if (!d) { view.innerHTML = topbar("Unduh chapter") + `<div class="px">${c.errBox(e)}</div>`; return; } }

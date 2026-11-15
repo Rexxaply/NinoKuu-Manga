@@ -940,6 +940,8 @@ body.nk-lite .rk-b.t6::before, body.nk-lite .rk-b.t7::before { display: none; }
 .hero.dt::after { display: none; }
 .hero.dt, .dt-body { position: relative; z-index: 1; }
 .r-main.last { background: rgba(17, 23, 34, .92); border: 1px solid rgba(255, 255, 255, .08); color: #8A93A8; box-shadow: none; cursor: default; }
-/* judul panjang: maks. 2 baris di atas, judul lengkap di bawah genre */
-.hero.dt .hero-t h1 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; word-break: break-word; }
-.dt-full { margin: 16px 0 0; font-size: 17px; line-height: 1.35; font-weight: 800; word-break: break-word; }
+/* judul maks. 4 baris; sinopsis diawali "Sinopsis <judul>" */
+.hero.dt .hero-t h1 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; word-break: break-word; }
+.syn-h { margin: 16px 0 0; font-size: 13.5px; line-height: 1.65; color: var(--soft); word-break: break-word; }
+.syn-h + .desc { margin-top: 6px; }
+.syn-h b { color: var(--tx); font-weight: 700; }

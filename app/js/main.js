@@ -146,7 +146,9 @@ const typeFromTags = (tags = []) => (tags.map((t) => String(t).toLowerCase()).fi
 const pct = (a, b) => (b ? Math.max(3, Math.min(100, Math.round((a / b) * 100))) : 0);
 
 /* ---------- Beranda ---------- */
-let homeSrc = "komiku";
+const SRC_IDS = SOURCES.map((x) => x.id);
+const savedSrc = (k) => { const v = api.lsGet(k); return SRC_IDS.includes(v) ? v : "komiku"; };
+let homeSrc = savedSrc("homeSrc");
 const browseCache = new Map();
 async function browse(src, opt) {
   const k = JSON.stringify([src, opt]);
@@ -212,7 +214,7 @@ ${last ? `<section class="sec s16"><h2 class="cap">Lanjut baca</h2>
   setActs({
     quote: (el) => { qi = (qi + 1) % QUOTES.length; el.classList.add("fade"); setTimeout(() => { el.textContent = `“${QUOTES[qi]}”`; el.classList.remove("fade"); }, 200); },
     bell: () => openNotif(),
-    src: (el) => { homeSrc = el.dataset.v; const y = window.scrollY; vHome().then(() => window.scrollTo(0, y)); },
+    src: (el) => { homeSrc = el.dataset.v; api.lsSet("homeSrc", homeSrc); const y = window.scrollY; vHome().then(() => window.scrollTo(0, y)); },
     updView: (el) => { S.setSetting("updView", S.state.settings.updView === "grid" ? "list" : "grid"); el.outerHTML = viewBtn(S.state.settings.updView === "grid", "updView"); drawUpd(); },
     more: () => { page++; loadUpd(true); },
     retry: () => vHome(),
@@ -293,7 +295,7 @@ function closeNotif() {
 }
 
 /* ---------- Pencarian (hasil muncul sambil mengetik) ---------- */
-let sState = { q: "", src: "komiku", type: "", status: "", genres: [] };
+let sState = { q: "", src: savedSrc("searchSrc"), type: "", status: "", genres: [] };
 async function vSearch(type) {
   if (type !== undefined) sState.type = TYPES.some((t) => t.id === type) ? type : "";
   view.innerHTML = `
@@ -351,7 +353,7 @@ async function vSearch(type) {
   const pick = (act, el) => $$(`[data-act=${act}]`).forEach((b) => b.setAttribute(b.parentElement.classList.contains("chips") ? "aria-pressed" : "aria-selected", String(b === el)));
   setActs({
     clear: () => { inp.value = ""; sState.q = ""; $("[data-act=clear]").hidden = true; inp.focus(); load(); },
-    src: (el) => { if (sState.genres.length) toast("Filter genre direset karena tiap sumber punya daftar genre sendiri."); sState.src = el.dataset.v; sState.genres = []; pick("src", el); drawFilters(); load(); },
+    src: (el) => { if (sState.genres.length) toast("Filter genre direset karena tiap sumber punya daftar genre sendiri."); sState.src = el.dataset.v; api.lsSet("searchSrc", sState.src); sState.genres = []; pick("src", el); drawFilters(); load(); },
     type: (el) => { sState.type = el.dataset.v; drawFilters(); load(); },
     filter: () => openFilter(sState.src, sState, (f) => { sState.type = f.type; sState.status = f.status; sState.genres = f.genres; drawFilters(); load(); }),
     unf: (el) => { if (el.dataset.k === "status") sState.status = ""; else sState.genres = sState.genres.filter((g) => g !== el.dataset.v); drawFilters(); load(); },
@@ -380,12 +382,10 @@ function cachedDetail(src, id) {
   try { const s = sessionStorage.getItem("ninokuu:d:" + k); if (s) { const d = JSON.parse(s); detailCache.set(k, { at: 0, data: d }); return d; } } catch {}
   return null;
 }
-// halaman komik: latar berhenti di baris tombol "Mulai baca"; judul yang terpotong (maks. 2 baris)
-// ditulis lengkap di bawah genre
+// halaman komik: latar berhenti di baris tombol "Mulai baca"
 function fitDetail() {
-  const bg = $("#dtbg"), row = $(".act-row"), t = $("#dtTitle"), full = $("#dtFull");
+  const bg = $("#dtbg"), row = $(".act-row");
   if (bg && row) bg.style.height = Math.round(row.getBoundingClientRect().bottom - view.getBoundingClientRect().top + 28) + "px";
-  if (t && full) full.hidden = t.scrollHeight <= t.clientHeight + 2;
 }
 addEventListener("resize", () => { if (parse().name === "detail") fitDetail(); });
 async function vDetail(src, id) {
@@ -433,8 +433,8 @@ async function vDetail(src, id) {
     ${likeBtn(lk)}
   </div>
   ${m.tags?.length ? `<div class="tags">${m.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</div>` : ""}
-  <h2 class="dt-full" id="dtFull" hidden>${esc(m.title)}</h2>
-  ${m.desc ? `<p class="desc ${descOpen ? "open" : ""}" data-act="desc">${esc(m.desc)}</p>` : ""}
+  <p class="syn-h">Sinopsis <b>${esc(m.title)}</b></p>
+  ${m.desc ? `<p class="desc ${descOpen ? "open" : ""}" data-act="desc">${esc(m.desc)}</p>` : `<p class="desc mu">Belum ada sinopsis dari sumber.</p>`}
   <div class="sec-h mt24"><h2>Chapter</h2><a class="link-red" href="${chaptersHref(src, id)}">Lihat semua (${d.chapters.length})${icon("chev", 16, 2)}</a></div>
   <div class="ch-card">${preview.map((c) => chRow(c)).join("") || `<div class="empty"><b>Belum ada chapter</b></div>`}</div>
   <div class="sec-h mt24"><h2>Komentar${cmN ? ` <span class="mu cm-n">${cmN}</span>` : ""}</h2><a class="link-red" href="${commentsHref(src, id)}">${cmN ? "Lihat semua" : "Tulis komentar"}${icon("chev", 16, 2)}</a></div>
@@ -1065,7 +1065,7 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
     goHist: () => go("#/fav/hist"), goDl: () => go("#/fav/dl"),
     about: () => go("#/p/about"), privacy: () => go("#/p/privacy"), terms: () => go("#/p/terms"),
     backup: () => go("#/p/backup"), restore: () => go("#/p/restore"),
-    getapk: () => window.open(N.APK_URL, "_blank"),
+    getapk: () => window.open(N.SITE_URL, "_blank"),
     update: () => checkUpdate(true),
     checkupd: () => checkUpdate(true),
     pushset: async () => {
