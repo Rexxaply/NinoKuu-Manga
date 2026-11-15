@@ -636,7 +636,12 @@ async function vReader(src, id, chId) {
   }
   if (parse().name !== "reader") return;
   const st = S.state.settings, total = p.images.length;
-  let slide = st.readMode === "slide";
+  // manga: boleh scroll & slide. manhwa/manhua (strip panjang): hanya scroll. Jenis dari tag sumber;
+  // bila tag tidak menyebut jenisnya, dari bentuk gambar (lihat cekStrip di bawah), diingat per komik.
+  const kind = typeFromTags(d.manga.tags), stripKey = `${src}|${id}`;
+  const stripSeen = api.lsGet("stripComics", {}) || {};
+  const longStrip = kind === "manhwa" || kind === "manhua" || (kind !== "manga" && !!stripSeen[stripKey]);
+  let slide = st.readMode === "slide" && !longStrip;
   const rtl = st.readDir !== "ltr";
   const imgs = p.images.map((im, i) => `<img class="r-img" data-i="${i + 1}" src="${esc(im.local || im.direct ? im.u : api.pageUrl(im.p))}"${im.direct ? ` data-direct="${esc(im.u)}"` : ""} alt="Halaman ${i + 1}" ${i > 2 ? 'loading="lazy"' : ""} decoding="async" referrerpolicy="no-referrer" draggable="false">`);
 
@@ -653,8 +658,9 @@ async function vReader(src, id, chId) {
   <div class="r-menu-bg" data-act="closeMenu" hidden></div>
   <div class="r-menu glass" role="dialog" aria-label="Mode baca" hidden>
     <span class="cap">Mode baca</span>
-    ${[["scroll", "Scroll (webtoon)", "Gulir ke bawah, halaman tersambung", "scroll"], ["slide", "Slide (halaman)", "Geser per halaman", "slides"]].map(([k, n, dsc, ic]) =>
-      `<button class="r-mode ${st.readMode === k ? "on" : ""}" role="radio" aria-checked="${st.readMode === k}" data-act="rmode" data-v="${k}"><span class="${st.readMode === k ? "redt" : "mu"}">${icon(ic, 20)}</span><span class="col grow"><b>${n}</b><span class="mu xs">${dsc}</span></span>${st.readMode === k ? `<span class="redt">${icon("check", 18, 2.4)}</span>` : ""}</button>`).join("")}
+    ${[["scroll", "Scroll (webtoon)", "Gulir ke bawah, halaman tersambung", "scroll"], ["slide", "Slide (halaman)", longStrip ? "Tidak tersedia untuk manhwa/manhua (halaman panjang)" : "Geser per halaman", "slides"]].map(([k, n, dsc, ic]) => {
+      const on = (slide ? "slide" : "scroll") === k, off = k === "slide" && longStrip;
+      return `<button class="r-mode ${on ? "on" : ""}" role="radio" aria-checked="${on}" data-act="rmode" data-v="${k}" ${off ? "disabled" : ""}><span class="${on ? "redt" : "mu"}">${icon(ic, 20)}</span><span class="col grow"><b>${n}</b><span class="mu xs">${dsc}</span></span>${on ? `<span class="redt">${icon("check", 18, 2.4)}</span>` : ""}</button>`; }).join("")}
     <button class="r-mode" data-act="chlist"><span class="gold">${icon("list", 20)}</span><span class="col grow"><b>Daftar chapter</b><span class="mu xs">${d.chapters.length} chapter · cari & pindah chapter</span></span></button>
     <button class="r-mode" data-act="rreport"><span class="redt">${icon("bug", 20)}</span><span class="col grow"><b>Laporkan masalah chapter</b><span class="mu xs">Gambar rusak, halaman hilang, dll.</span></span></button>
     ${slide ? `<span class="cap mt4">Arah geser</span><div class="seg s3">${[["rtl", "Kanan ke kiri"], ["ltr", "Kiri ke kanan"]].map(([k, n]) => `<button role="tab" aria-selected="${(rtl ? "rtl" : "ltr") === k}" data-act="rdir" data-v="${k}">${n}</button>`).join("")}</div>` : ""}
@@ -680,9 +686,14 @@ async function vReader(src, id, chId) {
   let awarded = false;
   const finish = () => { if (awarded) return; awarded = true; DL.markRead(src, id, ch.id); if (!isLocal) S.awardRead(src, id, ch.ch); };
   const endEl = $(".r-endtxt, .r-endslide", rd);
+  let endIo = null;
   if (endEl && "IntersectionObserver" in window) {
-    const io = new IntersectionObserver((es) => { if (es.some((x) => x.isIntersecting)) { finish(); io.disconnect(); } }, { root: box, threshold: 0.2 });
-    io.observe(endEl);
+    endIo = new IntersectionObserver((es) => {
+      const vis = es.some((x) => x.isIntersecting);
+      atEnd = vis;
+      if (vis) { finish(); if (!rd.classList.contains("zoomed")) showUi(); }
+    }, { root: box, threshold: 0.2 });
+    endIo.observe(endEl);
   }
   // like chapter (jumlah dari server, diperbarui optimis)
   let lk = null, lkBusy = false;
@@ -698,17 +709,33 @@ async function vReader(src, id, chId) {
   };
   const goPage = (i, smooth = false) => {
     const el = $(`.r-img[data-i="${i}"]`); if (!el) return;
+    quietUntil = Date.now() + (smooth ? 900 : 400);
     if (slide) { clearZoom(); const w = box.clientWidth; box.scrollTo({ left: (rtl ? -1 : 1) * (i - 1) * w, behavior: smooth ? "smooth" : "auto" }); }
     else box.scrollTo({ top: el.offsetTop, behavior: smooth ? "smooth" : "auto" });
     setPage(i);
   };
   // posisi halaman saat menggulir
-  let zoom = 1, zEl = null, zBase = 0;
+  let zoom = 1, zEl = null, zBase = 0, rafPos = 0;
+  // menu bacaan otomatis: hilang saat menggulir/menggeser, muncul sendiri di akhir chapter
+  let atEnd = false, anchor = 0, quietUntil = 0, seeking = false;
+  const menuOpen = () => !$(".r-menu").hidden;
+  const showUi = () => { rd.classList.add("ui"); anchor = slide ? Math.abs(box.scrollLeft) : box.scrollTop; };
+  const autoHide = () => {
+    const pos = slide ? Math.abs(box.scrollLeft) : box.scrollTop;
+    if (atEnd || seeking || menuOpen() || Date.now() < quietUntil || pinch) { anchor = pos; return; }
+    if (Math.abs(pos - anchor) > (slide ? 20 : 48) && rd.classList.contains("ui")) rd.classList.remove("ui");
+    anchor = pos;
+  };
   box.addEventListener("scroll", () => {
-    if (slide) { setPage(Math.round(Math.abs(box.scrollLeft) / (box.clientWidth || 1)) + 1); return; }
-    const y = box.scrollTop + box.clientHeight * 0.4;
-    let n = 1; for (const im of $$(".r-img", pages)) { if (im.offsetTop <= y) n = Number(im.dataset.i); else break; }
-    setPage(n);
+    if (rafPos) return;
+    rafPos = requestAnimationFrame(() => {
+      rafPos = 0;
+      autoHide();
+      if (slide) { setPage(Math.round(Math.abs(box.scrollLeft) / (box.clientWidth || 1)) + 1); return; }
+      const y = box.scrollTop + box.clientHeight * 0.4;
+      let n = 1; for (const im of $$(".r-img", pages)) { if (im.offsetTop <= y) n = Number(im.dataset.i); else break; }
+      setPage(n);
+    });
   }, { passive: true });
   // ketuk sekali: tampil/sembunyikan tombol; ketuk dua kali: perbesar 2,5× / kembali normal (mode gulir)
   let lastTap = null, tapT = null;
@@ -749,19 +776,35 @@ async function vReader(src, id, chId) {
       clearTimeout(tapT); lastTap = null; applyZoom(zoom > 1.05 ? 1 : 2.5, e.clientX, e.clientY);
     } else {
       lastTap = { t: now, x: e.clientX, y: e.clientY };
-      clearTimeout(tapT); tapT = setTimeout(() => { lastTap = null; rd.classList.toggle("ui"); }, 320);
+      clearTimeout(tapT); tapT = setTimeout(() => { lastTap = null; if (rd.classList.contains("ui")) rd.classList.remove("ui"); else showUi(); }, 320);
     }
   });
   // cubit untuk memperbesar (mode gulir)
+  // Penahan gulir (touchmove non-pasif) hanya dipasang selama dua jari menempel. Dengan satu jari tidak ada
+  // penahan sama sekali, jadi gulir ditangani langsung oleh sistem dan tidak bisa "macet".
   let pinch = null;
-  box.addEventListener("touchstart", (e) => { if (e.touches.length === 2) { const [a, b] = e.touches; pinch = { d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1, z: zoom, x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 }; } }, { passive: true });
-  box.addEventListener("touchmove", (e) => { if (pinch && e.touches.length === 2) { e.preventDefault(); const [a, b] = e.touches; applyZoom(pinch.z * (Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) / pinch.d), pinch.x, pinch.y); } }, { passive: false });
-  box.addEventListener("touchend", () => { pinch = null; });
+  const pinchMove = (e) => {
+    if (!pinch || e.touches.length !== 2) return;
+    const [a, b] = e.touches, dd = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    if (!pinch.on && Math.abs(dd - pinch.d) < 12) return;          // dua jari tapi belum mencubit → biarkan bergulir
+    pinch.on = true; e.preventDefault();
+    applyZoom(pinch.z * (dd / pinch.d), pinch.x, pinch.y);
+  };
+  const pinchEnd = (e) => { if (e.touches.length < 2 && pinch) { pinch = null; box.removeEventListener("touchmove", pinchMove); } };
+  box.addEventListener("touchstart", (e) => {
+    if (e.touches.length !== 2 || pinch) return;
+    const [a, b] = e.touches;
+    pinch = { d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1, z: zoom, x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2, on: false };
+    box.addEventListener("touchmove", pinchMove, { passive: false });
+  }, { passive: true });
+  box.addEventListener("touchend", pinchEnd, { passive: true });
+  box.addEventListener("touchcancel", pinchEnd, { passive: true });
   // geser slider halaman
   const track = $("#rtrack");
   const seekAt = (clientX) => { const r = track.getBoundingClientRect(); const f = Math.min(1, Math.max(0, (clientX - r.left) / r.width)); goPage(Math.round(f * (total - 1)) + 1); };
-  track.addEventListener("pointerdown", (e) => { e.stopPropagation(); track.setPointerCapture(e.pointerId); seekAt(e.clientX); track.onpointermove = (ev) => seekAt(ev.clientX); });
-  track.addEventListener("pointerup", () => { track.onpointermove = null; });
+  track.addEventListener("pointerdown", (e) => { e.stopPropagation(); seeking = true; track.setPointerCapture(e.pointerId); seekAt(e.clientX); track.onpointermove = (ev) => seekAt(ev.clientX); });
+  const seekEnd = () => { track.onpointermove = null; seeking = false; quietUntil = Date.now() + 400; };
+  track.addEventListener("pointerup", seekEnd); track.addEventListener("pointercancel", seekEnd);
   track.addEventListener("keydown", (e) => { if (e.key === "ArrowRight") goPage(curPage + 1); if (e.key === "ArrowLeft") goPage(curPage - 1); });
   const menu = (open) => { $(".r-menu").hidden = !open; $(".r-menu-bg").hidden = !open; $("[data-act=menu]").setAttribute("aria-expanded", String(open)); };
   setActs({
@@ -784,7 +827,25 @@ async function vReader(src, id, chId) {
     main: () => (next ? goReplace(readHref(src, id, next.id)) : toComic()),
     next: () => (next ? goReplace(readHref(src, id, next.id)) : toComic()),
   });
-  cleanup = () => { clearTimeout(tapT); S.flushHistory(); };
+  cleanup = () => { clearTimeout(tapT); cancelAnimationFrame(rafPos); endIo?.disconnect(); S.flushHistory(); };
+  // jenis belum diketahui dari tag: periksa bentuk beberapa gambar pertama. Kebanyakan sangat tinggi
+  // (tinggi > 1,8× lebar) → strip panjang manhwa/manhua: diingat, dan mode slide dialihkan ke scroll.
+  if (!kind && !longStrip) {
+    const firsts = $$(".r-img", rd).slice(0, 4);
+    const cekStrip = () => {
+      const done = firsts.filter((im) => im.complete && im.naturalWidth);
+      if (done.length < Math.min(2, firsts.length)) return;
+      const tall = done.filter((im) => im.naturalHeight > im.naturalWidth * 1.8).length;
+      if (tall < Math.max(1, Math.ceil(done.length / 2))) return;
+      firsts.forEach((im) => im.removeEventListener("load", cekStrip));
+      const m = api.lsGet("stripComics", {}) || {}; m[stripKey] = 1;
+      const keys = Object.keys(m); if (keys.length > 500) delete m[keys[0]];
+      api.lsSet("stripComics", m);
+      if (slide && parse().name === "reader") { toast("Halaman panjang (manhwa/manhua): mode scroll dipakai."); vReader(src, id, chId); }
+    };
+    firsts.forEach((im) => im.addEventListener("load", cekStrip));
+    cekStrip();
+  }
   // daftar chapter di pembaca: 50 per muat, bisa dicari; kolom cari di atas panel (tidak tertutup keyboard)
   function openChList() {
     $$(".chs-host").forEach((x) => x.remove());

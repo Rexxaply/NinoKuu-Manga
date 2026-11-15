@@ -210,6 +210,12 @@ body[data-screen="reader"] { background: #0A0A0A; overflow: hidden; }
 .r-slide .r-img { width: auto; max-width: min(100%, 720px); max-height: 100%; min-height: 0; object-fit: contain; background: transparent; }
 .r-endslide { flex-direction: column; gap: 10px; padding: 18px; }
 .r-top, .r-bottom { position: absolute; left: 12px; right: 12px; max-width: 720px; margin: 0 auto; z-index: 6; }
+/* kotak pembungkus menu tidak menangkap sentuhan (hanya tombolnya): sebelumnya area tak terlihat di atas
+   & bawah layar menelan gesekan sehingga halaman tidak mau bergulir */
+.r-top, .r-bottom, .r-btns { pointer-events: none; }
+.r-top > *, .r-bottom > *, .r-btns > * { pointer-events: auto; }
+.r-bottom > .r-btns { pointer-events: none; }
+.r-mode:disabled { opacity: .45; cursor: default; }
 .r-top { top: calc(12px + env(safe-area-inset-top)); display: flex; gap: 8px; align-items: center; }
 .r-bottom { bottom: calc(14px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px; }
 .r-top > *, .r-bottom > *, .r-btns > * { transition: opacity .25s ease, transform .25s ease; }
