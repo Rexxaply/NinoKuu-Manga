@@ -16,9 +16,8 @@ export function updateKind(from, to) { const x = vp(from), y = vp(to); return y[
 export const REPO = CFG.REPO || "Rexxaply/NinoKuu-Manga";
 export const WEB_URL = CFG.WEB_URL || `https://${REPO.split("/")[0].toLowerCase()}.github.io/${REPO.split("/")[1]}/`;
 export const APK_URL = `https://github.com/${REPO}/releases/download/apk-terbaru/ninokuu.apk`;
-// halaman unduh (landing page ninokuu.site). Alamat github.io otomatis dialihkan ke ninokuu.site
-// begitu domainnya tersambung, jadi tautan ini tetap jalan sebelum maupun sesudahnya.
-export const SITE_URL = "https://rexxaply.github.io/ninokuu-site/";
+// halaman unduh (landing page, repo Rexxaply/ninokuu-site)
+export const SITE_URL = "https://ninokuu.site/";
 
 /* ---------- HTTP lewat jaringan HP (tanpa batas CORS) ---------- */
 const b64bytes = (s) => { const bin = atob(String(s || "")); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; };
