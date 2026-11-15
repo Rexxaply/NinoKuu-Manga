@@ -313,6 +313,6 @@ export async function latestBuild() {
     if (!version && !n) return null;
     // rilis lama tanpa nomor versi dibandingkan lewat nomor build
     const newer = version ? cmpVersion(version, VERSION) > 0 : n > BUILD;
-    return { version, build: n, newer, kind: version ? updateKind(VERSION, version) : "patch", url: APK_URL, notes, at: j?.published_at || null };
+    return { version, build: n, newer, kind: version ? updateKind(VERSION, version) : "patch", url: `${SITE_URL}update/`, notes, at: j?.published_at || null };
   } catch { return null; }
 }
