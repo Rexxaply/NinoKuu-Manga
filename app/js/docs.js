@@ -37,12 +37,20 @@ export const DOCS = {
  },
  "terms": {
   "title": "Ketentuan pengguna",
-  "updated": "14 November 2026",
-  "intro": "Dengan memakai Ninokuu, kamu setuju dengan ketentuan di bawah ini. Mohon dibaca sebentar, isinya singkat.",
+  "updated": "15 November 2026",
+  "intro": "Dengan mengunduh, memasang, atau memakai Ninokuu, kamu menyetujui ketentuan di bawah ini. Versi lengkapnya juga ada di ninokuu.site/syarat.",
   "secs": [
    [
+    "Penyebaran aplikasi",
+    "Aplikasi Ninokuu <b>tidak boleh disebarluaskan di luar sepengetahuan developer</b>.<ul><li>Jangan membagikan atau mengunggah ulang file APK ke grup, media sosial, situs, penyimpanan cloud, atau toko aplikasi</li><li>Jangan membuat salinan (mirror) atau tautan unduhan selain milik developer</li><li>Jangan menjual atau meminta bayaran untuk aplikasi maupun aksesnya</li></ul>Satu-satunya tempat resmi mengunduh Ninokuu adalah ninokuu.site."
+   ],
+   [
+    "Keaslian aplikasi",
+    "Dilarang mengubah, membongkar (decompile), mengemas ulang, atau menghapus identitas Ninokuu. Versi yang tidak berasal dari ninokuu.site tidak didukung dan bisa diblokir dari layanan."
+   ],
+   [
     "Tentang layanan",
-    "Ninokuu adalah aplikasi pembaca yang menampilkan konten dari situs sumber pihak ketiga. Kami tidak membuat, memiliki, atau mengunggah komik yang ditampilkan."
+    "Ninokuu adalah aplikasi pembaca gratis yang menampilkan konten dari situs sumber pihak ketiga. Kami tidak membuat, memiliki, atau mengunggah komik yang ditampilkan."
    ],
    [
     "Hak cipta",
@@ -50,11 +58,11 @@ export const DOCS = {
    ],
    [
     "Akun kamu",
-    "<ul><li>Kamu bertanggung jawab menjaga kerahasiaan password</li><li>Satu akun untuk satu orang; jangan dipinjamkan atau diperjualbelikan</li><li>Kami dapat menangguhkan akun yang menyalahgunakan layanan</li></ul>"
+    "<ul><li>Kamu bertanggung jawab menjaga kerahasiaan password</li><li>Satu akun untuk satu orang; jangan dipinjamkan atau diperjualbelikan</li><li>Nama, foto, dan pesan di chat atau komentar harus sopan dan tidak melanggar hukum</li></ul>"
    ],
    [
     "Penggunaan yang dilarang",
-    "<ul><li>Menyebarkan ulang atau menjual file unduhan dari aplikasi</li><li>Mengganggu, membebani, atau mencoba membobol server Ninokuu</li><li>Memakai aplikasi untuk hal yang melanggar hukum</li></ul>"
+    "<ul><li>Menyebarkan ulang atau menjual file unduhan dari aplikasi</li><li>Mengganggu, membebani, atau mencoba membobol server Ninokuu</li><li>Spam, ujaran kebencian, pelecehan, atau konten ilegal di chat dan komentar</li><li>Memakai aplikasi untuk hal yang melanggar hukum</li></ul>"
    ],
    [
     "Unduhan",
@@ -63,6 +71,10 @@ export const DOCS = {
    [
     "Ketersediaan",
     "Situs sumber bisa berubah, lambat, atau tidak tersedia sewaktu-waktu di luar kendali kami. Layanan diberikan sebagaimana adanya tanpa jaminan selalu aktif."
+   ],
+   [
+    "Pelanggaran",
+    "Kami dapat memberi peringatan, membisukan, menangguhkan, atau menghapus akun, serta mencabut akses ke aplikasi bagi yang melanggar ketentuan ini."
    ],
    [
     "Dukungan sukarela",
