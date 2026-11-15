@@ -11,7 +11,7 @@
 // kalau satu sumber rusak, isi secret KOMIKU_SITE / KIRYUU_SITE / SHNGM_SITE / WEST_SITE dengan domain barunya.
 import { createClient } from "npm:@supabase/supabase-js@2.76.1";
 
-const VERSION = "1.2.1";
+const VERSION = "1.3.0";
 const NAME = "ninokuu-api";
 const SOURCES = ["komiku", "kiryuu", "shinigami", "westmanga"] as const;
 type Source = typeof SOURCES[number];
@@ -210,7 +210,35 @@ function newestChapter(list: any[]) {
 type Status = "" | "ongoing" | "completed" | "hiatus";
 type Opt = { sort: "update" | "popular"; type: "" | "manga" | "manhwa" | "manhua"; limit: number; genres: string[]; status: Status };
 type Chapter = { id: string; ch: string | null; title: string; at: string | null; url: string };
-type Detail = { manga: { id: string; title: string; cover: string; desc: string; status: string; tags: string[]; author: string; url: string }; chapters: Chapter[] };
+type Detail = { manga: { id: string; title: string; cover: string; desc: string; status: string; tags: string[]; author: string; url: string; views?: number | null; publisher?: string }; chapters: Chapter[] };
+// info tambahan (tiap sumber menamai field-nya berbeda; yang tidak ada dibiarkan kosong)
+const normStatus = (s: unknown): string => {
+  const t = String(s ?? "").toLowerCase();
+  return /drop|cancel|discontinu|batal|berhenti/.test(t) ? "dropped" : /hiatus|jeda/.test(t) ? "hiatus"
+    : /complet|tamat|end|finish|selesai/.test(t) ? "completed" : /ongoing|on going|berjalan|publishing|lanjut/.test(t) ? "ongoing" : "";
+};
+const toNum = (v: unknown): number | null => {
+  if (typeof v === "number") return Number.isFinite(v) && v >= 0 ? Math.round(v) : null;
+  const m = String(v ?? "").trim().toLowerCase().replace(/\s+/g, "").match(/^([\d.,]+)(k|rb|ribu|m|jt|juta)?/);
+  if (!m) return null;
+  const mul = m[2] ? (/^(k|rb|ribu)$/.test(m[2]) ? 1e3 : 1e6) : 1;
+  const n = mul > 1 ? parseFloat(m[1].replace(",", ".")) : parseFloat(m[1].replace(/[.,](?=\d{3}(\D|$))/g, "").replace(",", "."));
+  return Number.isFinite(n) ? Math.round(n * mul) : null;
+};
+const VIEW_KEYS = ["view_count", "views_count", "total_views", "total_view", "views", "view", "viewer", "viewers", "read_count", "total_read", "readers", "post_views", "hits"];
+const pickViews = (...objs: any[]): number | null => {
+  for (const o of objs) if (o && typeof o === "object") for (const k of VIEW_KEYS) { const n = toNum(o[k]); if (n != null && n > 0) return n; }
+  return null;
+};
+const PUB_KEY = /publisher|penerbit|serializ|serialis|magazine|majalah/i;
+const pickPublisher = (o: any): string => {
+  if (!o || typeof o !== "object") return "";
+  for (const [k, v] of Object.entries(o)) if (PUB_KEY.test(k)) {
+    const s = Array.isArray(v) ? v.map((x: any) => (typeof x === "string" ? x : x?.name)).filter(Boolean).join(", ") : typeof v === "string" ? v : (v as any)?.name || "";
+    if (s) return decodeEnt(stripTags(String(s))).slice(0, 120);
+  }
+  return "";
+};
 
 /* ---------- Shinigami (API JSON) ---------- */
 const SHNGM_API = Deno.env.get("SHNGM_API") || "https://api.shngm.io";
@@ -248,8 +276,9 @@ async function shngDetail(id: string): Promise<Detail> {
   return {
     manga: {
       id, title: String(d.title || ""), cover: await coverUrl(shngCover(d), SHNGM_SITE + "/"), desc: String(d.description || "").trim(),
-      status: SHNG_STATUS[Number(d.status)] || "", tags: [...(tax.Genre || []), ...(tax.Format || [])].map((x: any) => x?.name).filter(Boolean).slice(0, 8),
+      status: SHNG_STATUS[Number(d.status)] || normStatus(d.status_name || d.status_label || d.status), tags: [...(tax.Genre || []), ...(tax.Format || [])].map((x: any) => x?.name).filter(Boolean).slice(0, 8),
       author: (tax.Author || []).map((x: any) => x?.name).filter(Boolean).join(", "), url: `${SHNGM_SITE}/series/${id}`,
+      views: pickViews(d, d.stats, d.statistic), publisher: pickPublisher(tax) || pickPublisher(d),
     },
     chapters,
   };
@@ -314,7 +343,9 @@ async function komikuDetail(id: string): Promise<Detail> {
   }
   return {
     manga: { id: page.url, title, cover: await coverUrl(cover, page.url), desc, tags: tags.slice(0, 8),
-      status: /ongoing|on going/.test(st) ? "ongoing" : /end|completed|tamat/.test(st) ? "completed" : "", author: row("(?:Pengarang|Komikus|Author)"), url: page.url },
+      status: normStatus(st), author: row("(?:Pengarang|Komikus|Author)"), url: page.url,
+      publisher: row("(?:Penerbit|Publisher|Serialisasi|Serialization)").slice(0, 120),
+      views: toNum(row("(?:Pembaca|Dibaca|Dilihat|Views?)")) ?? toNum(stripTags(h).match(/([\d.,]+\s*(?:rb|ribu|jt|juta|k|m)?)\s*(?:x\s*)?(?:dibaca|pembaca|views?)\b/i)?.[1] || "") },
     chapters,
   };
 }
@@ -381,7 +412,7 @@ async function kiryuuChapters(id: string): Promise<Chapter[]> {
   }
   return out;
 }
-const KIRYUU_STATUS: Record<string, string> = { Ongoing: "ongoing", Completed: "completed", "On Hiatus": "hiatus", Cancelled: "completed" };
+const KIRYUU_STATUS: Record<string, string> = { Ongoing: "ongoing", Completed: "completed", "On Hiatus": "hiatus", Cancelled: "dropped", Dropped: "dropped" };
 async function kiryuuDetail(id: string): Promise<Detail> {
   const [m, chapters] = await Promise.all([kiryuuJson(`/wp-json/wp/v2/manga/${kiryuuId(id)}?_embed`), kiryuuChapters(id)]);
   if (!m?.id) throw webErr("Seri Kiryuu tidak ditemukan", 404);
@@ -389,8 +420,10 @@ async function kiryuuDetail(id: string): Promise<Detail> {
     manga: {
       id, title: decodeEnt(stripTags(m.title?.rendered || "")), cover: await coverUrl(kiryuuCover(m), KIRYUU_SITE + "/"),
       desc: stripTags(String(m.content?.rendered || "").replace(/<\/p>\s*<p[^>]*>/gi, "\n\n")).trim(),
-      tags: [...kiryuuTerms(m, "genre"), ...kiryuuTerms(m, "type")].slice(0, 8), status: kiryuuTerms(m, "status").map((s) => KIRYUU_STATUS[s]).find(Boolean) || "",
+      tags: [...kiryuuTerms(m, "genre"), ...kiryuuTerms(m, "type")].slice(0, 8), status: kiryuuTerms(m, "status").map((s) => KIRYUU_STATUS[s] || normStatus(s)).find(Boolean) || "",
       author: kiryuuTerms(m, "series-author").join(", "), url: m.link || `${KIRYUU_SITE}/manga/${m.slug}/`,
+      views: pickViews(m, m.meta, m.acf),
+      publisher: ["series-publisher", "series-serialization", "serialization", "publisher"].map((t) => kiryuuTerms(m, t).join(", ")).find(Boolean) || pickPublisher(m.meta) || pickPublisher(m.acf),
     },
     chapters,
   };
@@ -465,7 +498,8 @@ async function westDetail(id: string): Promise<Detail> {
       id: String(d.slug), title: String(d.title || d.slug), cover: await coverUrl(westAbs(d.cover), westBase + "/"),
       desc: stripTags(String(d.sinopsis || "").replace(/<\/p>\s*<p[^>]*>/gi, "\n\n").replace(/<br\s*\/?>/gi, "\n")).trim(),
       tags: [...(type ? [type[0].toUpperCase() + type.slice(1)] : []), ...((d.genres || []).map((g: any) => g?.name).filter(Boolean))].slice(0, 8),
-      status: WEST_STATUS[String(d.status || "").toLowerCase()] || "", author: String(d.author || ""), url: `${westBase}/comic/${d.slug}`,
+      status: WEST_STATUS[String(d.status || "").toLowerCase()] || normStatus(d.status), author: String(d.author || ""), url: `${westBase}/comic/${d.slug}`,
+      views: pickViews(d, d.stats), publisher: pickPublisher(d),
     },
     chapters,
   };

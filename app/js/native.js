@@ -19,6 +19,34 @@ export const APK_URL = `https://github.com/${REPO}/releases/download/apk-terbaru
 
 /* ---------- HTTP lewat jaringan HP (tanpa batas CORS) ---------- */
 const b64bytes = (s) => { const bin = atob(String(s || "")); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; };
+// info tambahan komik (nama field tiap sumber berbeda; yang tidak ada dibiarkan kosong) — sama dengan Edge Function
+export const normStatus = (s) => {
+  const t = String(s ?? "").toLowerCase();
+  return /drop|cancel|discontinu|batal|berhenti/.test(t) ? "dropped" : /hiatus|jeda/.test(t) ? "hiatus"
+    : /complet|tamat|end|finish|selesai/.test(t) ? "completed" : /ongoing|on going|berjalan|publishing|lanjut/.test(t) ? "ongoing" : "";
+};
+export const toNum = (v) => {
+  if (typeof v === "number") return Number.isFinite(v) && v >= 0 ? Math.round(v) : null;
+  const m = String(v ?? "").trim().toLowerCase().replace(/\s+/g, "").match(/^([\d.,]+)(k|rb|ribu|m|jt|juta)?/);
+  if (!m) return null;
+  const mul = m[2] ? (/^(k|rb|ribu)$/.test(m[2]) ? 1e3 : 1e6) : 1;
+  const n = mul > 1 ? parseFloat(m[1].replace(",", ".")) : parseFloat(m[1].replace(/[.,](?=\d{3}(\D|$))/g, "").replace(",", "."));
+  return Number.isFinite(n) ? Math.round(n * mul) : null;
+};
+const VIEW_KEYS = ["view_count", "views_count", "total_views", "total_view", "views", "view", "viewer", "viewers", "read_count", "total_read", "readers", "post_views", "hits"];
+const pickViews = (...objs) => {
+  for (const o of objs) if (o && typeof o === "object") for (const k of VIEW_KEYS) { const n = toNum(o[k]); if (n != null && n > 0) return n; }
+  return null;
+};
+const pickPublisher = (o) => {
+  if (!o || typeof o !== "object") return "";
+  for (const [k, v] of Object.entries(o)) if (/publisher|penerbit|serializ|serialis|magazine|majalah/i.test(k)) {
+    const s = Array.isArray(v) ? v.map((x) => (typeof x === "string" ? x : x?.name)).filter(Boolean).join(", ") : typeof v === "string" ? v : v?.name || "";
+    if (s) return String(s).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
+  }
+  return "";
+};
+
 export async function nget(url, { headers = {}, type = "json" } = {}) {
   const H = plugin("CapacitorHttp");
   if (!H) throw new Error("Fitur ini hanya tersedia di aplikasi APK.");
@@ -83,9 +111,10 @@ const SHNG = (() => {
       const [d, chs] = await Promise.all([get(`/v1/manga/detail/${encodeURIComponent(id)}`).then((j) => j?.data), chapters(id)]);
       if (!d) throw new Error("Seri Shinigami tidak ditemukan");
       const tax = d.taxonomy || {};
-      return { ok: true, manga: { id, title: String(d.title || ""), cover: coverOf(d), desc: String(d.description || "").trim(), status: STATUS[Number(d.status)] || "",
+      return { ok: true, manga: { id, title: String(d.title || ""), cover: coverOf(d), desc: String(d.description || "").trim(), status: STATUS[Number(d.status)] || normStatus(d.status_name || d.status_label || d.status),
         tags: [...(tax.Genre || []), ...(tax.Format || [])].map((x) => x?.name).filter(Boolean).slice(0, 8),
-        author: (tax.Author || []).map((x) => x?.name).filter(Boolean).join(", "), url: `${SITE}/series/${id}` }, chapters: chs };
+        author: (tax.Author || []).map((x) => x?.name).filter(Boolean).join(", "), url: `${SITE}/series/${id}`,
+        views: pickViews(d, d.stats, d.statistic), publisher: pickPublisher(tax) || pickPublisher(d) }, chapters: chs };
     },
     async pages(b) {
       const d = (await get(`/v1/chapter/detail/${encodeURIComponent(b.chapter_id)}`))?.data;
@@ -150,7 +179,7 @@ const WEST = (() => {
       tmp.innerHTML = String(d.sinopsis || "").replace(/<\/p>\s*<p[^>]*>/gi, "\n\n").replace(/<br\s*\/?>/gi, "\n");
       return { ok: true, manga: { id: String(d.slug), title: String(d.title || d.slug), cover: abs(d.cover), desc: (tmp.textContent || "").trim(),
         tags: [...(type ? [type[0].toUpperCase() + type.slice(1)] : []), ...(d.genres || []).map((g) => g?.name).filter(Boolean)].slice(0, 8),
-        status: { ongoing: "ongoing", completed: "completed", hiatus: "hiatus" }[String(d.status || "").toLowerCase()] || "",
+        status: normStatus(d.status), views: pickViews(d, d.stats), publisher: pickPublisher(d),
         author: String(d.author || ""), url: `${base}/comic/${d.slug}` }, chapters: (d.chapters || []).filter((c) => c?.slug).map(mapCh) };
     },
     async pages(b) {
