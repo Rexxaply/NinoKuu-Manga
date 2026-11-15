@@ -250,15 +250,20 @@ export async function pushEnable(rpc, ask = false, force = false) {
 // notifikasi masuk saat aplikasi terbuka → perbarui lonceng
 export function onPushReceived(cb) { PN()?.addListener("pushNotificationReceived", () => cb()); }
 // ketuk notifikasi → buka halaman yang dituju (ninokuu://comic/<sumber>/<id>, ninokuu://chat, ninokuu://home)
+function openLink(u, go) {
+  const m = u.match(/^ninokuu:\/\/comic\/([a-z0-9]+)\/(.+)$/i);
+  if (m) go(`#/c/${m[1]}/${m[2]}`);
+  else if (/^ninokuu:\/\/chat/i.test(u)) go("#/chat");
+  else if (/^ninokuu:\/\/verified/i.test(u)) go("#/more", "verified");
+  else if (/^https?:/i.test(u)) window.open(u, "_blank");
+  else go("#/home");
+}
 export function onPushOpen(go) {
-  PN()?.addListener("pushNotificationActionPerformed", (a) => {
-    const u = String(a?.notification?.data?.url || "");
-    const m = u.match(/^ninokuu:\/\/comic\/([a-z0-9]+)\/(.+)$/i);
-    if (m) go(`#/c/${m[1]}/${m[2]}`);
-    else if (/^ninokuu:\/\/chat/i.test(u)) go("#/chat");
-    else if (/^https?:/i.test(u)) window.open(u, "_blank");
-    else go("#/home");
-  });
+  PN()?.addListener("pushNotificationActionPerformed", (a) => openLink(String(a?.notification?.data?.url || ""), go));
+}
+// tautan ninokuu://… dari browser (mis. tombol "Kembali ke aplikasi" setelah verifikasi email)
+export function onUrlOpen(go) {
+  plugin("App")?.addListener("appUrlOpen", (e) => { const u = String(e?.url || ""); if (/^ninokuu:/i.test(u)) openLink(u, go); });
 }
 
 /* ---------- keyboard (tinggi keyboard dari Android) ---------- */

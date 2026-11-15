@@ -1151,6 +1151,7 @@ function startApp() {
   N.onPushReceived(() => refreshDots());
   setTimeout(() => checkUpdate(false), 2500);
   N.onPushOpen((h) => go(h));
+  N.onUrlOpen((h, why) => { go(h); if (why === "verified") setTimeout(() => toast(S.loggedIn() ? "Email terverifikasi." : "Email terverifikasi. Silakan masuk dengan email & kata sandimu.", 4000), 400); });
   // tombol kembali Android: tutup lapisan yang terbuka dulu, lalu mundur; di Beranda → keluar
   N.onBack((exit) => {
     const ae = document.activeElement;

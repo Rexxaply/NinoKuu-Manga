@@ -75,12 +75,14 @@ export async function signIn(email, password) {
   return session;
 }
 export async function signUp(email, password, name) {
-  const r = await authCall("/signup?redirect_to=" + encodeURIComponent(appUrl()), { email: email.trim(), password, data: { name: name.trim() } });
+  // tautan verifikasi email membuka halaman "Email berhasil diverifikasi" di ninokuu.site (tombol kembali ke aplikasi)
+  const r = await authCall("/signup?redirect_to=" + encodeURIComponent(VERIFY_URL), { email: email.trim(), password, data: { name: name.trim() } });
   if (r?.access_token) { setSession(r); return { session }; }
   return { confirm: true }; // Confirm email aktif: tunggu konfirmasi
 }
 export async function recover(email) { await authCall("/recover?redirect_to=" + encodeURIComponent(appUrl()), { email: email.trim() }); }
 // link di email (konfirmasi akun, reset password) selalu ke versi web; di APK alamatnya https://localhost
+const VERIFY_URL = "https://ninokuu.site/verified/";
 const appUrl = () => (isApp ? WEB_URL : location.origin + location.pathname);
 // link dari email (konfirmasi daftar / reset password) kembali ke aplikasi dengan token di #
 export async function sessionFromUrl() {
