@@ -1,5 +1,5 @@
 // Ninokuu service worker: kerangka aplikasi bisa dibuka offline, gambar komik disimpan sementara.
-const VER = "ninokuu-app-1.4.2";
+const VER = "ninokuu-app-1.4.3";
 const IMG = "ninokuu-img-v1";
 const SHELL = ["./", "index.html", "config.js", "css/app.css", "js/main.js", "js/api.js", "js/store.js", "js/ui.js", "js/assets.js", "js/docs.js", "js/avatars.js", "js/chat.js", "js/filters.js", "js/native.js", "js/exp.js", "css/avatars.css", "icons/logo.png", "icons/icon-192.png", "manifest.webmanifest"];
 const IMG_MAX = 400;
