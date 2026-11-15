@@ -11,7 +11,7 @@
 // kalau satu sumber rusak, isi secret KOMIKU_SITE / KIRYUU_SITE / SHNGM_SITE / WEST_SITE dengan domain barunya.
 import { createClient } from "npm:@supabase/supabase-js@2.76.1";
 
-const VERSION = "1.3.0";
+const VERSION = "1.3.1";
 const NAME = "ninokuu-api";
 const SOURCES = ["komiku", "kiryuu", "shinigami", "westmanga"] as const;
 type Source = typeof SOURCES[number];
@@ -130,11 +130,22 @@ async function checkSig(u: string, ref: string, sig: string, cover: boolean) {
   for (let i = 0; i < want.length; i++) d |= want.charCodeAt(i) ^ sig.charCodeAt(i);
   return d === 0;
 }
+const komikuCover = (c: string) => { try { return c ? (komikuImgHost(new URL(c))?.href || c) : c; } catch { return c; } };
+// thumbnail.komiku.to / .id / … → thumbnail.komiku.org (null bila bukan gambar Komiku di domain lain)
+function komikuImgHost(u: URL): URL | null {
+  const m = u.hostname.toLowerCase().match(/^(thumbnail|img|cover)\.komiku\.([a-z]+)$/);
+  if (!m || m[2] === "org") return null;
+  const x = new URL(u.href); x.hostname = `${m[1]}.komiku.org`; return x;
+}
 async function proxyImage(u: string, ref: string, sig: string, cover: boolean) {
   if (!u || !sig || !(await checkSig(u, ref, sig, cover))) return json({ error: "tanda tangan gambar tidak valid" }, 403);
   let url: URL;
   try { url = safeUrl(u); } catch (e: any) { return json({ error: e.message }, 400); }
-  const r = await fetchSafe(url, { headers: { "User-Agent": WEB_UA, Accept: "image/avif,image/webp,image/*,*/*;q=0.8", ...(ref ? { Referer: ref } : {}) } }, 25000).then((x) => x.r).catch(() => null);
+  const get = (x: URL) => fetchSafe(x, { headers: { "User-Agent": WEB_UA, Accept: "image/avif,image/webp,image/*,*/*;q=0.8", ...(ref ? { Referer: ref } : {}) } }, 25000).then((v) => v.r).catch(() => null);
+  let r = await get(url);
+  // server gambar Komiku di domain lain (mis. thumbnail.komiku.to) sering gagal → coba domain .org yang stabil
+  const alt = komikuImgHost(url);
+  if ((!r || !r.ok) && alt) { await r?.body?.cancel().catch(() => {}); r = await get(alt); }
   if (!r || !r.ok) return json({ error: `gagal memuat gambar${r ? " (" + r.status + ")" : ""}` }, 502);
   const type = r.headers.get("Content-Type") || "";
   if (!/^image\//i.test(type) && !/octet-stream/i.test(type)) return json({ error: "bukan file gambar" }, 415);
@@ -342,7 +353,7 @@ async function komikuDetail(id: string): Promise<Detail> {
       at: komikuDate(stripTags(tr[1].match(/class=["'][^"']*\btanggalseries\b[^"']*["'][^>]*>([\s\S]*?)<\/td>/i)?.[1] || "")) });
   }
   return {
-    manga: { id: page.url, title, cover: await coverUrl(cover, page.url), desc, tags: tags.slice(0, 8),
+    manga: { id: page.url, title, cover: await coverUrl(komikuCover(cover), page.url), desc, tags: tags.slice(0, 8),
       status: normStatus(st), author: row("(?:Pengarang|Komikus|Author)"), url: page.url,
       publisher: row("(?:Penerbit|Publisher|Serialisasi|Serialization)").slice(0, 120),
       views: toNum(row("(?:Pembaca|Dibaca|Dilihat|Views?)")) ?? toNum(stripTags(h).match(/([\d.,]+\s*(?:rb|ribu|jt|juta|k|m)?)\s*(?:x\s*)?(?:dibaca|pembaca|views?)\b/i)?.[1] || "") },

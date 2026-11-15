@@ -628,7 +628,7 @@ async function vReader(src, id, chId) {
   let slide = st.readMode === "slide";
   const rtl = st.readDir !== "ltr";
   const imgs = p.images.map((im, i) => `<img class="r-img" data-i="${i + 1}" src="${esc(im.local || im.direct ? im.u : api.pageUrl(im.p))}"${im.direct ? ` data-direct="${esc(im.u)}"` : ""} alt="Halaman ${i + 1}" ${i > 2 ? 'loading="lazy"' : ""} decoding="async" referrerpolicy="no-referrer" draggable="false">`);
-  const mainLabel = next ? `Lanjut ke Chapter ${esc(next.ch)}` : "Kembali ke info komik";
+
   view.innerHTML = `<div class="reader ui ${slide ? "slide" : ""}" id="rd">
   ${slide ? `<div class="r-slides" id="rbox" dir="${rtl ? "rtl" : "ltr"}">${imgs.map((im) => `<div class="r-slide">${im}</div>`).join("")}<div class="r-slide r-endslide"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span>${isLocal ? "" : `${chLike(null)}<a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini</a>`}</div></div>`
     : `<div class="r-scroll" id="rbox"><div class="r-pages" id="rpages">${imgs.join("")}<div class="r-endtxt"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span>${isLocal ? "" : `${chLike(null)}<a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini<span class="cm-n" id="rcmn"></span></a>`}</div></div></div>`}
@@ -653,7 +653,8 @@ async function vReader(src, id, chId) {
       <div class="r-track" id="rtrack" role="slider" aria-label="Posisi halaman" aria-valuemin="1" aria-valuemax="${total}" aria-valuenow="1" tabindex="0"><span class="r-rail"></span><span class="r-fill" id="rfill"></span><span class="r-knob" id="rknob"></span></div></div>
     <div class="r-btns">
       <button class="r-sq glass" data-act="prev" aria-label="Chapter sebelumnya" ${prev ? "" : "disabled"}>${icon("back", 22, 2.2)}</button>
-      <button class="r-main" data-act="main">${next ? icon("play", 16, 2.2) : icon("home", 18, 2)}${mainLabel}</button>
+      ${next ? `<button class="r-main" data-act="main">${icon("play", 16, 2.2)}Lanjut ke Chapter ${esc(next.ch)}</button>`
+        : `<button class="r-main last" disabled aria-label="Ini chapter terakhir">${icon("flag", 18, 2)}Chapter Terakhir</button>`}
       <button class="r-sq glass" data-act="next" aria-label="${next ? "Chapter berikutnya" : "Kembali ke info komik"}">${next ? icon("chev", 22, 2.2) : icon("home", 21, 2)}</button>
     </div></div></div>`;
   const rd = $("#rd"), box = $("#rbox"), pages = $("#rpages");
