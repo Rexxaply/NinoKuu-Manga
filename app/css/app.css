@@ -854,6 +854,6 @@ body.nk-lite .rk-b.t6::before, body.nk-lite .rk-b.t7::before { display: none; }
 .rc-chart.m .rc-col:first-child small { justify-content: flex-start; } .rc-chart.m .rc-col:last-child small { justify-content: flex-end; }
 /* notifikasi ditutup: memudar halus, tidak bisa disentuh lagi */
 .out { pointer-events: none; } .out .pop, .out .pop-bg { transition: opacity .15s; opacity: 0; }
-/* avatar sejajar dengan baris nama (bukan di bawah, sejajar waktu kirim) */
-.msg > .m-avc, .msg > .m-av { align-self: flex-start; margin-top: 0; }
+/* avatar di tengah antara nama dan balon pesan pertama */
+.msg > .m-avc, .msg > .m-av { align-self: flex-start; margin-top: 6px; }
 .msg:not(:has(.m-head)) > .m-avc { height: 1px; }
