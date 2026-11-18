@@ -1389,10 +1389,10 @@ function vFav(tab) {
   const readOf = (m) => S.histItem(m.source, m.comic_id);
   // ada chapter yang belum dibaca (untuk lencana +N / lanjut di tampilan daftar)
   const isNew = (m) => { const r = readOf(m); return m.latest != null && r && parseFloat(m.latest) > parseFloat(r.chapter); };
-  // label "NEW UPDATE" & filter "New update": chapter terbaru rilis < 24 jam lalu dan belum dibaca sampai chapter itu
+  // label "NEW UPDATE" & filter "New update": chapter terbaru rilis < 24 jam lalu (tetap tampil walau sudah dibaca, supaya rapi)
   // tanggal tanpa jam (sebagian sumber) = tengah malam waktu HP pada hari itu, jadi rilis "hari ini" tetap terhitung baru
   const tsOf = (v) => { const d = /^(\d{4})-(\d\d)-(\d\d)$/.exec(v || ""); const t = d ? new Date(+d[1], d[2] - 1, +d[3]).getTime() : Date.parse(v || ""); return Number.isFinite(t) ? t : 0; };
-  const isFresh = (m) => { const t = tsOf(m.latestAt), r = readOf(m); return t > 0 && Date.now() - t < 864e5 && !(r && parseFloat(r.chapter) >= parseFloat(m.latest)); };
+  const isFresh = (m) => { const t = tsOf(m.latestAt); return t > 0 && Date.now() - t < 864e5; };
   // urutan koleksi: update terbaru (tanggal chapter terakhir yang diketahui saat komik dibuka), terakhir ditambah, judul
   const fs = FAV_SORTS.some(([k]) => k === S.state.settings.favSort) ? S.state.settings.favSort : "update";
   const byAdded = (a, b) => (b.added_at || "").localeCompare(a.added_at || "");
