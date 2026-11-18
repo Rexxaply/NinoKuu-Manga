@@ -183,3 +183,55 @@ new MutationObserver((ms) => {
     n.querySelectorAll?.(SHEETS).forEach(attachDrag);
   }
 }).observe(document.body, { childList: true, subtree: true });
+
+/* ---------- Pilihan bersegmen (Komiku/Kiryuu…, Koleksi/Riwayat/Unduhan, Semua/Manga…) gaya iOS ----------
+   Satu "jempol" (latar pilihan aktif) meluncur ke pilihan baru dengan pegas, bukan latar yang berpindah
+   tiba-tiba. Ringan: hanya transform (dikerjakan GPU) + lebar 1 elemen kosong; tanpa pustaka.
+   Berlaku otomatis untuk .seg, .fseg, .chips, juga yang digambar ulang (posisi lama diingat ±0,8 dtk). */
+const SEG_SEL = ".seg, .fseg, .chips";
+const SEG_ON = '[aria-selected="true"], [aria-checked="true"], [aria-pressed="true"]';
+const segLast = new Map();
+const segReduce = matchMedia("(prefers-reduced-motion: reduce)");
+const segKey = (el) => { const b = el.querySelector(":scope > button[data-act], :scope > button[data-f]"); return b ? `${b.dataset.act || b.dataset.f}|${el.querySelectorAll(":scope > button").length}` : ""; };
+const segRo = "ResizeObserver" in window ? new ResizeObserver((es) => es.forEach((e) => placeSeg(e.target, false))) : null;
+function placeSeg(el, anim) {
+  const on = el.querySelector(`:scope > button:is(${SEG_ON})`);
+  let th = el.querySelector(":scope > .seg-th");
+  // belum terlihat (mis. di dalam menu yang tertutup): diawasi ResizeObserver, dipasang saat muncul
+  if (!on || !on.offsetWidth) { if (th) th.style.opacity = "0"; segRo?.observe(el); return; }
+  if (!th) {
+    th = document.createElement("span"); th.className = "seg-th no-tr"; th.setAttribute("aria-hidden", "true");
+    el.prepend(th); el.classList.add("has-th"); segRo?.observe(el);
+  }
+  const box = { x: on.offsetLeft, y: on.offsetTop, w: on.offsetWidth, h: on.offsetHeight }, k = segKey(el);
+  // ukuran berubah (layar diputar dll.): pindahkan tanpa animasi; panggilan tanpa perubahan diabaikan
+  // (ResizeObserver memanggil sekali saat mulai diamati: jangan sampai memotong animasi yang sedang jalan)
+  if (!anim && el._th && el._th.x === box.x && el._th.w === box.w && el._th.y === box.y && el._th.h === box.h) return;
+  const prev = el._th || (anim && k && segLast.get(k)?.t > Date.now() - 800 ? segLast.get(k) : null);
+  if (k) segLast.set(k, { ...box, t: Date.now() });
+  const set = (b) => { th.style.width = b.w + "px"; th.style.height = b.h + "px"; th.style.transform = `translate3d(${b.x}px, ${b.y}px, 0)`; };
+  th.style.borderRadius = getComputedStyle(on).borderRadius;
+  if (anim && prev && !segReduce.matches && (prev.x !== box.x || prev.w !== box.w)) {
+    if (!el._th) { th.classList.add("no-tr"); set(prev); void th.offsetWidth; }
+    th.classList.remove("no-tr");
+  } else th.classList.add("no-tr");
+  set(box); th.style.opacity = "1";
+  el._th = box;
+}
+// dipasang langsung di callback MutationObserver (sebelum layar digambar), jadi tidak ada 1 frame tanpa jempol
+// (sekali per daftar per callback, walau beberapa tombolnya berubah sekaligus)
+const queueSeg = (el, anim) => { if (el?.isConnected) placeSeg(el, anim); };
+new MutationObserver((ms) => {
+  const todo = new Set();
+  for (const m of ms) {
+    if (m.type === "attributes") { const el = m.target.parentElement?.closest(SEG_SEL); if (el) todo.add(el); continue; }
+    m.addedNodes.forEach((n) => { if (n.nodeType !== 1) return; if (n.matches(SEG_SEL)) todo.add(n); n.querySelectorAll?.(SEG_SEL).forEach((x) => todo.add(x)); });
+  }
+  todo.forEach((el) => queueSeg(el, true));
+}).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-selected", "aria-checked", "aria-pressed"] });
+document.querySelectorAll(SEG_SEL).forEach((s) => queueSeg(s, false));
+// ketukan pada pilihan: catat posisi jempol sekarang, supaya bila daftar digambar ulang, jempol meluncur dari sini
+document.addEventListener("click", (e) => {
+  const el = e.target.closest?.(SEG_SEL); if (!el || !el._th) return;
+  const k = segKey(el); if (k) segLast.set(k, { ...el._th, t: Date.now() });
+}, true);

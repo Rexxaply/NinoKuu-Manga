@@ -1205,3 +1205,17 @@ button.fa-new:active, .hl-go:active { scale: .92; }
 /* teks sumber yang panjang memendek (…), chapter & lonceng selalu utuh */
 .fa-src { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .fa-bell, .fa-sep, .fa-ch, .fa-dot { flex: none; }
+
+/* pilihan bersegmen gaya iOS: jempol meluncur (lihat ui.js) */
+.seg, .fseg, .chips { position: relative; }
+.seg-th { position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none; background: var(--red); box-shadow: 0 3px 10px rgba(224, 36, 43, .32); will-change: transform;
+  transition: transform .45s cubic-bezier(.32, .72, 0, 1), width .45s cubic-bezier(.32, .72, 0, 1), opacity .15s; }
+.seg-th.no-tr { transition: none; }
+.has-th > button { position: relative; z-index: 1; }
+.seg.has-th > button[aria-selected="true"], .fseg.has-th > button[aria-checked="true"] { background: transparent; box-shadow: none; }
+.chips > .seg-th { background: var(--tx); box-shadow: none; }
+.chips.has-th > button[aria-pressed="true"] { background: transparent; border-color: transparent; }
+.chips button { transition: color .25s, border-color .25s; }
+.seg button:active, .fseg button:active, .chips button:active { scale: .96; }
+.seg button, .fseg button, .chips button { transition-property: color, background-color, border-color, scale; transition-duration: .25s, .25s, .25s, .1s; }
+@media (prefers-reduced-motion: reduce) { .seg-th { transition: none; } }
