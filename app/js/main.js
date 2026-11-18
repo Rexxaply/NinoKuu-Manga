@@ -1324,21 +1324,19 @@ function vFav(tab) {
     && (fav.filter === "all" || (fav.filter === "new" ? isNew(m) : m.type === fav.filter)));
   const hist = S.history();
   const srcType = (m) => esc(srcName(m.source)) + (m.type ? " · " + esc(typeName(m.type)) : "");
-  // baris koleksi (tampilan daftar): kartu dengan sampul, judul 2 baris, sumber, dan progres baca
+  // baris koleksi (tampilan daftar), ramping: judul 1 baris, sumber, lalu "Ch. 120 / 200" tebal + bar progres tipis;
+  // di kanan lencana jumlah chapter baru (+80) atau centang bila sudah terbaru
   const favRow = (m) => {
     const r = readOf(m), L = parseFloat(m.latest), R = r ? parseFloat(r.chapter) : NaN, fresh = isNew(m);
     const pctRead = Number.isFinite(L) && L > 0 && Number.isFinite(R) ? Math.max(4, Math.min(100, Math.round((R / L) * 100))) : 0;
     const gap = fresh && Number.isFinite(L) && Number.isFinite(R) ? Math.floor(L) - Math.floor(R) : 0;
-    const state = fresh ? `<span class="fr-st new">${gap > 0 ? `${gap} chapter baru` : "Chapter baru"}</span>` : r ? `<span class="fr-st">${m.latest != null && R >= L ? "Sudah terbaru" : "Lanjutkan"}</span>` : `<span class="fr-st">Belum dibaca</span>`;
-    return `<a class="frow" href="${comicHref(m.source, m.comic_id)}">
-      <span class="fr-cv">${cover(m.cover, m.title, "fav")}${fresh ? `<span class="fr-new">BARU</span>` : ""}</span>
-      <span class="fr-mid">
-        <b class="fr-t">${esc(m.title)}</b>
-        <span class="fr-meta"><i class="fr-dot s-${esc(m.source)}"></i>${srcType(m)}${m.notify ? `<span class="gold fr-bell" title="Notifikasi aktif">${icon("bellF", 12)}</span>` : ""}</span>
-        <span class="fr-prog"><span class="fr-bar"><i style="width:${pctRead}%"></i></span><span class="fr-ch">${r ? `Ch. ${esc(r.chapter)}${m.latest != null ? `<span class="mu"> / ${esc(m.latest)}</span>` : ""}` : m.latest != null ? `<span class="mu">${esc(m.latest)} chapter</span>` : ""}</span></span>
-        ${state}
-      </span>
-      <span class="fr-go mu">${icon("chev", 18)}</span></a>`;
+    const chTxt = r ? `Ch. ${esc(r.chapter)}${m.latest != null ? `<span class="mu"> / ${esc(m.latest)}</span>` : ""}` : m.latest != null ? `<span class="mu">${esc(m.latest)} chapter</span>` : `<span class="mu">Belum dibaca</span>`;
+    const badge = fresh ? `<span class="fa-new" title="Chapter baru">${gap > 0 ? "+" + gap : "Baru"}</span>` : r && m.latest != null && R >= L ? `<span class="fa-ok" title="Sudah terbaru">${icon("check", 14, 2.4)}</span>` : "";
+    return `<a class="fa-row" href="${comicHref(m.source, m.comic_id)}">${cover(m.cover, m.title, "sm")}<span class="fa-mid">
+      <b class="fa-t">${esc(m.title)}</b>
+      <span class="fa-meta"><i class="fa-dot s-${esc(m.source)}"></i>${srcType(m)}${m.notify ? `<span class="gold fa-bell" title="Notifikasi aktif">${icon("bellF", 11)}</span>` : ""}</span>
+      <span class="fa-prog"><span class="fa-ch">${chTxt}</span>${r ? `<span class="fa-bar"><i style="width:${pctRead}%"></i></span>` : ""}</span>
+    </span>${badge}</a>`;
   };
   let body = "";
   if (fav.tab === "lib") {
