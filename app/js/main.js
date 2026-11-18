@@ -609,6 +609,10 @@ async function vDetail(src, id) {
   const h = S.histItem(src, id);
   let first, resumeCh;
   let descOpen = false;
+  // bar "Mulai baca" mengambang hanya muncul setelah tombol Mulai baca di atas tergulir keluar layar
+  // (satu aksi utama di satu tempat); meluncur naik/turun saat melewati batas itu
+  const ctaSeen = () => { const c = $(".d-cta"); return !!c && c.getBoundingClientRect().bottom > 70; };
+  const syncCta = () => { const w = $(".rfab-wrap"); if (w) w.classList.toggle("off", ctaSeen()); };
   const draw = () => {
     // dihitung ulang setiap gambar: chapter lama bisa datang belakangan (fillMore)
     latest = d.chapters[d.chapters.length - 1]; first = d.chapters[0];
@@ -639,7 +643,7 @@ async function vDetail(src, id) {
       <span class="mu sm">${d.chapters.length} chapter${latest?.at ? " · update " + esc(ago(latest.at)) : ""}${d.more ? " · memuat chapter lama…" : ""}</span></div></div></div>
 <div class="px dt-body">
   <div class="act-row">
-    <a class="btn primary grow" href="${resumeCh ? readHref(src, id, resumeCh.id) : first ? readHref(src, id, first.id) : "#"}">${icon("play", 18, 2)}${resumeCh ? "Lanjut Ch. " + esc(resumeCh.ch) : "Mulai baca"}</a>
+    <a class="btn primary grow d-cta" href="${resumeCh ? readHref(src, id, resumeCh.id) : first ? readHref(src, id, first.id) : "#"}">${icon("play", 18, 2)}${resumeCh ? "Lanjut Ch. " + esc(resumeCh.ch) : "Mulai baca"}</a>
     <button class="round-btn ${fav ? "on" : ""}" data-act="fav" aria-pressed="${fav}" aria-label="${fav ? "Hapus dari koleksi" : "Tambah ke koleksi"}">${icon(fav ? "heartF" : "heart", 22)}</button>
     <button class="round-btn ${bell ? "on gold" : ""}" data-act="bell" aria-pressed="${bell}" aria-label="${bell ? "Matikan notifikasi" : "Nyalakan notifikasi chapter baru"}">${icon(bell ? "bellF" : "bell", 22)}</button>
     ${likeBtn(lk)}
@@ -651,7 +655,7 @@ async function vDetail(src, id) {
   <div class="ch-card">${preview.map((c) => chRow(c)).join("") || `<div class="empty"><b>Belum ada chapter</b></div>`}</div>
   <div id="cmsec">${cmHtml()}</div>
 </div><div style="height:calc(120px + env(safe-area-inset-bottom))"></div>
-<div class="rfab-wrap"><a class="rfab glass" href="${resumeCh ? readHref(src, id, resumeCh.id) : first ? readHref(src, id, first.id) : chaptersHref(src, id)}"><span class="rfab-ic">${icon("play", 18, 2)}</span><b class="redt">${resumeCh ? "Lanjut baca" : "Mulai baca"}</b><span class="grow">${resumeCh ? "Chapter " + esc(resumeCh.ch) : first ? "Chapter " + esc(first.ch) : ""}</span><span class="redt">${icon("chev", 20, 2)}</span></a></div>`;
+<div class="rfab-wrap${!$(".d-cta") || ctaSeen() ? " off" : ""}"><a class="rfab glass" href="${resumeCh ? readHref(src, id, resumeCh.id) : first ? readHref(src, id, first.id) : chaptersHref(src, id)}"><span class="rfab-ic">${icon("play", 18, 2)}</span><b class="redt">${resumeCh ? "Lanjut baca" : "Mulai baca"}</b><span class="grow">${resumeCh ? "Chapter " + esc(resumeCh.ch) : first ? "Chapter " + esc(first.ch) : ""}</span><span class="redt">${icon("chev", 20, 2)}</span></a></div>`;
     bindSpoilers($("#cmprev")); watchAvatars($("#cmprev"));
     // latar mengikuti warna cover (dihitung sekali, lalu disimpan)
     if (!heroCol) X.coverColor(m.cover).then((c) => { const el = $("#dtbg"); if (c && el && parse().name === "detail") { el.style.setProperty("--hc", c); el.classList.add("tinted"); } });
@@ -667,7 +671,7 @@ async function vDetail(src, id) {
   const paintComments = () => { const el = $("#cmsec"); if (!el) return draw(); el.innerHTML = cmHtml(); bindSpoilers($("#cmprev")); watchAvatars($("#cmprev")); };
   const paintLike = () => { const b = $("[data-act=like]"); if (b) b.outerHTML = likeBtn(lk); };
   S.likeInfo(src, id, "").then((i) => { if (i && parse().name === "detail") { lk = i; paintLike(); } });
-  const onBarScroll = () => { const b = $("#dbar"); if (b) b.classList.toggle("solid", window.scrollY > 120); };
+  const onBarScroll = () => { const b = $("#dbar"); if (b) b.classList.toggle("solid", window.scrollY > 120); syncCta(); };
   window.addEventListener("scroll", onBarScroll, { passive: true });
   const onMore = (e) => { if (e.detail.key === src + "|" + id && parse().name === "detail") { const y = window.scrollY; draw(); window.scrollTo(0, y); } };
   window.addEventListener("nk:chapters", onMore);

@@ -41,8 +41,11 @@ html, body { overflow-x: clip; }
 /* bar bawah halaman: naik dari bawah saat pertama muncul (juga bila datanya datang belakangan), sekali per kunjungan */
 /* mulai sedikit setelah halaman digambar: saat halaman baru sedang disusun, beberapa frame pertama terlewat dan
    bar tampak "meloncat" ke tempatnya; dengan jeda singkat seluruh gerakannya terlihat */
-#view .rfab-wrap, #view .chbar { animation: fixUp .46s cubic-bezier(.32, .72, 0, 1) .12s both; will-change: transform; }
-#view[data-up-done] .rfab-wrap, #view[data-up-done] .chbar { animation: none; }
+#view .chbar { animation: fixUp .46s cubic-bezier(.32, .72, 0, 1) .12s both; will-change: transform; }
+/* bar Mulai baca mengambang: tersembunyi di bawah layar selama tombol Mulai baca di atas masih terlihat */
+#view .rfab-wrap { transition: transform .42s cubic-bezier(.32, .72, 0, 1); will-change: transform; }
+#view .rfab-wrap.off { transform: translateY(calc(100% + 40px + env(safe-area-inset-bottom))); pointer-events: none; }
+#view[data-up-done] .chbar { animation: none; }
 @keyframes fixUp { from { transform: translateY(calc(100% + 40px)); } }
 /* tanpa opacity: opacity < 1 pada #view mematikan efek kaca (backdrop-filter) semua tombol/menu di dalamnya selama
    animasi → isi di belakangnya sempat tembus tajam. Cukup geser seperti "push" iOS. */
@@ -1356,3 +1359,25 @@ body.is-app.nk-fs { --sat: env(safe-area-inset-top, 0px); }
 .rq-row[data-ck="nextDelay"] { flex-direction: column; align-items: stretch; gap: 7px; }
 .rq-row[data-ck="nextDelay"] > .seg { flex: none; }
 .ch-opt[data-ck="nextDelay"] .seg button, .rq-row[data-ck="nextDelay"] .seg button { flex: 1; min-width: 0; padding-left: 4px; padding-right: 4px; }
+
+/* ---------- Review desain (Apple HIG): target sentuh, teks kecil, aksesibilitas ---------- */
+/* target sentuh minimal 44 px tanpa mengubah ukuran yang terlihat: area ketuk diperluas lewat ::after */
+/* (.sq-btn, .link, .link-red sudah punya area ketuk ±46–62 px lewat ::after di atas) */
+.quote { position: relative; } .quote::after { content: ""; position: absolute; inset: -12px 0; }
+/* .seg button: area ketuk sudah 48 px lewat ::after di atas, ukuran tampilan tidak diubah */
+/* label badge minimal 11 px agar tetap terbaca */
+.new-up, .rank-pill, .bell-n { font-size: 11px; }
+.pill-dev, .pill-mod, .m-rank { font-size: 11px; }
+.m-meta, .rep-n, .lv-stats small { font-size: 11px; }
+.lv-ring small { font-size: 11px; }
+/* Top 10: jenis komik langsung di bawah judul (tanpa celah kosong bila judul hanya 1 baris) */
+.t10-t .t2 { height: auto; max-height: 34px; }
+/* "Kurangi transparansi": kaca buram jadi latar padat */
+@media (prefers-reduced-transparency: reduce) {
+  .glass, .icon-btn.glass, .nav-bg, .r-menu, .r-menu.glass, .upd-ban { background: #1A2230 !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+}
+/* "Tingkatkan kontras": teks redup & garis lebih terang */
+@media (prefers-contrast: more) {
+  :root { --mu: #CED4DF; --line: #4A586E; }
+  .glass, .group, .card { border-color: rgba(255, 255, 255, .32) !important; }
+}
