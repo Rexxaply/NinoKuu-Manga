@@ -14,7 +14,7 @@ export const WHATS_NEW = {
     features: [
       ["Lanjut dari halaman terakhir", "Keluar di halaman 12/48, buka lagi chapter itu → langsung ke halaman 12."],
       ["Urutkan Beranda & Koleksi", "Beranda: Update terbaru, Populer, Judul A-Z/Z-A, Rating (sesuai sumber). Koleksi: Update terbaru, Terakhir ditambah, Judul A-Z/Z-A."],
-      ["Mode fullscreen", "Pilih Mode standar atau Mode fullscreen di Pengaturan. Mode fullscreen: ketuk layar bacaan, bilah status HP disembunyikan."],
+      ["Mode fullscreen", "Pilih Mode standar atau Mode fullscreen di Pengaturan. Mode fullscreen: bilah status HP ikut menu bacaan, tampil bersama menu dan hilang saat menu disembunyikan."],
       ["Muat ulang gambar yang gagal", "Halaman yang gagal dimuat punya tombol muat ulang; dicoba lagi otomatis saat internet kembali."],
       ["Pilihan di akhir chapter", "Tampilkan menu (bawaan) atau Otomatis lanjut: sampai di akhir chapter, chapter berikutnya terbuka sendiri."],
       ["Pengaturan baru", "Mode efek avatar dan pilihan bacaan dikumpulkan di Lainnya → Pengaturan, juga di menu ⋯ saat membaca."],

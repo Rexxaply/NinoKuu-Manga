@@ -865,7 +865,6 @@ async function vReader(src, id, chId) {
   box.addEventListener("click", (e) => {
     if (e.target.closest("a,button")) return;
     const now = Date.now();
-    if (choiceVal("screenMode") === "fullscreen") N.setFullscreen(true);
     if (lastTap && now - lastTap.t < 320 && Math.hypot(lastTap.x - e.clientX, lastTap.y - e.clientY) < 50) {
       clearTimeout(tapT); setUi(lastTap.was); lastTap = null; applyZoom(zoom > 1.05 ? 1 : 2.5, e.clientX, e.clientY);
     } else {
@@ -929,7 +928,7 @@ async function vReader(src, id, chId) {
       const k = el.dataset.k, v = el.dataset.v;
       S.setSetting(k, v);
       el.closest(".ch-opt").outerHTML = choiceRow(k);
-      if (k === "screenMode") N.setFullscreen(v === "fullscreen");
+      if (k === "screenMode") syncFs();
       if (k === "chapterEnd") { if (v === "auto" && atEnd) autoNextStart(); else autoNextStop(); }
     },
     cancelNext: () => { autoNextStop(true); toast("Lanjut otomatis dibatalkan untuk chapter ini"); },
@@ -962,6 +961,11 @@ async function vReader(src, id, chId) {
   }, true);
   const onOnline = () => { if (failed.size) { [...failed].forEach(reloadImg); toast("Internet tersambung, memuat ulang gambar…"); } };
   addEventListener("online", onOnline);
+  // Mode fullscreen: bilah status HP mengikuti menu bacaan. Menu tampil → bilah tampil; menu hilang
+  // (diketuk atau digulir) → bilah disembunyikan. Mode standar: bilah selalu tampil.
+  const syncFs = () => N.setFullscreen(choiceVal("screenMode") === "fullscreen" && !rd.classList.contains("ui"));
+  const fsObs = new MutationObserver(syncFs);
+  fsObs.observe(rd, { attributes: true, attributeFilter: ["class"] });
   // Di akhir chapter (pengaturan "Di akhir chapter"): "menu" = menu bacaan muncul (bawaan);
   // "auto" = hitung mundur 2 detik lalu chapter berikutnya terbuka. Batal bila petunjuk diketuk atau
   // pembaca menggulir kembali ke atas. Tidak berjalan saat chapter baru dibuka (belum digulir).
@@ -993,7 +997,7 @@ async function vReader(src, id, chId) {
     if (!slide) before.forEach((im) => { if (!im.complete) im.addEventListener("load", jump, { once: true }); });
     toast(`Lanjut dari halaman ${resumeAt}`, 1800);
   }
-  cleanup = () => { clearTimeout(tapT); clearTimeout(nextT); cancelAnimationFrame(rafPos); endIo?.disconnect(); removeEventListener("online", onOnline); N.setFullscreen(false); S.flushHistory(); };
+  cleanup = () => { fsObs.disconnect(); clearTimeout(tapT); clearTimeout(nextT); cancelAnimationFrame(rafPos); endIo?.disconnect(); removeEventListener("online", onOnline); N.setFullscreen(false); S.flushHistory(); };
   // jenis belum diketahui dari tag: periksa bentuk beberapa gambar pertama. Kebanyakan sangat tinggi
   // (tinggi > 1,8× lebar) → strip panjang manhwa/manhua: diingat, dan mode slide dialihkan ke scroll.
   if (!kind && !longStrip) {
@@ -1218,7 +1222,7 @@ const READ_OPTS = [
 ];
 // pilihan dua mode (bawaan = yang pertama)
 const READ_CHOICES = [
-  ["screenMode", "Tampilan layar", [["standard", "Mode standar", "Bilah status HP tetap tampil saat membaca."], ["fullscreen", "Mode fullscreen", "Ketuk layar bacaan, bilah status HP disembunyikan."]]],
+  ["screenMode", "Tampilan layar", [["standard", "Mode standar", "Bilah status HP tetap tampil saat membaca."], ["fullscreen", "Mode fullscreen", "Bilah status HP ikut menu bacaan: menu tampil → bilah tampil, menu hilang → bilah disembunyikan."]]],
   ["chapterEnd", "Di akhir chapter", [["menu", "Tampilkan menu", "Menu muncul saat sampai di akhir chapter; pilih sendiri lanjut atau tidak."], ["auto", "Otomatis lanjut", "Sampai di akhir chapter, chapter berikutnya terbuka sendiri (bisa dibatalkan)."]]],
 ];
 const choiceVal = (k) => { const c = READ_CHOICES.find((x) => x[0] === k); const v = S.state.settings[k]; return c[2].some((o) => o[0] === v) ? v : c[2][0][0]; };
