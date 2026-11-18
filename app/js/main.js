@@ -838,8 +838,10 @@ async function vChapters(src, id) {
 /* ---------- Pembaca (gulir atau slide), tampilan sama seperti prototipe ---------- */
 const pagesMem = new Map();
 async function vReader(src, id, chId) {
-  const shell = (inner) => `<div class="reader ui" id="rd">${inner}<div class="r-top"><button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 22, 2)}</button><div class="r-pill glass"><b class="t1">Memuat…</b></div><span class="r-sp"></span></div></div>`;
+  const shell = (inner) => `<div class="reader ui enter" id="rd" data-shell="1">${inner}<div class="r-top"><button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 22, 2)}</button><div class="r-pill glass"><b class="t1">Memuat…</b></div><span class="r-sp"></span></div></div>`;
   view.innerHTML = shell(`<div class="r-pages">${loading(3, "sk-page")}</div>`);
+  // masih memuat setelah sebentar: tombol kembali meluncur masuk (bila daftar halaman tersimpan, tidak sempat terlihat)
+  setTimeout(() => { const r = $("#rd"); if (r?.dataset.shell) r.classList.remove("enter"); }, 350);
   // file impor dari HP (src "local") tidak punya halaman info komik, kembali ke Favorit → Unduhan
   const isLocal = src === "local";
   const toComic = () => (isLocal ? backTo("#/fav/dl") : backTo(comicHref(src, id), [chaptersHref(src, id)]));
@@ -879,7 +881,7 @@ async function vReader(src, id, chId) {
   // browser menganggap semuanya dekat layar dan seluruh chapter langsung diunduh.
   const imgs = p.images.map((im, i) => { const a = im.local ? `src="${esc(im.u)}"` : N.imgAttrs(im.u, { ref: p.ref || "", px: im.p ? api.pageUrl(im.p) : "" }); return `<img class="r-img wait" data-i="${i + 1}" ${i > 1 ? a.replace(/^src=/, "data-src=") : a} alt="" aria-label="Halaman ${i + 1}" decoding="async" referrerpolicy="no-referrer" draggable="false">`; });
 
-  view.innerHTML = `<div class="reader ui ${slide ? "slide" : ""}" id="rd">
+  view.innerHTML = `<div class="reader ui enter ${slide ? "slide" : ""}" id="rd">
   ${slide ? `<div class="r-slides" id="rbox" dir="${rtl ? "rtl" : "ltr"}">${imgs.map((im) => `<div class="r-slide">${im}</div>`).join("")}<div class="r-slide r-endslide"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span>${next ? `<button class="r-next-hint" id="rnext" data-act="cancelNext" hidden><span class="r-nbar"></span><span class="r-ntx"></span></button>` : ""}${isLocal ? "" : `${chLike(null)}<a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini</a>`}</div></div>`
     : `<div class="r-scroll" id="rbox"><div class="r-pages" id="rpages">${imgs.join("")}<div class="r-endtxt"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span>${next ? `<button class="r-next-hint" id="rnext" data-act="cancelNext" hidden><span class="r-nbar"></span><span class="r-ntx"></span></button>` : ""}${isLocal ? "" : `${chLike(null)}<a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini<span class="cm-n" id="rcmn"></span></a>`}</div></div></div>`}
   <div class="r-zoom glass" id="rzoom" hidden>${icon("zoom", 15)}<span id="rzt"></span> · geser untuk melihat, ketuk 2× untuk normal</div>
@@ -911,6 +913,8 @@ async function vReader(src, id, chId) {
       <button class="r-sq glass" data-act="next" aria-label="${next ? "Chapter berikutnya" : "Kembali ke info komik"}">${next ? icon("chev", 22, 2.2) : icon("home", 21, 2)}</button>
     </div></div></div>`;
   const rd = $("#rd"), box = $("#rbox"), pages = $("#rpages");
+  // masuk pembaca: halaman langsung tampil (tanpa geser kiri-kanan), bar atas & bawah meluncur masuk dari tepi layar
+  requestAnimationFrame(() => requestAnimationFrame(() => rd.classList.remove("enter")));
   // halaman dimuat langsung dari situs aslinya (tidak memakai kuota Supabase); bila ditolak,
   // penangan error di ui.js mencoba jaringan HP (APK) lalu proxy sebagai cadangan terakhir
   const meta = { source: src, comic_id: id, title: d.manga.title, cover: d.manga.cover, chapter: ch.ch, chapter_id: ch.id, pages: total, type: typeFromTags(d.manga.tags) };

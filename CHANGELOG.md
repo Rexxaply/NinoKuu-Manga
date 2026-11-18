@@ -19,6 +19,7 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 - Pembaruan langsung terdeteksi saat aplikasi dibuka ulang (simpanan 10 menit hanya untuk cek berkala & halaman Lainnya)
 - Pengaturan baru "Lanjut otomatis ke chapter berikutnya": OFF · 1 · 2 · 3 · 5 detik (bawaan 3 detik), di Lainnya → Pengaturan dan menu ⋯ pembaca; menggantikan pilihan "Di akhir chapter"
 - Tanpa pita hitam di sisi kanan (bilah gulir disembunyikan di HP); kembali ke chapter yang sama dari info komik langsung tampil tanpa "Memuat…"; bar Lanjut baca naik utuh tanpa meloncat
+- Masuk ke pembaca lebih mulus: halaman langsung tampil tanpa bergeser ke samping, bar atas & bawah meluncur masuk dari tepi layar
 - Posisi baca dikirim ke server paling sering 1× per 20 detik (sebelumnya setiap ganti halaman); tetap tersimpan di HP seketika
 
 ### Detail

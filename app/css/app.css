@@ -36,8 +36,8 @@ html, body { overflow-x: clip; }
 /* Animasi pindah halaman dipasang di isi #view, bukan #view sendiri: transform pada #view membuat elemen "fixed" di
    dalamnya (bar Mulai baca, bar bawah daftar chapter) ikut terbawa ke dasar halaman selama animasi lalu muncul
    tiba-tiba. Elemen fixed (.vfix, ditandai main.js) meluncur naik sendiri dari bawah. */
-#view.in-f > :not(.vfix):not(.rfab-wrap):not(.chbar) { animation: slideF .36s cubic-bezier(.2, .8, .2, 1); }
-#view.in-b > :not(.vfix):not(.rfab-wrap):not(.chbar) { animation: slideB .36s cubic-bezier(.2, .8, .2, 1); }
+#view.in-f > :not(.vfix):not(.rfab-wrap):not(.chbar):not(.reader) { animation: slideF .36s cubic-bezier(.2, .8, .2, 1); }
+#view.in-b > :not(.vfix):not(.rfab-wrap):not(.chbar):not(.reader) { animation: slideB .36s cubic-bezier(.2, .8, .2, 1); }
 /* bar bawah halaman: naik dari bawah saat pertama muncul (juga bila datanya datang belakangan), sekali per kunjungan */
 /* mulai sedikit setelah halaman digambar: saat halaman baru sedang disusun, beberapa frame pertama terlewat dan
    bar tampak "meloncat" ke tempatnya; dengan jeda singkat seluruh gerakannya terlihat */
@@ -243,6 +243,11 @@ body[data-screen="reader"] { background: #0A0A0A; overflow: hidden; }
   background: linear-gradient(180deg, rgba(0, 0, 0, .78), rgba(0, 0, 0, .45) 45%, rgba(0, 0, 0, .12) 80%, transparent);
   transition: transform .4s cubic-bezier(.32, .72, 0, 1); }
 .reader:not(.ui)::before { transform: translateY(-100%); }
+/* baru masuk pembaca: bar & gradasi mulai dari luar layar, lalu meluncur masuk (kelas "enter" dilepas 2 frame kemudian) */
+.reader.enter .r-top > * { transform: translateY(calc(-100% - 20px - var(--sat))); transition: none; }
+.reader.enter .r-seek, .reader.enter .r-btns > * { transform: translateY(calc(140px + env(safe-area-inset-bottom))); transition: none; }
+.reader.enter::before { transform: translateY(-100%); transition: none; }
+.reader.enter::after { transform: translateY(100%); transition: none; }
 /* gradasi bawah: di belakang bar halaman & tombol bawah (dan bilah navigasi HP), turun bersama bar saat disembunyikan */
 .reader::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; height: calc(env(safe-area-inset-bottom) + 170px); pointer-events: none;
   background: linear-gradient(0deg, rgba(0, 0, 0, .8), rgba(0, 0, 0, .5) 40%, rgba(0, 0, 0, .14) 78%, transparent);
