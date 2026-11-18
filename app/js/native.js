@@ -350,7 +350,7 @@ export async function checkBlockedSources(lib, call) {
 
 /* ---------- versi APK terbaru (GitHub Release "apk-terbaru") ---------- */
 // API GitHub tanpa login dibatasi 60 permintaan/jam per jaringan (IP). Supaya tidak habis (lalu muncul
-// "Tidak bisa memeriksa pembaruan"): hasil disimpan 10 menit, dan bila API menolak, versi global dibaca dari
+// "Tidak bisa memeriksa pembaruan"): hasil disimpan 10 menit untuk cek berkala & halaman Lainnya (saat aplikasi dibuka, kembali dari latar belakang, atau cek manual selalu ambil yang baru), dan bila API menolak, versi global dibaca dari
 // berkas VERSION + CHANGELOG di raw.githubusercontent.com (CDN, tanpa batas itu).
 const UPDK = "ninokuu:updCache";
 function fromRelease(j) {
@@ -377,7 +377,7 @@ async function fromRaw() {
 export async function latestBuild(force = false) {
   if (!isApp) return null;
   let info = null;
-  try { const c = JSON.parse(localStorage.getItem(UPDK) || "null"); if (c && c.k === RELEASE_TAG && Date.now() - c.t < (force ? 60e3 : 10 * 60e3)) info = c.info; } catch {}
+  try { const c = JSON.parse(localStorage.getItem(UPDK) || "null"); if (!force && c && c.k === RELEASE_TAG && Date.now() - c.t < 10 * 60e3) info = c.info; } catch {}
   if (!info) {
     try { info = fromRelease(await nget(`https://api.github.com/repos/${REPO}/releases/tags/${RELEASE_TAG}`, { headers: { Accept: "application/vnd.github+json" } })); }
     catch { try { info = await fromRaw(); } catch { info = null; } }

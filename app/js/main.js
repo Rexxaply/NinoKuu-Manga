@@ -1743,10 +1743,10 @@ function openDevLog() {
 // jadi pengguna tidak perlu menutup-buka aplikasi. Sedang membaca → spanduk kecil di atas (tidak menutupi halaman);
 // di halaman lain → lembar pembaruan. Tiap versi hanya diumumkan sekali per sesi (dan tidak lagi bila dipilih "Nanti").
 let updLast = 0, updShown = "";
-async function checkUpdate(manual) {
+async function checkUpdate(manual, fresh = false) {
   if (manual) toast("Memeriksa pembaruan…", 1500);
   updLast = Date.now();
-  const r = await N.latestBuild(manual);
+  const r = await N.latestBuild(manual || fresh);
   if (!r) { if (manual) toast("Tidak bisa memeriksa pembaruan. Periksa koneksi internet."); return; }
   if (r.newer) {
     const key = String(r.version || r.build);
@@ -1780,9 +1780,9 @@ function startApp() {
   document.body.classList.add("is-app");
   N.onKeyboard(setKeyboard);
   N.onPushReceived(() => refreshDots());
-  setTimeout(() => checkUpdate(false), 2500);
+  setTimeout(() => checkUpdate(false, true), 2500);              // aplikasi dibuka: selalu cek baru (tanpa simpanan)
   setInterval(updTick, 60e3);                                   // tiap menit dicek apakah sudah 15 menit sejak cek terakhir
-  N.onResume(() => { if (Date.now() - updLast > 5 * 60e3) setTimeout(() => checkUpdate(false), 1200); });
+  N.onResume(() => { if (Date.now() - updLast > 5 * 60e3) setTimeout(() => checkUpdate(false, true), 1200); });
   N.onPushOpen((h) => go(h));
   N.onUrlOpen((h, why) => {
     go(h);
