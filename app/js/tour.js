@@ -26,6 +26,7 @@ export const WHATS_NEW = {
       ["Komik ribuan chapter & reset password", "Daftar chapter lengkap sampai chapter 1. Lupa password membuka ninokuu.site dengan tombol kembali ke aplikasi."],
     ],
     fixes: [
+      "Shinigami kembali bisa dibuka: pindah ke server barunya (s1.shinigami.mx).",
       "Menu bacaan langsung muncul saat layar diketuk, dan sembunyi setelah digulir ±40 px.",
       "Menu ⋯ pembaca tidak lagi terpotong.",
       "Label Terbaru di Koleksi tidak perlu membuka komiknya dulu; judul grid maksimal 2 baris.",

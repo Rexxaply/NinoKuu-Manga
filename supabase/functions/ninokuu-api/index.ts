@@ -292,15 +292,15 @@ const pickPublisher = (o: any): string => {
 };
 
 /* ---------- Shinigami (API JSON) ---------- */
-const SHNGM_API = Deno.env.get("SHNGM_API") || "https://api.shngm.io";
-const SHNGM_SITE = Deno.env.get("SHNGM_SITE") || "https://11.shinigami.asia";
+const SHNGM_API = Deno.env.get("SHNGM_API") || "https://api.shinigami.io";
+const SHNGM_SITE = Deno.env.get("SHNGM_SITE") || "https://s1.shinigami.mx";
 const shngJson = async (path: string) =>
   (await webFetch(SHNGM_API + path, { json: true, referer: SHNGM_SITE + "/", headers: { Origin: SHNGM_SITE, DNT: "1", "Sec-GPC": "1" } })).json();
 const shngCover = (o: any) => String(o?.cover_portrait_url || o?.cover_image_url || "");
 const SHNG_STATUS: Record<number, string> = { 1: "ongoing", 2: "completed", 3: "hiatus" };
 const shngId = (id: string) => { if (!/^[\w-]{6,64}$/.test(id)) throw webErr("ID Shinigami tidak valid", 400); return id; };
 async function shngBrowse(page: number, q: string, o: Opt) {
-  const p = new URLSearchParams({ page: String(page), page_size: String(o.limit), sort: o.sort === "popular" ? "popularity" : o.sort === "rating" ? "rating" : "latest", sort_order: "desc" });
+  const p = new URLSearchParams({ limit: String(o.limit), offset: String((page - 1) * o.limit), sort: o.sort === "popular" ? "popularity" : o.sort === "rating" ? "rating" : "latest", sort_order: "desc" });
   if (q) p.set("q", q);
   if (o.type) p.set("format", o.type);
   if (o.genres.length) { p.set("genre_include", o.genres.join(",")); p.set("genre_include_mode", "and"); }
@@ -309,12 +309,19 @@ async function shngBrowse(page: number, q: string, o: Opt) {
   const items = await Promise.all((j?.data || []).filter((m: any) => m?.manga_id).map(async (m: any) => ({
     id: String(m.manga_id), title: String(m.title || ""), cover: await coverUrl(shngCover(m), SHNGM_SITE + "/"), type: o.type || "",
   })));
-  const total = j?.meta?.total_page != null ? Number(j.meta.total_page) : null;
-  return { items, hasNext: total != null ? page < total : items.length >= o.limit };
+  const more = j?.meta?.has_next;
+  return { items, hasNext: typeof more === "boolean" ? more : items.length >= o.limit };
 }
 async function shngChapters(id: string): Promise<Chapter[]> {
-  const j = await shngJson(`/v1/chapter/${shngId(id)}/list?page_size=3000`);
-  return (j?.data || []).filter((c: any) => c?.chapter_id).map((c: any) => ({
+  // API baru: maks. 2000 per permintaan, sisanya lewat meta.next_cursor
+  let all: any[] = [], cur = "";
+  for (let i = 0; i < 10; i++) {
+    const j = await shngJson(`/v1/chapter/${shngId(id)}/list?limit=2000${cur ? `&cursor=${encodeURIComponent(cur)}` : ""}`);
+    all = all.concat(j?.data || []);
+    cur = j?.meta?.has_next && j.meta.next_cursor ? String(j.meta.next_cursor) : "";
+    if (!cur) break;
+  }
+  return all.filter((c: any) => c?.chapter_id).map((c: any) => ({
     id: String(c.chapter_id), ch: c.chapter_number != null ? String(c.chapter_number).replace(/\.0+$/, "") : null,
     title: String(c.chapter_title || "").trim(), at: c.release_date ? new Date(c.release_date).toISOString() : null, url: `${SHNGM_SITE}/chapter/${c.chapter_id}`,
   }));

@@ -110,13 +110,20 @@ export async function imageViaNative(url, referer) {
 
 /* ---------- Shinigami (API JSON) ---------- */
 const SHNG = (() => {
-  const API = "https://api.shngm.io", SITE = "https://11.shinigami.asia";
+  const API = "https://api.shinigami.io", SITE = "https://s1.shinigami.mx";
   const get = (path) => nget(API + path, { headers: { Origin: SITE, Referer: SITE + "/" } });
   const coverOf = (o) => String(o?.cover_portrait_url || o?.cover_image_url || "");
   const STATUS = { 1: "ongoing", 2: "completed", 3: "hiatus" };
   async function chapters(id) {
-    const j = await get(`/v1/chapter/${encodeURIComponent(id)}/list?page_size=3000`);
-    return (j?.data || []).filter((c) => c?.chapter_id).map((c) => ({
+    // API baru: maks. 2000 per permintaan, sisanya lewat meta.next_cursor
+    let all = [], cur = "";
+    for (let i = 0; i < 10; i++) {
+      const j = await get(`/v1/chapter/${encodeURIComponent(id)}/list?limit=2000${cur ? `&cursor=${encodeURIComponent(cur)}` : ""}`);
+      all = all.concat(j?.data || []);
+      cur = j?.meta?.has_next && j.meta.next_cursor ? String(j.meta.next_cursor) : "";
+      if (!cur) break;
+    }
+    return all.filter((c) => c?.chapter_id).map((c) => ({
       id: String(c.chapter_id), ch: c.chapter_number != null ? String(c.chapter_number).replace(/\.0+$/, "") : null,
       title: String(c.chapter_title || "").trim(), at: c.release_date ? new Date(c.release_date).toISOString() : null, url: `${SITE}/chapter/${c.chapter_id}`,
     }));
@@ -126,15 +133,15 @@ const SHNG = (() => {
     chapters,
     async browse(b) {
       const page = Math.max(1, Number(b.page) || 1), limit = Math.min(30, Number(b.limit) || 20);
-      const p = new URLSearchParams({ page: String(page), page_size: String(limit), sort: b.sort === "popular" ? "popularity" : b.sort === "rating" ? "rating" : "latest", sort_order: "desc" });
+      const p = new URLSearchParams({ limit: String(limit), offset: String((page - 1) * limit), sort: b.sort === "popular" ? "popularity" : b.sort === "rating" ? "rating" : "latest", sort_order: "desc" });
       if (b.q) p.set("q", b.q);
       if (b.type) p.set("format", b.type);
       if (b.genres?.length) { p.set("genre_include", b.genres.join(",")); p.set("genre_include_mode", "and"); }
       if (b.status) p.set("status", b.status);
       const j = await get(`/v1/manga/list?${p}`);
       const items = (j?.data || []).filter((m) => m?.manga_id).map((m) => ({ id: String(m.manga_id), title: String(m.title || ""), cover: coverOf(m), type: b.type || "" }));
-      const total = j?.meta?.total_page != null ? Number(j.meta.total_page) : null;
-      return { ok: true, items, hasNext: total != null ? page < total : items.length >= limit };
+      const more = j?.meta?.has_next;
+      return { ok: true, items, hasNext: typeof more === "boolean" ? more : items.length >= limit };
     },
     async detail(b) {
       const id = b.comic_id;
