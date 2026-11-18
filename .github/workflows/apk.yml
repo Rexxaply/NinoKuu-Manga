@@ -56,6 +56,7 @@ jobs:
       # Rilis global wajib punya pop-up "Yang baru" untuk versinya (app/js/tour.js), lengkap dengan gambar slide-nya,
       # supaya pengguna yang memperbarui melihat semua fitur baru. Ninokuu Dev hanya diberi peringatan.
       - name: Periksa changelog "Yang baru"
+        working-directory: .
         run: |
           V=$(tr -d ' \n\r' < VERSION)
           node -e '
