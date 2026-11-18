@@ -1654,6 +1654,19 @@ const applyKb = () => {
 window.addEventListener("resize", () => { if (kbOpen) { if (kbH) applyKb(); } else if (window.innerHeight > kbBase) kbBase = window.innerHeight; });
 window.visualViewport?.addEventListener("resize", () => { if (kbOpen) applyKb(); });
 window.visualViewport?.addEventListener("scroll", () => { if (kbOpen) applyKb(); });
+// Chat: saat layar menyusut/membesar karena keyboard, kolom (dan pesan bila menempel di bawah) meluncur halus
+// dari posisi lama ke posisi baru, mengikuti gerak keyboard, alih-alih melompat.
+let flipH = window.innerHeight, chatEnd = true;
+addEventListener("scroll", () => { if (!kbOpen) chatEnd = kbAtEnd(); }, { passive: true });
+addEventListener("resize", () => {
+  const d = window.innerHeight - flipH; flipH = window.innerHeight;
+  if (Math.abs(d) < 80 || !document.querySelector("#chatroot")) return;
+  const shrink = d < 0, stick = shrink && (chatEnd || kbStick);
+  if (stick) window.scrollTo(0, document.documentElement.scrollHeight);
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const els = [document.querySelector("#chatroot .composer"), stick && document.querySelector("#chat")].filter(Boolean);
+  for (const el of els) el.animate([{ transform: `translate3d(0, ${-d}px, 0)` }, { transform: "translate3d(0, 0, 0)" }], { duration: 280, easing: "cubic-bezier(.2, .8, .2, 1)" });
+});
 addEventListener("orientationchange", () => setTimeout(() => { if (!kbOpen) kbBase = window.innerHeight; }, 400));
 function setKeyboard(h, phase) {
   const root = document.documentElement;
