@@ -9,6 +9,7 @@ import { vChat, vDev, roomFor, roomPreview, roomCount, miniMsg, bindSpoilers, wa
 import * as X from "./exp.js";
 import * as DL from "./dl.js";
 import * as T from "./tour.js";
+import * as O from "./online.js";
 import { esc, icon, $, $$, toast, ago, SOURCES, srcName, TYPES, typeName, cover, comicHref, readHref, greeting, errBox, loading, rankBadge } from "./ui.js";
 
 const VERSION = window.NINOKUU_CONFIG?.VERSION || "1.0.0";
@@ -1658,6 +1659,9 @@ if (!N.isApp && "serviceWorker" in navigator && location.protocol === "https:") 
   } catch (e) { toast(e.message, 4500); }
   render();
   if (N.isApp) startApp();
+  // pembaca aktif realtime (Presence); kunci = akun, tersambung ulang saat masuk/keluar akun
+  O.start({ url: api.SB_URL, apikey: api.SB_KEY, userKey: () => api.userId() });
+  { let last = api.userId(); api.onAuth(() => { const u = api.userId(); if (u !== last) { last = u; O.restart(); } }); }
   // pop-up "Yang baru" sekali setelah pembaruan (Dev: sekali per build)
   T.maybeShow({ version: VERSION, build: N.BUILD, dev: N.DEV, go });
   X.startDaily();

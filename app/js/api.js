@@ -5,6 +5,7 @@ const C = window.NINOKUU_CONFIG || {};
 const BASE = String(C.SUPABASE_URL || "").replace(/\/+$/, "");
 const KEY = String(C.SUPABASE_ANON_KEY || "");
 export const configured = !!(BASE && KEY);
+export const SB_URL = BASE, SB_KEY = KEY;
 // Ninokuu Dev memakai function terpisah (ninokuu-api-dev) supaya perubahan server bisa diuji tanpa mengganggu versi global
 export const FN = BASE + "/functions/v1/" + (/^ninokuu-api(-dev)?$/.test(C.FN || "") ? C.FN : "ninokuu-api");
 

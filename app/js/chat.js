@@ -3,6 +3,7 @@ import * as api from "./api.js";
 import * as S from "./store.js";
 import { esc, icon, $, $$, toast, ago, rankBadge } from "./ui.js";
 import { frameImage } from "./exp.js";
+import * as O from "./online.js";
 
 // bingkai avatar rank untuk chat & komentar: gambar bingkai yang sama dengan profil, dibuat sekali per rank
 // (lihat frameImage di exp.js) supaya chat panjang tetap lancar. Mode Ringan: bingkai diam.
@@ -99,6 +100,8 @@ export function miniMsg(m) {
 export function bindSpoilers(el) {
   el.addEventListener("click", (e) => { const b = e.target.closest(".sp"); if (!b) return; e.preventDefault(); e.stopPropagation(); b.classList.toggle("open"); });
 }
+// jumlah orang yang sedang membuka Ninokuu saat ini (realtime). Belum tersambung → perkiraan lama (yang menulis 15 menit terakhir).
+const onlineText = (fallback) => { const n = O.count(); return n ? `${n} pembaca aktif` : `${fallback || 1} pembaca aktif`; };
 export async function vChat(view, ctx, opt = {}) {
   const { topbar, setActs, go, back, loading } = ctx;
   await framesReady();
@@ -141,7 +144,7 @@ export async function vChat(view, ctx, opt = {}) {
   const draw = () => {
     const staff = isStaff(), active = new Set(msgs.filter((m) => Date.now() - Date.parse(m.created_at) < 15 * 60e3).map((m) => m.user_id)).size;
     let prev = null;
-    $("#chat").innerHTML = `${pub ? `<div class="chat-info"><span class="online-dot"></span>${active || 1} pembaca aktif · Jaga obrolan tetap sopan, tandai spoiler.</div>`
+    $("#chat").innerHTML = `${pub ? `<div class="chat-info"><span class="online-dot"></span><span id="onl">${onlineText(active)}</span> · Jaga obrolan tetap sopan, tandai spoiler.</div>`
       : `<a class="room-h" href="${esc(opt.backHref || "#/home")}">${opt.cover || ""}<span class="rc-mid g4"><b class="t1">${esc(opt.sub || "")}</b><span class="mu xs">${msgs.length ? msgs.length + (msgs.length >= 100 ? "+" : "") + " komentar" : "Belum ada komentar"} · tandai spoiler dengan ||teks||</span></span></a>`}
   ${pin ? `<div class="pin" data-c="pinx"><span class="pin-ic">${icon("mega", 18)}</span><span class="rc-mid g4"><span class="pin-cap">Pengumuman · Developer · ${esc(ago(pin.created_at))}</span><b>${esc(pin.title)}</b>${pin.body ? `<span class="mu sm pre pin-body">${esc(pin.body)}</span>` : ""}</span>
       <button class="x-btn" data-c="${isDev() ? "unpin" : "pinhide"}" aria-label="${isDev() ? "Lepas pengumuman untuk semua pengguna" : "Sembunyikan pengumuman selama 24 jam"}">${icon("x", 14, 2.2)}</button></div>` : ""}
@@ -283,6 +286,7 @@ export async function vChat(view, ctx, opt = {}) {
   const endUser = () => setTimeout(() => { userScroll = false; }, 400);
   window.addEventListener("touchend", endUser, { passive: true });
   window.addEventListener("scroll", onScroll, { passive: true });
+  const offOnline = O.onCount((n) => { const el = $("#onl"); if (el && n) el.textContent = `${n} pembaca aktif`; });
   // pesan baru diambil tiap 5 detik selama halaman chat terbuka (tiap 30 detik muat ulang penuh)
   let n = 0;
   timer = setInterval(async () => {
@@ -290,7 +294,7 @@ export async function vChat(view, ctx, opt = {}) {
     const bottom = atBottom();
     try { const got = ++n % 6 === 0 ? (await load(true), 1) : await load(false); if (got) { const y = scrollY; draw(); if (bottom || stick) toBottom(); else window.scrollTo(0, y); } } catch {}
   }, 5000);
-  return () => { clearInterval(timer); ro?.disconnect(); window.removeEventListener("scroll", onScroll); window.removeEventListener("touchmove", markUser); window.removeEventListener("wheel", markUser); window.removeEventListener("touchend", endUser); window.removeEventListener("nk:kb", onKb); document.removeEventListener("selectionchange", onSel); if (att?.url) URL.revokeObjectURL(att.url); };
+  return () => { offOnline(); clearInterval(timer); ro?.disconnect(); window.removeEventListener("scroll", onScroll); window.removeEventListener("touchmove", markUser); window.removeEventListener("wheel", markUser); window.removeEventListener("touchend", endUser); window.removeEventListener("nk:kb", onKb); document.removeEventListener("selectionchange", onSel); if (att?.url) URL.revokeObjectURL(att.url); };
 }
 
 /* ---------- Panel developer: kontrol penyimpanan ---------- */
