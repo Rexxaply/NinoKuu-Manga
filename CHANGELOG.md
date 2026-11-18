@@ -11,6 +11,18 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
+## 1.8.1 — 18 Nov 2026
+
+### Ringkasan
+- Cek pembaruan lebih andal: tidak lagi muncul "Tidak bisa memeriksa pembaruan" saat batas API GitHub (60 cek/jam per jaringan) habis; versi terbaru dibaca dari cadangan
+- Hasil cek pembaruan disimpan 10 menit, jadi membuka Lainnya berkali-kali tidak menghabiskan batas itu
+
+### Detail
+- `latestBuild()`: simpanan 10 menit (cek manual: 1 menit); bila API rilis GitHub menolak, versi global dibaca dari `VERSION` dan ringkasan dari `CHANGELOG.md` di raw.githubusercontent.com
+- Tidak ada perubahan server
+
+---
+
 ## 1.8.0 — 18 Nov 2026
 
 Naik MINOR (1.7.0 → 1.8.0) karena ada fitur baru (Trakteer, cek pembaruan otomatis, backup ke file, jendela mengambang). 1.7.1 hanya pernah ada di Ninokuu Dev dan isinya ikut di versi ini.

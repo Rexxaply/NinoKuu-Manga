@@ -1745,7 +1745,7 @@ let updLast = 0, updShown = "";
 async function checkUpdate(manual) {
   if (manual) toast("Memeriksa pembaruan…", 1500);
   updLast = Date.now();
-  const r = await N.latestBuild();
+  const r = await N.latestBuild(manual);
   if (!r) { if (manual) toast("Tidak bisa memeriksa pembaruan. Periksa koneksi internet."); return; }
   if (r.newer) {
     const key = String(r.version || r.build);
