@@ -812,13 +812,13 @@ async function vReader(src, id, chId) {
   <div class="r-menu-bg" data-act="closeMenu" hidden></div>
   <div class="r-menu glass" role="dialog" aria-label="Mode baca" hidden>
     <span class="cap">Mode baca</span>
-    ${[["scroll", "Scroll (webtoon)", "Gulir ke bawah, halaman tersambung", "scroll"], ["slide", "Slide (halaman)", longStrip ? "Tidak tersedia untuk manhwa/manhua (halaman panjang)" : "Geser per halaman", "slides"]].map(([k, n, dsc, ic]) => {
+    <div class="seg s2 rm-seg" role="radiogroup">${[["scroll", "Scroll", "scroll"], ["slide", "Slide", "slides"]].map(([k, n, ic]) => {
       const on = (slide ? "slide" : "scroll") === k, off = k === "slide" && longStrip;
-      return `<button class="r-mode ${on ? "on" : ""}" role="radio" aria-checked="${on}" data-act="rmode" data-v="${k}" ${off ? "disabled" : ""}><span class="${on ? "redt" : "mu"}">${icon(ic, 20)}</span><span class="col grow"><b>${n}</b><span class="mu xs">${dsc}</span></span>${on ? `<span class="redt">${icon("check", 18, 2.4)}</span>` : ""}</button>`; }).join("")}
-    <button class="r-mode" data-act="chlist"><span class="gold">${icon("list", 20)}</span><span class="col grow"><b>Daftar chapter</b><span class="mu xs">${d.chapters.length} chapter · cari & pindah chapter</span></span></button>
-    <button class="r-mode" data-act="rreport"><span class="redt">${icon("bug", 20)}</span><span class="col grow"><b>Laporkan masalah chapter</b><span class="mu xs">Gambar rusak, halaman hilang, dll.</span></span></button>
-    <span class="cap mt4">Bacaan</span><div class="r-togs">${readPrefs("rtog")}</div>
-    ${slide ? `<span class="cap mt4">Arah geser</span><div class="seg s3">${[["rtl", "Kanan ke kiri"], ["ltr", "Kiri ke kanan"]].map(([k, n]) => `<button role="tab" aria-selected="${(rtl ? "rtl" : "ltr") === k}" data-act="rdir" data-v="${k}">${n}</button>`).join("")}</div>` : ""}
+      return `<button role="radio" aria-selected="${on}" aria-checked="${on}" data-act="rmode" data-v="${k}" ${off ? "disabled" : ""}>${icon(ic, 16)}${n}</button>`; }).join("")}</div>
+    ${longStrip ? `<span class="mu xs rm-note">Slide tak tersedia untuk manhwa/manhua.</span>` : ""}
+    ${slide ? `<div class="rq-row"><span>Arah geser</span><div class="seg s2">${[["rtl", "Ka → Ki"], ["ltr", "Ki → Ka"]].map(([k, n]) => `<button role="tab" aria-selected="${(rtl ? "rtl" : "ltr") === k}" data-act="rdir" data-v="${k}" aria-label="${k === "rtl" ? "Kanan ke kiri" : "Kiri ke kanan"}">${n}</button>`).join("")}</div></div>` : ""}
+    <div class="rq-acts"><button class="rq-act" data-act="chlist"><span class="gold">${icon("list", 18)}</span>Chapter <span class="mu">${d.chapters.length}</span></button><button class="rq-act" data-act="rreport"><span class="redt">${icon("bug", 18)}</span>Laporkan</button></div>
+    <span class="cap mt4">Bacaan</span><div class="r-togs rq">${readPrefsCompact()}</div>
   </div>
   <div class="r-bottom">
     <div class="r-seek glass"><span class="r-pn"><span id="rpg">1</span> / ${total}</span>
@@ -1389,6 +1389,10 @@ const flipChoice = (el) => {
   box.querySelectorAll("[data-act=rch]").forEach((b) => b.setAttribute("aria-selected", String(b === el)));
   const o = READ_CHOICES.find((x) => x[0] === k)[2].find((x) => x[0] === v); const d = box.querySelector(".lh"); if (o && d) d.textContent = o[2];
 };
+// versi ringkas untuk menu ⋯ pembaca: 1 baris per pilihan, tanpa keterangan panjang
+const SHORT = { autoHide: "Sembunyikan menu otomatis", screenMode: "Layar", chapterEnd: "Akhir chapter", standard: "Standar", fullscreen: "Fullscreen", menu: "Menu", auto: "Lanjut" };
+const readPrefsCompact = () => READ_OPTS.map(([k, t]) => { const on = !!S.state.settings[k]; return `<button class="mrow rq-tog" data-act="rtog" data-k="${k}" role="switch" aria-checked="${on}"><b>${SHORT[k] || t}</b><span class="switch ${on ? "on" : ""}"><span></span></span></button>`; }).join("")
+  + READ_CHOICES.map(([k, t, opts]) => { const cur = choiceVal(k); return `<div class="ch-opt rq-row" data-ck="${k}"><b>${SHORT[k] || t}</b><div class="seg s2" role="tablist">${opts.map(([v, n]) => `<button role="tab" aria-selected="${v === cur}" data-act="rch" data-k="${k}" data-v="${v}" aria-label="${n}">${SHORT[v] || n}</button>`).join("")}</div></div>`; }).join("");
 const choiceRow = (k) => {
   const [, t, opts] = READ_CHOICES.find((x) => x[0] === k), cur = choiceVal(k);
   return `<div class="ch-opt" data-ck="${k}"><b>${t}</b><div class="seg s2" role="tablist">${opts.map(([v, n]) => `<button role="tab" aria-selected="${v === cur}" data-act="rch" data-k="${k}" data-v="${v}">${n}</button>`).join("")}</div><span class="mu xs lh">${opts.find((o) => o[0] === cur)[2]}</span></div>`;

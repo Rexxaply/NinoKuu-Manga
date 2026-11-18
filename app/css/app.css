@@ -1109,3 +1109,20 @@ button, [role="button"], .seg, .chips, #nav { -webkit-user-select: none; user-se
 /* lembar bawah: pegangan untuk digeser turun */
 .sheet::before, .flt-card::before { content: ""; display: block; width: 38px; height: 4px; margin: 2px auto 6px; border-radius: 2px; background: rgba(255, 255, 255, .22); flex: none; }
 .sheet.dragging, .flt-card.dragging, .chs.dragging { transition: none !important; animation: none !important; }
+
+/* menu ⋯ pembaca versi ringkas: pilihan dalam 1 baris, tanpa keterangan panjang */
+.r-menu { gap: 8px; padding: 12px; }
+.rm-seg button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; }
+.rm-seg button:disabled { opacity: .4; }
+.rm-note { padding: 0 4px; margin-top: -2px; line-height: 1.4; }
+.rq-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.rq-act { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 42px; padding: 0 10px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, .1); font-size: 13px; font-weight: 700; white-space: nowrap; }
+.rq-act:active { background-color: rgba(255, 255, 255, .06); }
+.r-togs.rq .rq-tog { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 46px; padding: 0 12px; }
+.r-togs.rq .rq-tog b { font-size: 13px; text-align: left; }
+.rq-row { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; }
+.r-togs.rq .rq-row { padding: 7px 7px 7px 12px; border-top: 1px solid var(--line); }
+.r-menu > .rq-row { padding: 0 2px 0 4px; }
+.rq-row > b, .rq-row > span { font-size: 13px; white-space: nowrap; }
+.rq-row .seg { flex: 0 1 150px; min-width: 136px; padding: 3px; box-sizing: border-box; }
+.rq-row .seg button { flex: 1 1 0; min-width: 0; min-height: 32px; font-size: 12px; padding: 0 4px; }
