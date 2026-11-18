@@ -11,11 +11,26 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
-## 1.7.1 — 18 Nov 2026
+## 1.8.0 — 18 Nov 2026
+
+Naik MINOR (1.7.0 → 1.8.0) karena ada fitur baru (Trakteer, cek pembaruan otomatis, backup ke file, jendela mengambang). 1.7.1 hanya pernah ada di Ninokuu Dev dan isinya ikut di versi ini.
 
 ### Ringkasan
+- Traktir Ninokuu: dukung Ninokuu lewat Trakteer dari kartu baru di Lainnya
+- Pembaruan muncul sendiri tanpa membuka ulang aplikasi (cek tiap 15 menit); saat membaca cukup spanduk kecil di atas
+- Backup data jadi file sungguhan di Documents/Ninokuu/Backup, bisa dibagikan ke Drive/WhatsApp
+- Label NEW UPDATE hanya untuk chapter yang rilis kurang dari 24 jam; urutan Update terbaru lebih akurat
+- Bisa dipakai di jendela mengambang/layar terbagi saat HP miring, tata letak menyesuaikan
+- Chat: kolom tulis tepat di atas keyboard dan meluncur halus, judul tidak tertimpa bilah status
+- Kaca gaya iOS di menu ⋯ pembaca, bar bawah, dan tombol; efek kaca tidak lagi mati saat pindah halaman
+- Menu "Yang baru di versi ini" di Lainnya untuk membuka panduan kapan saja
+- Perbaikan tab Level & Rank yang menutupi kartu level
+- Perbaikan chip filter Koleksi yang melompat, tombol grid Pencarian kini sejajar
+- Pilihan aktif (mis. Scroll) tidak memuat ulang pembaca bila ditekan lagi
+- Bar Mulai baca meluncur halus tanpa bayangan melompat
+
+### Detail
 - Menu baru di Lainnya: "Yang baru di versi ini", berisi pop-up fitur baru dan panduan bergambar yang bisa dibuka kapan saja
-- Pengguna yang sempat memasang 1.6.3 kini juga melihat panduan "Yang baru di 1.7.0"
 - Perbaikan menu ⋯ pembaca: tanda pilihan aktif (Scroll, Layar, Akhir chapter) tidak lagi hilang setelah menu ditutup lalu dibuka lagi
 - Mode jendela mengambang/layar terbagi saat HP miring kini bisa dipakai (pesan "Putar HP" hanya untuk layar penuh); tata letak dipadatkan untuk jendela pendek: bar bawah lebih ramping, kolom kartu lebih banyak, judul dan sampul lebih kecil
 - Pembaruan aplikasi kini terdeteksi tanpa perlu membuka ulang aplikasi: dicek tiap 15 menit dan saat kembali ke aplikasi; saat sedang membaca muncul spanduk kecil di atas (tidak menutupi halaman)
@@ -32,6 +47,10 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 - Bayangan di belakang bar Mulai baca ikut naik bersama bar dan tidak lagi melompat saat animasi selesai
 - Bar "Mulai baca" di halaman komik dan bar bawah daftar chapter meluncur naik dengan halus saat halaman dibuka (sebelumnya hilang sesaat lalu muncul tiba-tiba)
 - Perbaikan bar bawah saat kembali dari halaman komik/chat ke Beranda: isi halaman tidak lagi tembus di balik bar
+
+### Langkah rilis
+- `VERSION` 1.8.0, entri `WHATS_NEW["1.8.0"]` + 4 slide baru (`trakteer`, `update`, `baru`, `backup`) di `app/img/new/`
+- Tidak ada perubahan server (`ninokuu-api` tetap 1.5.0)
 
 ---
 
