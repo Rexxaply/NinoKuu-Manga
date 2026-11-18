@@ -11,6 +11,17 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
+## 1.8.2 — 18 Nov 2026
+
+### Ringkasan
+- Mode baca layar penuh kini benar-benar penuh: tidak ada lagi pita hitam di atas (area lubang kamera ikut dipakai)
+
+### Detail
+- Tema Android: `windowLayoutInDisplayCutoutMode = shortEdges` (dipasang oleh workflow Build APK). Tanpa ini Android menyisakan area lubang kamera kosong saat bilah status disembunyikan
+- Tidak ada perubahan server
+
+---
+
 ## 1.8.1 — 18 Nov 2026
 
 ### Ringkasan
