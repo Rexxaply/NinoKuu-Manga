@@ -212,7 +212,8 @@ function placeSeg(el, anim) {
   const set = (b) => { th.style.width = b.w + "px"; th.style.height = b.h + "px"; th.style.transform = `translate3d(${b.x}px, ${b.y}px, 0)`; };
   th.style.borderRadius = getComputedStyle(on).borderRadius;
   if (anim && prev && !segReduce.matches && (prev.x !== box.x || prev.w !== box.w)) {
-    if (!el._th) { th.classList.add("no-tr"); set(prev); void th.offsetWidth; }
+    // daftar baru (digambar ulang): tulisan pilihan baru ikut memudar ke warna aktif, bukan langsung berganti
+    if (!el._th) { th.classList.add("no-tr"); on.classList.add("seg-pre"); set(prev); void th.offsetWidth; on.classList.remove("seg-pre"); }
     th.classList.remove("no-tr");
   } else th.classList.add("no-tr");
   set(box); th.style.opacity = "1";

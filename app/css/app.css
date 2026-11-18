@@ -1215,7 +1215,12 @@ button.fa-new:active, .hl-go:active { scale: .92; }
 .seg.has-th > button[aria-selected="true"], .fseg.has-th > button[aria-checked="true"] { background: transparent; box-shadow: none; }
 .chips > .seg-th { background: var(--tx); box-shadow: none; }
 .chips.has-th > button[aria-pressed="true"] { background: transparent; border-color: transparent; }
-.chips button { transition: color .25s, border-color .25s; }
 .seg button:active, .fseg button:active, .chips button:active { scale: .96; }
-.seg button, .fseg button, .chips button { transition-property: color, background-color, border-color, scale; transition-duration: .25s, .25s, .25s, .1s; }
+/* latar pilihan aktif = jempol; tombol sendiri tidak memudar latar/garisnya (itu yang tampak sebagai garis/stroke saat meluncur) */
+.seg button, .fseg button, .chips button { transition: color .32s ease, scale .1s ease; }
+/* chip tanpa garis tepi (garis tepi tergambar di atas jempol yang lewat); diganti isian tipis */
+.chips button { border-color: transparent; background: rgba(255, 255, 255, .06); }
+.chips.has-th > button[aria-pressed="true"] { background: transparent; }
 @media (prefers-reduced-motion: reduce) { .seg-th { transition: none; } }
+.seg > button.seg-pre, .fseg > button.seg-pre { color: var(--mu) !important; transition: none !important; }
+.chips > button.seg-pre { color: var(--tx) !important; transition: none !important; }
