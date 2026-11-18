@@ -391,6 +391,7 @@ let fsOn = false;
 export async function setFullscreen(on) {
   if (on === fsOn) return;
   fsOn = on;
+  document.body.classList.toggle("nk-fs", !!on);   // layar penuh: jarak aman atas kembali ke nilai sistem (lubang kamera)
   const sb = plugin("StatusBar");
   if (sb) { try { await (on ? sb.hide() : sb.show()); if (!on) await sb.setOverlaysWebView?.({ overlay: false }); } catch {} return; }
   if (isApp) return;
