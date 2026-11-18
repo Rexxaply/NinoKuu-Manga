@@ -56,14 +56,14 @@ const markSeen = (v) => { try { localStorage.setItem(SEEN, v); } catch {} };
 // Dev: sekali setiap isi changelog berubah, termasuk pemasangan baru, supaya bisa diuji.
 // Dev: muncul lagi hanya bila ISI changelog berubah (bukan setiap build), supaya isinya bisa dicek tanpa berulang.
 const hashOf = (o) => { let h = 0; const t = JSON.stringify(o || ""); for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
-// Versi yang isinya sama dengan versi lain (hanya nomornya diganti): tidak menampilkan pop-up yang sama 2 kali.
-// 1.6.3 dirilis 18 Nov 2026 lalu dinomori ulang jadi 1.7.0 (fitur baru = naik minor) tanpa perubahan isi.
-const SAME_AS = { "1.7.0": ["1.6.3"] };
+// Versi PATCH (mis. 1.7.1) tanpa entri sendiri memakai entri versi MINOR-nya (1.7.0) dan tidak memunculkan
+// pop-up lagi bagi yang sudah melihatnya: pop-up hanya untuk fitur baru, bukan setiap perbaikan kecil.
+const lineOf = (v) => String(v).split(".").slice(0, 2).join(".") + ".0";
+const entryOf = (v) => (WHATS_NEW[v] ? v : WHATS_NEW[lineOf(v)] ? lineOf(v) : v);
 export function maybeShow(ctx) {
-  const { version, dev } = ctx;
+  const { dev } = ctx, version = entryOf(ctx.version);
   const info = WHATS_NEW[version];
   const key = dev ? `${version}-dev-${hashOf(info)}` : version;
-  if (!dev && (SAME_AS[version] || []).includes(seen())) { markSeen(key); return; }
   const before = seen();
   if (before === key) return;
   markSeen(key);
@@ -73,6 +73,13 @@ export function maybeShow(ctx) {
 
 // Satu lapisan gelap dipakai ulang saat berpindah pop-up → changelog → slide (tidak berkedip/muncul ulang);
 // hanya kartunya yang berganti dengan animasi masuk singkat.
+// Buka lagi "Yang baru" kapan saja (Lainnya → Yang baru di versi ini): pop-up + panduan bergambar
+export function showNow(ctx) {
+  const info = WHATS_NEW[entryOf(ctx.version)];
+  if (!info) return false;
+  popup(info, ctx);
+  return true;
+}
 function host(cls) {
   let h = document.querySelector(".tw-host:not(.out)");
   if (!h) { h = document.createElement("div"); document.body.append(h); }
