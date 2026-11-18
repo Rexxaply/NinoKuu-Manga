@@ -1324,6 +1324,22 @@ function vFav(tab) {
     && (fav.filter === "all" || (fav.filter === "new" ? isNew(m) : m.type === fav.filter)));
   const hist = S.history();
   const srcType = (m) => esc(srcName(m.source)) + (m.type ? " · " + esc(typeName(m.type)) : "");
+  // baris koleksi (tampilan daftar): kartu dengan sampul, judul 2 baris, sumber, dan progres baca
+  const favRow = (m) => {
+    const r = readOf(m), L = parseFloat(m.latest), R = r ? parseFloat(r.chapter) : NaN, fresh = isNew(m);
+    const pctRead = Number.isFinite(L) && L > 0 && Number.isFinite(R) ? Math.max(4, Math.min(100, Math.round((R / L) * 100))) : 0;
+    const gap = fresh && Number.isFinite(L) && Number.isFinite(R) ? Math.floor(L) - Math.floor(R) : 0;
+    const state = fresh ? `<span class="fr-st new">${gap > 0 ? `${gap} chapter baru` : "Chapter baru"}</span>` : r ? `<span class="fr-st">${m.latest != null && R >= L ? "Sudah terbaru" : "Lanjutkan"}</span>` : `<span class="fr-st">Belum dibaca</span>`;
+    return `<a class="frow" href="${comicHref(m.source, m.comic_id)}">
+      <span class="fr-cv">${cover(m.cover, m.title, "fav")}${fresh ? `<span class="fr-new">BARU</span>` : ""}</span>
+      <span class="fr-mid">
+        <b class="fr-t">${esc(m.title)}</b>
+        <span class="fr-meta"><i class="fr-dot s-${esc(m.source)}"></i>${srcType(m)}${m.notify ? `<span class="gold fr-bell" title="Notifikasi aktif">${icon("bellF", 12)}</span>` : ""}</span>
+        <span class="fr-prog"><span class="fr-bar"><i style="width:${pctRead}%"></i></span><span class="fr-ch">${r ? `Ch. ${esc(r.chapter)}${m.latest != null ? `<span class="mu"> / ${esc(m.latest)}</span>` : ""}` : m.latest != null ? `<span class="mu">${esc(m.latest)} chapter</span>` : ""}</span></span>
+        ${state}
+      </span>
+      <span class="fr-go mu">${icon("chev", 18)}</span></a>`;
+  };
   let body = "";
   if (fav.tab === "lib") {
     body = `<div class="row g8"><label class="search box grow"><span class="mu">${icon("search", 19)}</span><span class="sr">Cari di koleksi</span><input id="fq" placeholder="Cari di koleksimu" value="${esc(fav.q)}"></label><button class="sq-btn lg" data-act="fsort" aria-label="Urutkan: ${esc(FAV_SORTS.find(([k]) => k === fs)[1])}">${icon("sort", 18, 2)}</button>${viewBtn(grid, "fview", "lg")}</div>
@@ -1335,9 +1351,7 @@ function vFav(tab) {
         <span class="stack">${m.latest != null ? `<span class="st-red">Terbaru ${esc(m.latest)}</span>` : ""}<span class="st-dark">${r ? "Dibaca " + esc(r.chapter) : "Belum dibaca"}</span></span>
         ${isNew(m) ? `<span class="new-up">NEW UPDATE</span>` : ""}${m.notify ? `<span class="bell-b">${icon("bellF", 12)}</span>` : ""}</span>
         <b class="fg-t">${esc(m.title)}</b><span class="mu xs">${srcType(m)}</span></a>`; }).join("")}</div>`
-    : `<div class="rows">${lib.map((m) => { const r = readOf(m); return lrow(comicHref(m.source, m.comic_id), cover(m.cover, m.title, "fav"),
-        `<span class="row g8 minw0"><span class="t1 b15">${esc(m.title)}</span>${isNew(m) ? `<span class="new-up s">NEW UPDATE</span>` : ""}${m.notify ? `<span class="gold flex">${icon("bellF", 13)}</span>` : ""}</span>`,
-        `<span class="row g6 wrap">${m.latest != null ? `<span class="pill">Terbaru Ch. ${esc(m.latest)}</span>` : ""}<span class="pill dim">${r ? "Dibaca Ch. " + esc(r.chapter) : "Belum dibaca"}</span></span><span class="mu xs block mt4">${srcType(m)}</span>`); }).join("")}</div>`}`;
+    : `<div class="frows">${lib.map(favRow).join("")}</div>`}`;
   } else if (fav.tab === "hist") {
     body = hist.length ? `<div class="sec-h"><span class="mu xs">Terbaru di atas</span><button class="link-red" data-act="clearHist">Bersihkan</button></div>
   <div class="rows">${hist.map((x) => lrow(x.chapter_id ? readHref(x.source, x.comic_id, x.chapter_id) : comicHref(x.source, x.comic_id), cover(x.cover, x.title, "sm"),
