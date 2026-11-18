@@ -61,7 +61,18 @@ async function writeBytes(dir, path, u8) {
   await fs().writeFile({ path, data: await b64(u8.subarray(0, CH)), directory: dir, recursive: true });
   for (let o = CH; o < u8.length; o += CH) await fs().appendFile({ path, data: await b64(u8.subarray(o, o + CH)), directory: dir });
 }
+// Baca file sebagai data mentah lewat server lokal Capacitor (https://localhost/_capacitor_file_/…).
+// readFile mengirim isi file sebagai teks base64 lewat jembatan plugin: file 50 MB jadi ±70 MB teks dan
+// gagal di HP (CBZ/ZIP besar tidak bisa dibuka). Cara lama tetap dipakai sebagai cadangan.
 async function readBytes(dir, path) {
+  const C = window.Capacitor;
+  if (C?.convertFileSrc) {
+    try {
+      const { uri } = await fs().getUri({ path, directory: dir });
+      const r = await fetch(C.convertFileSrc(uri));
+      if (r.ok) { const u8 = new Uint8Array(await r.arrayBuffer()); if (u8.length) return u8; }
+    } catch {}
+  }
   const r = await fs().readFile({ path, directory: dir });
   const d = r.data;
   if (d instanceof Blob) return new Uint8Array(await d.arrayBuffer());
@@ -258,11 +269,13 @@ export async function localPages(src, id, chId) {
     if (!urls.length) return null;
     const o = idx(); if (o[keyOf(src, id, chId)]) { o[keyOf(src, id, chId)].openedAt = Date.now(); saveIdx(o); }
     return { ok: true, local: true, images: urls.map((u) => ({ u, local: true })) };
-  } catch {
-    // file dihapus dari luar aplikasi → lupakan catatannya; gagal baca sesaat → catatan tetap disimpan
+  } catch (e) {
+    // file dihapus dari luar aplikasi → lupakan catatannya. File masih ada tapi gagal dibaca →
+    // catatan tetap disimpan dan alasan sebenarnya ditampilkan (bukan "tidak ditemukan")
     const gone = await fs().stat({ path: r.path, directory: r.dir }).then(() => false, () => true);
-    if (gone) { const o = idx(); delete o[keyOf(src, id, chId)]; saveIdx(o); emit(); }
-    return null;
+    if (gone) { const o = idx(); delete o[keyOf(src, id, chId)]; saveIdx(o); emit(); return null; }
+    const why = String(e?.message || e || "").slice(0, 160);
+    throw Object.assign(new Error(`File ada di HP tetapi gagal dibuka${why ? ` (${why})` : ""}. Coba buka ulang, atau hapus lalu unduh/impor lagi.`), { localRead: true });
   }
 }
 // info komik untuk membuka chapter unduhan saat offline / file impor

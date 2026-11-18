@@ -61,6 +61,7 @@ baru (FCM), pengumuman developer, dan pembersihan chat/notifikasi lama. Deploy l
 | `browse` | tidak | `source`, `page`, `q`, `sort` (`update`/`popular`), `type`, `limit`, `status` (`ongoing`/`completed`/`hiatus`), `genres` (id genre dari `filters`; Komiku maks 2) |
 | `filters` | tidak | `source` → daftar genre asli penyedia, status yang didukung, batas genre |
 | `detail` | tidak | `source`, `comic_id` |
+| `more_chapters` | tidak | `source`, `comic_id`, `offset` → sisa chapter (Komiku: halaman >8 MB, mis. Martial Peak). `detail` mengirim `more.offset` bila ada sisa |
 | `pages` | tidak | `source`, `chapter_id` → gambar via `?img=…&sig=…` |
 | `cron` | — | dipanggil Supabase Cron |
 | `report_chapters` | ya | APK melaporkan chapter Shinigami/WestManga |

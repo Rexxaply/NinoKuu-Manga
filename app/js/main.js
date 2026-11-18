@@ -366,21 +366,46 @@ async function vSearch(type) {
 }
 
 /* ---------- Detail komik ---------- */
+const byCh = (a, b) => (parseFloat(a.ch) || 0) - (parseFloat(b.ch) || 0);
+const saveDetail = (k, data) => { try { sessionStorage.setItem("ninokuu:d:" + k, JSON.stringify(data)); } catch {} };
 async function getDetail(src, id, force = false) {
   const k = src + "|" + id;
   const c = detailCache.get(k);
-  if (c && !force && Date.now() - c.at < 10 * 60e3) return c.data;
+  if (c && !force && Date.now() - c.at < 10 * 60e3) { fillMore(src, id, c.data); return c.data; }
   const data = await api.call("detail", { source: src, comic_id: id });
-  data.chapters = (data.chapters || []).slice().sort((a, b) => (parseFloat(a.ch) || 0) - (parseFloat(b.ch) || 0));
+  data.chapters = (data.chapters || []).slice().sort(byCh);
   detailCache.set(k, { at: Date.now(), data });
-  try { sessionStorage.setItem("ninokuu:d:" + k, JSON.stringify(data)); } catch {}
+  saveDetail(k, data);
+  fillMore(src, id, data);
   return data;
 }
 function cachedDetail(src, id) {
   const k = src + "|" + id;
-  if (detailCache.has(k)) return detailCache.get(k).data;
-  try { const s = sessionStorage.getItem("ninokuu:d:" + k); if (s) { const d = JSON.parse(s); detailCache.set(k, { at: 0, data: d }); return d; } } catch {}
+  if (detailCache.has(k)) { const d = detailCache.get(k).data; fillMore(src, id, d); return d; }
+  try { const s = sessionStorage.getItem("ninokuu:d:" + k); if (s) { const d = JSON.parse(s); detailCache.set(k, { at: 0, data: d }); fillMore(src, id, d); return d; } } catch {}
   return null;
+}
+// Komik dengan ribuan chapter (mis. Martial Peak di Komiku): server mengirim chapter terbaru dulu plus tanda
+// "more". Sisanya (sampai chapter 1) diambil di belakang layar per potongan, lalu digabung ke detail yang sama.
+// Halaman yang sedang terbuka diberi tahu lewat event "nk:chapters" supaya daftar diperbarui di tempat.
+const filling = new Set();
+async function fillMore(src, id, data) {
+  const k = src + "|" + id;
+  if (!data?.more || filling.has(k)) return;
+  filling.add(k);
+  try {
+    let guard = 0;
+    while (data.more && guard++ < 40) {
+      const r = await api.call("more_chapters", { source: src, comic_id: id, offset: data.more.offset });
+      const seen = new Set(data.chapters.map((c) => c.id));
+      const add = (r.chapters || []).filter((c) => c?.id && !seen.has(c.id));
+      data.chapters = data.chapters.concat(add).sort(byCh);
+      data.more = r.more || null;
+      saveDetail(k, data);
+      dispatchEvent(new CustomEvent("nk:chapters", { detail: { key: k, done: !data.more } }));
+    }
+  } catch { /* coba lagi saat komik dibuka berikutnya */ }
+  finally { filling.delete(k); }
 }
 // halaman komik: latar berhenti di baris tombol "Mulai baca"
 function fitDetail() {
@@ -394,13 +419,17 @@ async function vDetail(src, id) {
   let d;
   try { d = await getDetail(src, id); } catch (e) { view.innerHTML = `<div class="bar"><button class="icon-btn glass" data-act="back" aria-label="Kembali">${icon("back", 22)}</button></div>${errBox(e)}`; return; }
   if (parse().name !== "detail") return;
-  const m = d.manga, type = typeFromTags(m.tags), latest = d.chapters[d.chapters.length - 1];
+  const m = d.manga, type = typeFromTags(m.tags);
+  let latest = d.chapters[d.chapters.length - 1];
   const meta = { source: src, comic_id: id, title: m.title, cover: m.cover };
   S.updateLibMeta(src, id, { type, latest: latest?.ch ?? null });
   const h = S.histItem(src, id);
-  const first = d.chapters[0], resumeCh = h?.chapter_id && d.chapters.find((c) => c.id === h.chapter_id);
+  let first, resumeCh;
   let descOpen = false;
   const draw = () => {
+    // dihitung ulang setiap gambar: chapter lama bisa datang belakangan (fillMore)
+    latest = d.chapters[d.chapters.length - 1]; first = d.chapters[0];
+    resumeCh = h?.chapter_id && d.chapters.find((c) => c.id === h.chapter_id);
     const fav = S.inLib(src, id), bell = !!S.libItem(src, id)?.notify;
     // ringkas: 4 chapter terbaru; bila sedang membaca chapter lama, tampilkan juga chapter itu
     const desc = d.chapters.slice().reverse();
@@ -424,7 +453,7 @@ async function vDetail(src, id) {
   <div class="hero-in">${cover(m.cover, m.title, "det")}
     <div class="hero-t"><span class="meta"><span class="tag-s">${esc(srcName(src))}</span>${type ? `<span>${esc(typeName(type))}</span>` : ""}</span><h1 id="dtTitle" title="${esc(m.title)}">${esc(m.title)}</h1>
       ${infoLine ? `<span class="inf-line">${infoLine}</span>` : ""}
-      <span class="mu sm">${d.chapters.length} chapter${latest?.at ? " · update " + esc(ago(latest.at)) : ""}</span></div></div></div>
+      <span class="mu sm">${d.chapters.length} chapter${latest?.at ? " · update " + esc(ago(latest.at)) : ""}${d.more ? " · memuat chapter lama…" : ""}</span></div></div></div>
 <div class="px dt-body">
   <div class="act-row">
     <a class="btn primary grow" href="${resumeCh ? readHref(src, id, resumeCh.id) : first ? readHref(src, id, first.id) : "#"}">${icon("play", 18, 2)}${resumeCh ? "Lanjut Ch. " + esc(resumeCh.ch) : "Mulai baca"}</a>
@@ -453,7 +482,9 @@ async function vDetail(src, id) {
   S.likeInfo(src, id, "").then((i) => { if (i && parse().name === "detail") { lk = i; paintLike(); } });
   const onBarScroll = () => { const b = $("#dbar"); if (b) b.classList.toggle("solid", window.scrollY > 120); };
   window.addEventListener("scroll", onBarScroll, { passive: true });
-  cleanup = () => window.removeEventListener("scroll", onBarScroll);
+  const onMore = (e) => { if (e.detail.key === src + "|" + id && parse().name === "detail") { const y = window.scrollY; draw(); window.scrollTo(0, y); } };
+  window.addEventListener("nk:chapters", onMore);
+  cleanup = () => { window.removeEventListener("scroll", onBarScroll); window.removeEventListener("nk:chapters", onMore); };
   const room = roomFor(src, id);
   Promise.all([roomPreview(room, 3), roomCount(room).catch(() => 0), framesReady()]).then(([l, n]) => { cmList = l; cmN = n; if (parse().name === "detail") { const y = window.scrollY; draw(); window.scrollTo(0, y); } })
     .catch(() => { cmList = []; if (parse().name === "detail") { const y = window.scrollY; draw(); window.scrollTo(0, y); } });
@@ -532,7 +563,7 @@ async function vChapters(src, id) {
   let q = "", asc = false, shown = STEP, io = null;
   view.innerHTML = topbar("Daftar chapter", dlBtn) + `<div class="px">
   <div class="ch-top" id="chtop"></div>
-  <div class="sec-h"><b class="b15">${esc(d.manga.title)}</b><span class="mu sm">${d.chapters.length} chapter tersedia</span></div>
+  <div class="sec-h"><b class="b15">${esc(d.manga.title)}</b><span class="mu sm" id="chcount"></span></div>
   ${h?.chapter_id ? `<div class="row sb resume-line"><span>Terakhir dibuka · Chapter ${esc(h.chapter)}</span><button class="link-red" data-act="find">Temukan ↓</button></div>` : ""}
   <div class="mu xs info" id="chinfo"></div>
   <div id="chl" class="rows"></div><div id="chsent" style="height:1px"></div></div><div class="pad-nav"></div>
@@ -546,6 +577,7 @@ async function vChapters(src, id) {
   };
   const draw = () => {
     const l = list();
+    $("#chcount").textContent = `${d.chapters.length} chapter tersedia${d.more ? " · memuat chapter lama…" : ""}`;
     $("#chl").innerHTML = l.slice(0, shown).map((c) => row(c, true)).join("") || `<div class="empty"><span class="empty-ic">${icon("search", 22)}</span><b>Maaf, chapter tidak tersedia</b><span>Coba nomor chapter lain.</span></div>`;
     $("#chinfo").textContent = (q ? `${l.length} hasil · ` : "") + (asc ? "Urut dari chapter pertama" : "Urut dari chapter terbaru") + (l.length > shown ? ` · menampilkan ${shown} dari ${l.length}` : "");
     $("#chsort span").textContent = asc ? "Terlama" : "Terbaru";
@@ -597,7 +629,10 @@ async function vChapters(src, id) {
   window.addEventListener("touchstart", tstart, { passive: true });
   window.addEventListener("touchmove", drop, { passive: true });
   window.addEventListener("wheel", drop, { passive: true });
-  cleanup = () => { io.disconnect(); window.removeEventListener("nk:kb", onKb); (vv || window).removeEventListener("resize", onVV); window.removeEventListener("touchstart", tstart); window.removeEventListener("touchmove", drop); window.removeEventListener("wheel", drop); document.removeEventListener("click", guard, true); document.body.classList.remove("chfoc"); };
+  // chapter lama datang belakangan: gambar ulang daftar tanpa mengganggu pencarian & posisi gulir
+  const onMore = (e) => { if (e.detail.key === src + "|" + id && parse().name === "chapters") { const y = window.scrollY; draw(); window.scrollTo(0, y); } };
+  window.addEventListener("nk:chapters", onMore);
+  cleanup = () => { io.disconnect(); window.removeEventListener("nk:chapters", onMore); window.removeEventListener("nk:kb", onKb); (vv || window).removeEventListener("resize", onVV); window.removeEventListener("touchstart", tstart); window.removeEventListener("touchmove", drop); window.removeEventListener("wheel", drop); document.removeEventListener("click", guard, true); document.body.classList.remove("chfoc"); };
   setActs({
     back: () => backTo(comicHref(src, id)),
     sort: () => { asc = !asc; shown = STEP; draw(); window.scrollTo({ top: 0, behavior: "smooth" }); },
@@ -629,7 +664,9 @@ async function vReader(src, id, chId) {
   const ch = d.chapters[idx] || { id: chId, ch: "?" };
   const prev = d.chapters[idx - 1], next = d.chapters[idx + 1];
   // chapter yang sudah diunduh dibaca dari file di HP (tanpa kuota, bisa offline)
-  let p = await DL.localPages(src, id, chId).catch(() => null);
+  let p;
+  try { p = await DL.localPages(src, id, chId); }
+  catch (e) { if (e?.localRead) { $(".r-pages").innerHTML = errBox(e); return; } p = null; }
   if (!p) {
     if (isLocal) { $(".r-pages").innerHTML = errBox(new Error("File unduhan tidak ditemukan di HP.")); return; }
     try { p = await api.call("pages", { source: src, chapter_id: chId }); } catch (e) { $(".r-pages").innerHTML = errBox(e); return; }
