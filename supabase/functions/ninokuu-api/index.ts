@@ -152,7 +152,16 @@ async function checkSig(u: string, ref: string, sig: string, cover: boolean) {
   for (let i = 0; i < want.length; i++) d |= want.charCodeAt(i) ^ sig.charCodeAt(i);
   return d === 0;
 }
-const komikuCover = (c: string) => { try { return c ? (komikuImgHost(new URL(c))?.href || c) : c; } catch { return c; } };
+// Sampul Komiku: server gambarnya bisa mengecilkan sendiri (?w=lebar). Diukur 18-11-2026: sampul Solo Leveling
+// asli 365 KB (720 px) → ?w=300 79 KB; Martial Peak 305 KB → 17 KB. Daftar memakai 300 px, halaman komik 500 px.
+const komikuCover = (c: string, w = 300) => {
+  if (!c) return c;
+  try {
+    const u = komikuImgHost(new URL(c)) || new URL(c);
+    if (/^thumbnail\.komiku\./i.test(u.hostname)) { u.search = ""; u.searchParams.set("w", String(w)); }
+    return u.href;
+  } catch { return c; }
+};
 // thumbnail.komiku.to / .id / … → thumbnail.komiku.org (null bila bukan gambar Komiku di domain lain)
 function komikuImgHost(u: URL): URL | null {
   const m = u.hostname.toLowerCase().match(/^(thumbnail|img|cover)\.komiku\.([a-z]+)$/);
@@ -355,7 +364,7 @@ async function komikuPage(srcPage: number, q: string, o: Opt) {
     const a = [...b.matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)].find((x) => /<h3/i.test(x[2]));
     const title = stripTags(b.match(/<h3\b[^>]*>([\s\S]*?)<\/h3>/i)?.[1] || "");
     if (!a || !title) continue;
-    const img = imgSrc(b.match(/<img\b[^>]*>/i)?.[0] || "", KOMIKU_SITE).replace(/\?.*$/, "");
+    const img = komikuCover(imgSrc(b.match(/<img\b[^>]*>/i)?.[0] || "", KOMIKU_SITE).replace(/\?.*$/, ""), 300);
     const tp = (stripTags(b.match(/class=["'][^"']*\btpe1_inf\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i)?.[1] || "").match(/\b(manga|manhwa|manhua)\b/i)?.[1] || o.type || "").toLowerCase();
     items.push({ id: abs(a[1], KOMIKU_SITE), title, cover: await coverUrl(img, KOMIKU_SITE + "/"), type: tp });
   }
@@ -382,7 +391,7 @@ async function komikuDetail(id: string): Promise<Detail> {
   // Aplikasi mengambil sisanya lewat action "more_chapters" mulai dari byte setelah baris chapter terakhir yang utuh.
   const more = page.cut && listAt >= 0 ? komikuNext(h, 0) : null;
   return {
-    manga: { id: page.url, title, cover: await coverUrl(komikuCover(cover), page.url), desc, tags: tags.slice(0, 8),
+    manga: { id: page.url, title, cover: await coverUrl(komikuCover(cover, 500), page.url), desc, tags: tags.slice(0, 8),
       status: normStatus(st), author: row("(?:Pengarang|Komikus|Author)"), url: page.url,
       publisher: row("(?:Penerbit|Publisher|Serialisasi|Serialization)").slice(0, 120),
       views: toNum(row("(?:Pembaca|Dibaca|Dilihat|Views?)")) ?? toNum(stripTags(top).match(/([\d.,]+\s*(?:rb|ribu|jt|juta|k|m)?)\s*(?:x\s*)?(?:dibaca|pembaca|views?)\b/i)?.[1] || "") },
@@ -458,7 +467,12 @@ async function komikuPages(id: string) {
 const KIRYUU_SITE = (Deno.env.get("KIRYUU_SITE") || "https://v7.kiryuu.to").replace(/\/+$/, "");
 const kiryuuJson = async (path: string) => (await webFetch(KIRYUU_SITE + path, { json: true, referer: KIRYUU_SITE + "/", headers: { "X-Requested-With": "XMLHttpRequest" } })).json();
 const kiryuuTerms = (m: any, tax: string): string[] => ((m?._embedded?.["wp:term"] || []) as any[][]).find((g) => g?.[0]?.taxonomy === tax)?.map((t: any) => decodeEnt(String(t?.name || ""))) || [];
-const kiryuuCover = (m: any) => String(m?._embedded?.["wp:featuredmedia"]?.[0]?.source_url || m?.yoast_head_json?.og_image?.[0]?.url || "");
+// Sampul Kiryuu: WordPress menyimpan beberapa ukuran. Diukur 18-11-2026 (Mercenary Enrollment): asli 480 px 56 KB,
+// "medium" 231 px 26 KB, "card-thumbnail" 320 px 43 KB. Daftar memakai medium, halaman komik card-thumbnail.
+const kiryuuCover = (m: any, size = "medium") => {
+  const fm = m?._embedded?.["wp:featuredmedia"]?.[0];
+  return String(fm?.media_details?.sizes?.[size]?.source_url || fm?.source_url || m?.yoast_head_json?.og_image?.[0]?.url || "");
+};
 let kiryuuNonce: string | null = null;
 async function kiryuuGetNonce(fresh = false) {
   if (kiryuuNonce && !fresh) return kiryuuNonce;
@@ -517,7 +531,7 @@ async function kiryuuDetail(id: string): Promise<Detail> {
   if (!m?.id) throw webErr("Seri Kiryuu tidak ditemukan", 404);
   return {
     manga: {
-      id, title: decodeEnt(stripTags(m.title?.rendered || "")), cover: await coverUrl(kiryuuCover(m), KIRYUU_SITE + "/"),
+      id, title: decodeEnt(stripTags(m.title?.rendered || "")), cover: await coverUrl(kiryuuCover(m, "card-thumbnail"), KIRYUU_SITE + "/"),
       desc: stripTags(String(m.content?.rendered || "").replace(/<\/p>\s*<p[^>]*>/gi, "\n\n")).trim(),
       tags: [...kiryuuTerms(m, "genre"), ...kiryuuTerms(m, "type")].slice(0, 8), status: kiryuuTerms(m, "status").map((s) => KIRYUU_STATUS[s] || normStatus(s)).find(Boolean) || "",
       author: kiryuuTerms(m, "series-author").join(", "), url: m.link || `${KIRYUU_SITE}/manga/${m.slug}/`,
