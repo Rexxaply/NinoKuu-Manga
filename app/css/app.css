@@ -1378,3 +1378,5 @@ body.is-app.nk-fs { --sat: env(safe-area-inset-top, 0px); }
   :root { --mu: #CED4DF; --line: #4A586E; }
   .glass, .group, .card { border-color: rgba(255, 255, 255, .32) !important; }
 }
+/* lanjut dari halaman terakhir: isi disembunyikan sesaat sampai posisi gulirnya pasti (tanpa lompatan dari halaman 1) */
+.reader.resuming .r-pages, .reader.resuming .r-slide { visibility: hidden; }

@@ -1208,7 +1208,10 @@ async function vReader(src, id, chId) {
     // halaman sebelum posisi itu TIDAK diunduh (hemat kuota); halaman kosong punya tinggi sementara, dan
     // posisi disesuaikan lagi setiap kali gambar di sekitar tujuan selesai dimuat
     const jump = () => { if (!stop && parse().name === "reader") goPage(resumeAt); };
-    requestAnimationFrame(jump);
+    // langsung (sebelum layar digambar) supaya pembaca tidak sempat tampil di halaman 1 lalu melompat;
+    // selama 2 frame pertama halaman disembunyikan sampai posisinya pasti
+    rd.classList.add("resuming"); jump();
+    requestAnimationFrame(() => { jump(); requestAnimationFrame(() => rd.classList.remove("resuming")); });
     if (!slide) $$(".r-img", rd).slice(Math.max(0, resumeAt - 3), resumeAt).forEach((im) => im.addEventListener("load", jump, { once: true }));
     toast(`Lanjut dari halaman ${resumeAt}`, 1800);
   }
