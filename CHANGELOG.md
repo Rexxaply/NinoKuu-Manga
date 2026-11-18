@@ -19,7 +19,8 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 - Perbaikan menu ⋯ pembaca: tanda pilihan aktif (Scroll, Layar, Akhir chapter) tidak lagi hilang setelah menu ditutup lalu dibuka lagi
 - Menu ⋯ pembaca, bar bawah, dan semua tombol kaca memakai buram gaya iOS (lebih kuat, warna lebih hidup)
 - Efek kaca tidak lagi "mati" sesaat saat pindah halaman, membuka/menutup pop-up, atau membuka pembaca (animasi tanpa memudarkan induknya)
-- Perbaikan kolom chat yang terlempar ke atas layar saat keyboard muncul: bila layar sudah menyusut karena keyboard, kolom tidak diangkat lagi, dan tinggi keyboard yang dilaporkan dalam piksel fisik dinormalkan
+- Perbaikan kolom chat yang terlempar ke atas layar saat keyboard muncul: posisi kolom kini mengikuti bagian layar yang benar-benar terlihat (termasuk saat Android menggeser layar), tidak diangkat dua kali
+- Bayangan di belakang bar Mulai baca ikut naik bersama bar dan tidak lagi melompat saat animasi selesai
 - Bar "Mulai baca" di halaman komik dan bar bawah daftar chapter meluncur naik dengan halus saat halaman dibuka (sebelumnya hilang sesaat lalu muncul tiba-tiba)
 - Perbaikan bar bawah saat kembali dari halaman komik/chat ke Beranda: isi halaman tidak lagi tembus di balik bar
 

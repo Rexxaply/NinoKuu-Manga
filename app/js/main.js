@@ -1631,15 +1631,20 @@ let kbBase = window.innerHeight, kbOpen = false, kbH = 0;
 const kbCss = (h) => { const dpr = window.devicePixelRatio || 1; return h > kbBase * 0.62 && dpr > 1.2 ? h / dpr : h; };
 const applyKb = () => {
   const shrink = Math.max(0, kbBase - window.innerHeight), vv = window.visualViewport;
+  // Bila visualViewport tahu ada keyboard, ia juga tahu berapa jauh layar digeser (offsetTop) oleh Android/Chromium.
+  // Bagian bawah yang terlihat = offsetTop + height; komposer cukup diangkat sejauh yang masih tertutup.
+  // (Dulu tinggi keyboard ikut dipakai walau layar sudah digeser → komposer naik dua kali dan nyangkut di atas.)
+  const vvKnows = vv && window.innerHeight - vv.height > 40;
   const vvCover = vv ? Math.max(0, window.innerHeight - (vv.height + vv.offsetTop)) : 0;
   const h = kbCss(kbH);
-  const lift = shrink > 80 ? 0 : Math.max(vvCover, h - shrink);
+  const lift = vvKnows ? vvCover : shrink > 80 ? 0 : h - shrink;
   const v = lift > 40 ? Math.round(Math.min(lift, window.innerHeight * 0.7)) : 0;
   document.documentElement.style.setProperty("--kb", v + "px");
-  if (N.DEV) N.logDev("kb", `keyboard ${Math.round(kbH)} → ${Math.round(h)} px, layar ${kbBase}→${window.innerHeight} (susut ${shrink}), vv tutup ${Math.round(vvCover)}, angkat ${v}px`);
+  if (N.DEV) N.logDev("kb", `keyboard ${Math.round(kbH)} → ${Math.round(h)} px, layar ${kbBase}→${window.innerHeight} (susut ${shrink}), vv ${vv ? Math.round(vv.height) + "+" + Math.round(vv.offsetTop) : "-"}, tutup ${Math.round(vvCover)}, angkat ${v}px`);
 };
 window.addEventListener("resize", () => { if (kbOpen) { if (kbH) applyKb(); } else if (window.innerHeight > kbBase) kbBase = window.innerHeight; });
-window.visualViewport?.addEventListener("resize", () => { if (kbOpen && kbH) applyKb(); });
+window.visualViewport?.addEventListener("resize", () => { if (kbOpen) applyKb(); });
+window.visualViewport?.addEventListener("scroll", () => { if (kbOpen) applyKb(); });
 addEventListener("orientationchange", () => setTimeout(() => { if (!kbOpen) kbBase = window.innerHeight; }, 400));
 function setKeyboard(h, phase) {
   const root = document.documentElement;
