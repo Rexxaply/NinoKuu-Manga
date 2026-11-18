@@ -204,12 +204,15 @@ function placeSeg(el, anim) {
     th = document.createElement("span"); th.className = "seg-th no-tr"; th.setAttribute("aria-hidden", "true");
     el.prepend(th); el.classList.add("has-th"); segRo?.observe(el);
   }
-  const box = { x: on.offsetLeft, y: on.offsetTop, w: on.offsetWidth, h: on.offsetHeight }, k = segKey(el);
+  const k = segKey(el), saved = k ? segLast.get(k) : null;
+  // daftar yang bisa digeser (chip): digambar ulang → posisi geser lama dipulihkan dulu (tidak melompat ke awal)
+  if (!el._th && saved?.sl != null && saved.t > Date.now() - 800 && el.scrollWidth > el.clientWidth) el.scrollLeft = saved.sl;
+  const box = { x: on.offsetLeft, y: on.offsetTop, w: on.offsetWidth, h: on.offsetHeight };
   // ukuran berubah (layar diputar dll.): pindahkan tanpa animasi; panggilan tanpa perubahan diabaikan
   // (ResizeObserver memanggil sekali saat mulai diamati: jangan sampai memotong animasi yang sedang jalan)
   if (!anim && el._th && el._th.x === box.x && el._th.w === box.w && el._th.y === box.y && el._th.h === box.h) return;
   const prev = el._th || (anim && k && segLast.get(k)?.t > Date.now() - 800 ? segLast.get(k) : null);
-  if (k) segLast.set(k, { ...box, t: Date.now() });
+  if (k) segLast.set(k, { ...box, sl: el.scrollLeft, t: Date.now() });
   // Lebar tidak dianimasikan (itu dikerjakan CPU dan tersendat bila halaman sedang memuat hasil):
   // ukuran akhir dipasang langsung, perbedaan lebar ditiru dengan scaleX → seluruh gerak murni transform (GPU).
   const set = (b) => { th.style.width = box.w + "px"; th.style.height = box.h + "px"; th.style.transform = `translate3d(${b.x}px, ${b.y}px, 0) scaleX(${b.w / box.w})`; };
@@ -221,6 +224,11 @@ function placeSeg(el, anim) {
   } else th.classList.add("no-tr");
   set(box); th.style.opacity = "1";
   el._th = box;
+  // pilihan aktif terpotong di tepi daftar yang bisa digeser → geser halus sampai terlihat penuh
+  if (anim && el.scrollWidth > el.clientWidth) {
+    const pad = 16, l = box.x - el.scrollLeft, r = l + box.w;
+    if (l < 0 || r > el.clientWidth) el.scrollTo({ left: Math.max(0, l < 0 ? box.x - pad : box.x + box.w - el.clientWidth + pad), behavior: segReduce.matches ? "auto" : "smooth" });
+  }
 }
 // dipasang langsung di callback MutationObserver (sebelum layar digambar), jadi tidak ada 1 frame tanpa jempol
 // (sekali per daftar per callback, walau beberapa tombolnya berubah sekaligus)
@@ -237,5 +245,5 @@ document.querySelectorAll(SEG_SEL).forEach((s) => queueSeg(s, false));
 // ketukan pada pilihan: catat posisi jempol sekarang, supaya bila daftar digambar ulang, jempol meluncur dari sini
 document.addEventListener("click", (e) => {
   const el = e.target.closest?.(SEG_SEL); if (!el || !el._th) return;
-  const k = segKey(el); if (k) segLast.set(k, { ...el._th, t: Date.now() });
+  const k = segKey(el); if (k) segLast.set(k, { ...el._th, sl: el.scrollLeft, t: Date.now() });
 }, true);
