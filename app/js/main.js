@@ -1804,10 +1804,12 @@ async function vPage(name) {
       try {
         const r = await DL.saveText(name, text);
         el.parentNode.querySelector(".bk-res")?.remove();
-        el.insertAdjacentHTML("afterend", `<div class="card col g6 bk-res"><b class="gold row g6">${icon("check", 16, 2.4)} File backup tersimpan</b><span class="mu sm" style="word-break:break-all">${esc(r.where)}</span>
-          ${r.uri ? `<button class="btn" data-act="bkshare">${icon("send", 17, 2)}Bagikan / simpan ke tempat lain</button>` : ""}</div>`);
+        // file hanya bisa disimpan di dalam aplikasi → langsung buka menu bagikan supaya bisa disimpan ke File/Drive/WhatsApp
+        el.insertAdjacentHTML("afterend", `<div class="card col g6 bk-res"><b class="gold row g6">${icon("check", 16, 2.4)} ${r.where ? "File backup tersimpan" : "File backup siap"}</b>
+          <span class="mu sm" style="word-break:break-all">${r.where ? esc(r.where) : "HP ini tidak mengizinkan menyimpan ke folder umum. Pilih tempat menyimpan lewat tombol di bawah (mis. File, Drive, atau WhatsApp)."}</span>
+          ${r.uri ? `<button class="btn ${r.where ? "" : "primary"}" data-act="bkshare">${icon("send", 17, 2)}${r.where ? "Bagikan / simpan ke tempat lain" : "Simpan ke…"}</button>` : ""}</div>`);
         acts2.bkshare = () => DL.shareFile(r.uri, "Backup Ninokuu").catch((e) => toast(e.message || "Gagal membagikan"));
-        toast("File backup tersimpan");
+        if (!r.where && r.uri) acts2.bkshare(); else toast("File backup tersimpan");
       } catch (e) { toast(e?.message || "Gagal menyimpan file backup"); }
       el.disabled = false;
     };
