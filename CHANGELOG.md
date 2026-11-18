@@ -18,7 +18,7 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 - Posisi baca dikirim ke server paling sering 1× per 20 detik (sebelumnya setiap ganti halaman); tetap tersimpan di HP seketika
 
 ### Detail
-- Selama di pembaca mode layar penuh, `StatusBar.setOverlaysWebView({ overlay: true })` tetap menyala; ketukan hanya menyembunyikan/memunculkan bilah status (halaman tidak melompat). Overlay dimatikan sesaat setelah keluar dari pembaca (pindah chapter tidak memicu lompatan). 1.8.2 (shortEdges saja) belum cukup karena jendela masih menyisakan jarak untuk bilah status
+- Selama di pembaca mode layar penuh, `StatusBar.setOverlaysWebView({ overlay: true })` tetap menyala; ketukan hanya menyembunyikan/memunculkan bilah status (halaman tidak melompat). Overlay dimatikan sebelum halaman berikutnya digambar saat keluar dari pembaca (info komik tidak melompat turun); pindah chapter tetap memakai overlay. 1.8.2 (shortEdges saja) belum cukup karena jendela masih menyisakan jarak untuk bilah status
 - Tidak ada perubahan server
 
 ---

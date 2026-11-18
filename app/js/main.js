@@ -1199,7 +1199,7 @@ async function vReader(src, id, chId) {
     if (!slide) $$(".r-img", rd).slice(Math.max(0, resumeAt - 3), resumeAt).forEach((im) => im.addEventListener("load", jump, { once: true }));
     toast(`Lanjut dari halaman ${resumeAt}`, 1800);
   }
-  cleanup = () => { lazyIo.disconnect(); fsObs.disconnect(); clearTimeout(tapT); clearTimeout(nextT); cancelAnimationFrame(rafPos); endIo?.disconnect(); removeEventListener("online", onOnline); N.leaveFullscreen(); S.flushHistory(); };
+  cleanup = () => { lazyIo.disconnect(); fsObs.disconnect(); clearTimeout(tapT); clearTimeout(nextT); cancelAnimationFrame(rafPos); endIo?.disconnect(); removeEventListener("online", onOnline); (parse().name === "reader" ? N.leaveFullscreen() : N.setFullscreen(false, false)); S.flushHistory(); };   // ke halaman lain: bilah status dikembalikan SEBELUM halaman baru digambar (tidak melompat setelahnya); pindah chapter: overlay tetap
   // jenis belum diketahui dari tag: periksa bentuk beberapa gambar pertama. Kebanyakan sangat tinggi
   // (tinggi > 1,8× lebar) → strip panjang manhwa/manhua: diingat, dan mode slide dialihkan ke scroll.
   if (!kind && !longStrip) {
