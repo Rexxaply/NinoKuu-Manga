@@ -1394,9 +1394,9 @@ body.is-app.nk-fs { --sat: env(safe-area-inset-top, 0px); }
 .reader.enter .r-top > *, .reader.enter .r-bottom > *, .reader.enter .r-btns > * { transition: none; }
 .reader .r-round:active, .reader .r-sq:active, .reader .r-main:active { transform: none; scale: .96; }
 /* indikator gulir pembaca: kapsul tipis di tepi kanan, muncul saat bergerak & memudar saat diam (gaya iOS) */
-.r-sb { position: absolute; z-index: 4; right: 3px; top: calc(var(--sat) + 10px); bottom: calc(env(safe-area-inset-bottom) + 10px); width: 5px; pointer-events: none;
+.r-sb { position: absolute; z-index: 4; right: 7px; top: calc(var(--sat) + 10px); bottom: calc(env(safe-area-inset-bottom) + 10px); width: 3.5px; pointer-events: none;
   opacity: 0; transition: opacity .45s ease .1s; }
 .r-sb.on { opacity: 1; transition: opacity .12s ease; }
-.r-sb i { position: absolute; left: 0; top: 0; width: 5px; height: 40px; border-radius: 3px; will-change: transform;
+.r-sb i { position: absolute; left: 0; top: 0; width: 3.5px; height: 40px; border-radius: 2px; will-change: transform;
   background: rgba(255, 255, 255, .78); box-shadow: 0 0 0 .5px rgba(0, 0, 0, .35), 0 1px 3px rgba(0, 0, 0, .25); }
 @media (prefers-reduced-motion: reduce) { .r-sb, .r-sb.on { transition: none; } }
