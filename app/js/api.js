@@ -1,11 +1,13 @@
 // Koneksi ke Supabase (Auth, database REST, Storage) dan Edge Function ninokuu-api.
 // Tanpa library: semua lewat fetch, supaya ringan dan sama di PWA maupun APK.
-import { direct, isApp, WEB_URL } from "./native.js";
+import { direct, logDev } from "./native.js";
 const C = window.NINOKUU_CONFIG || {};
 const BASE = String(C.SUPABASE_URL || "").replace(/\/+$/, "");
 const KEY = String(C.SUPABASE_ANON_KEY || "");
 export const configured = !!(BASE && KEY);
-export const FN = BASE + "/functions/v1/ninokuu-api";
+export const SB_URL = BASE, SB_KEY = KEY;
+// Ninokuu Dev memakai function terpisah (ninokuu-api-dev) supaya perubahan server bisa diuji tanpa mengganggu versi global
+export const FN = BASE + "/functions/v1/" + (/^ninokuu-api(-dev)?$/.test(C.FN || "") ? C.FN : "ninokuu-api");
 
 const LS = "ninokuu:";
 const lsGet = (k, d = null) => { try { const v = localStorage.getItem(LS + k); return v == null ? d : JSON.parse(v); } catch { return d; } };
@@ -80,10 +82,11 @@ export async function signUp(email, password, name) {
   if (r?.access_token) { setSession(r); return { session }; }
   return { confirm: true }; // Confirm email aktif: tunggu konfirmasi
 }
-export async function recover(email) { await authCall("/recover?redirect_to=" + encodeURIComponent(appUrl()), { email: email.trim() }); }
+// link "lupa password" membuka halaman ninokuu.site/resetpassword (form password baru + tombol kembali ke aplikasi)
+const RESET_URL = "https://ninokuu.site/resetpassword/";
+export async function recover(email) { await authCall("/recover?redirect_to=" + encodeURIComponent(RESET_URL), { email: email.trim() }); }
 // link di email (konfirmasi akun, reset password) selalu ke versi web; di APK alamatnya https://localhost
 const VERIFY_URL = "https://ninokuu.site/verified/";
-const appUrl = () => (isApp ? WEB_URL : location.origin + location.pathname);
 // link dari email (konfirmasi daftar / reset password) kembali ke aplikasi dengan token di #
 export async function sessionFromUrl() {
   const h = location.hash.replace(/^#/, "");
@@ -174,8 +177,8 @@ export async function call(action, payload = {}) {
   let r;
   try {
     r = await fetch(FN, { method: "POST", headers: { apikey: KEY, Authorization: "Bearer " + t, "Content-Type": "application/json" }, body: JSON.stringify({ action, ...payload }) });
-  } catch { throw new ApiError(NET_MSG); }
-  if (!r.ok) throw await readErr(r);
+  } catch { logDev("api", `${action}: jaringan gagal`, JSON.stringify(payload).slice(0, 300)); throw new ApiError(NET_MSG); }
+  if (!r.ok) { const e = await readErr(r); logDev("api", `${action}: HTTP ${r.status} ${e.message}`, JSON.stringify(payload).slice(0, 300)); throw e; }
   return r.json();
 }
 export const pageUrl = (p) => FN + "?" + p;

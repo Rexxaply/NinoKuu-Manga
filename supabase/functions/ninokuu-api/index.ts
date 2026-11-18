@@ -11,7 +11,7 @@
 // kalau satu sumber rusak, isi secret KOMIKU_SITE / KIRYUU_SITE / SHNGM_SITE / WEST_SITE dengan domain barunya.
 import { createClient } from "npm:@supabase/supabase-js@2.76.1";
 
-const VERSION = "1.4.0";
+const VERSION = "1.5.0";
 const NAME = "ninokuu-api";
 const SOURCES = ["komiku", "kiryuu", "shinigami", "westmanga"] as const;
 type Source = typeof SOURCES[number];
@@ -44,12 +44,17 @@ function serviceKey() {
 }
 const SERVICE_KEY = serviceKey();
 const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
-const SELF = `${SUPABASE_URL}/functions/v1/${NAME}`;
+// Nama function diambil dari alamat permintaan: kode yang sama dipasang sebagai ninokuu-api (global)
+// dan ninokuu-api-dev (Ninokuu Dev). Alamat proxy gambar menunjuk ke function yang sedang dipakai.
+let FN_NAME = NAME;
+let SELF = `${SUPABASE_URL}/functions/v1/${FN_NAME}`;
+const IS_DEV = () => FN_NAME.endsWith("-dev");
 
 /* ---------- fetch aman ---------- */
 const WEB_UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36";
 const WEB_MAX_HTML = 8 * 1024 * 1024;      // dibaca bertahap; HTML yang lebih besar dipotong, JSON ditolak (batas memori Edge Function)
 const WEB_MAX_IMG = 30 * 1024 * 1024;
+const CUT_MARK = "\n<!-- dipotong Ninokuu -->";
 const webErr = (msg: string, status = 502) => Object.assign(new Error(msg), { status });
 
 async function fetchT(u: string | URL, init: RequestInit, timeoutMs?: number) {
@@ -90,7 +95,7 @@ async function readCapped(r: Response, max: number, strict: boolean): Promise<st
     out.push(dec.decode(value, { stream: true })); n += value.length;
   }
   if (!cut) out.push(dec.decode());
-  if (cut) out.push("\n<!-- dipotong Ninokuu -->");
+  if (cut) out.push(CUT_MARK);
   return out.join("");
 }
 // tolak alamat lokal/privat agar server tidak bisa dipakai mengintip jaringan internal
@@ -126,7 +131,7 @@ async function webFetch(raw: string | URL, opt: { referer?: string; json?: boole
     throw webErr(`${u.hostname} membalas HTTP ${r.status}`, r.status === 429 ? 429 : 502);
   }
   if (/<title>\s*Just a moment/i.test(text)) throw Object.assign(webErr(`${u.hostname} dilindungi Cloudflare dan menolak server.`, 403), { blocked: true });
-  return { text, url: final.href, json: () => { try { return JSON.parse(text); } catch { throw webErr("Balasan server bukan JSON"); } } };
+  return { text, url: final.href, cut: text.endsWith(CUT_MARK), json: () => { try { return JSON.parse(text); } catch { throw webErr("Balasan server bukan JSON"); } } };
 }
 
 /* ---------- tanda tangan URL gambar ---------- */
@@ -147,7 +152,16 @@ async function checkSig(u: string, ref: string, sig: string, cover: boolean) {
   for (let i = 0; i < want.length; i++) d |= want.charCodeAt(i) ^ sig.charCodeAt(i);
   return d === 0;
 }
-const komikuCover = (c: string) => { try { return c ? (komikuImgHost(new URL(c))?.href || c) : c; } catch { return c; } };
+// Sampul Komiku: server gambarnya bisa mengecilkan sendiri (?w=lebar). Diukur 18-11-2026: sampul Solo Leveling
+// asli 365 KB (720 px) → ?w=300 79 KB; Martial Peak 305 KB → 17 KB. Daftar memakai 300 px, halaman komik 500 px.
+const komikuCover = (c: string, w = 300) => {
+  if (!c) return c;
+  try {
+    const u = komikuImgHost(new URL(c)) || new URL(c);
+    if (/^thumbnail\.komiku\./i.test(u.hostname)) { u.search = ""; u.searchParams.set("w", String(w)); }
+    return u.href;
+  } catch { return c; }
+};
 // thumbnail.komiku.to / .id / … → thumbnail.komiku.org (null bila bukan gambar Komiku di domain lain)
 function komikuImgHost(u: URL): URL | null {
   const m = u.hostname.toLowerCase().match(/^(thumbnail|img|cover)\.komiku\.([a-z]+)$/);
@@ -241,9 +255,13 @@ function newestChapter(list: any[]) {
 }
 
 type Status = "" | "ongoing" | "completed" | "hiatus";
-type Opt = { sort: "update" | "popular"; type: "" | "manga" | "manhwa" | "manhua"; limit: number; genres: string[]; status: Status };
+// Urutan yang didukung tiap sumber (dari ekstensi Mihon/Keiyoushi; yang tidak didukung → "update"):
+// komiku: update, popular · kiryuu: update, popular, az, za, rating · shinigami: update, popular, rating · westmanga: update, popular, az, za
+type Sort = "update" | "popular" | "az" | "za" | "rating";
+const SORTS: Record<string, Sort[]> = { komiku: ["update", "popular"], kiryuu: ["update", "popular", "az", "za", "rating"], shinigami: ["update", "popular", "rating"], westmanga: ["update", "popular", "az", "za"] };
+type Opt = { sort: Sort; type: "" | "manga" | "manhwa" | "manhua"; limit: number; genres: string[]; status: Status };
 type Chapter = { id: string; ch: string | null; title: string; at: string | null; url: string };
-type Detail = { manga: { id: string; title: string; cover: string; desc: string; status: string; tags: string[]; author: string; url: string; views?: number | null; publisher?: string }; chapters: Chapter[] };
+type Detail = { manga: { id: string; title: string; cover: string; desc: string; status: string; tags: string[]; author: string; url: string; views?: number | null; publisher?: string }; chapters: Chapter[]; more?: { offset: number } | null };
 // info tambahan (tiap sumber menamai field-nya berbeda; yang tidak ada dibiarkan kosong)
 const normStatus = (s: unknown): string => {
   const t = String(s ?? "").toLowerCase();
@@ -274,15 +292,15 @@ const pickPublisher = (o: any): string => {
 };
 
 /* ---------- Shinigami (API JSON) ---------- */
-const SHNGM_API = Deno.env.get("SHNGM_API") || "https://api.shngm.io";
-const SHNGM_SITE = Deno.env.get("SHNGM_SITE") || "https://11.shinigami.asia";
+const SHNGM_API = Deno.env.get("SHNGM_API") || "https://api.shinigami.io";
+const SHNGM_SITE = Deno.env.get("SHNGM_SITE") || "https://s1.shinigami.mx";
 const shngJson = async (path: string) =>
   (await webFetch(SHNGM_API + path, { json: true, referer: SHNGM_SITE + "/", headers: { Origin: SHNGM_SITE, DNT: "1", "Sec-GPC": "1" } })).json();
 const shngCover = (o: any) => String(o?.cover_portrait_url || o?.cover_image_url || "");
 const SHNG_STATUS: Record<number, string> = { 1: "ongoing", 2: "completed", 3: "hiatus" };
 const shngId = (id: string) => { if (!/^[\w-]{6,64}$/.test(id)) throw webErr("ID Shinigami tidak valid", 400); return id; };
 async function shngBrowse(page: number, q: string, o: Opt) {
-  const p = new URLSearchParams({ page: String(page), page_size: String(o.limit), sort: o.sort === "popular" ? "popularity" : "latest", sort_order: "desc" });
+  const p = new URLSearchParams({ limit: String(o.limit), offset: String((page - 1) * o.limit), sort: o.sort === "popular" ? "popularity" : o.sort === "rating" ? "rating" : "latest", sort_order: "desc" });
   if (q) p.set("q", q);
   if (o.type) p.set("format", o.type);
   if (o.genres.length) { p.set("genre_include", o.genres.join(",")); p.set("genre_include_mode", "and"); }
@@ -291,12 +309,19 @@ async function shngBrowse(page: number, q: string, o: Opt) {
   const items = await Promise.all((j?.data || []).filter((m: any) => m?.manga_id).map(async (m: any) => ({
     id: String(m.manga_id), title: String(m.title || ""), cover: await coverUrl(shngCover(m), SHNGM_SITE + "/"), type: o.type || "",
   })));
-  const total = j?.meta?.total_page != null ? Number(j.meta.total_page) : null;
-  return { items, hasNext: total != null ? page < total : items.length >= o.limit };
+  const more = j?.meta?.has_next;
+  return { items, hasNext: typeof more === "boolean" ? more : items.length >= o.limit };
 }
 async function shngChapters(id: string): Promise<Chapter[]> {
-  const j = await shngJson(`/v1/chapter/${shngId(id)}/list?page_size=3000`);
-  return (j?.data || []).filter((c: any) => c?.chapter_id).map((c: any) => ({
+  // API baru: maks. 2000 per permintaan, sisanya lewat meta.next_cursor
+  let all: any[] = [], cur = "";
+  for (let i = 0; i < 10; i++) {
+    const j = await shngJson(`/v1/chapter/${shngId(id)}/list?limit=2000${cur ? `&cursor=${encodeURIComponent(cur)}` : ""}`);
+    all = all.concat(j?.data || []);
+    cur = j?.meta?.has_next && j.meta.next_cursor ? String(j.meta.next_cursor) : "";
+    if (!cur) break;
+  }
+  return all.filter((c: any) => c?.chapter_id).map((c: any) => ({
     id: String(c.chapter_id), ch: c.chapter_number != null ? String(c.chapter_number).replace(/\.0+$/, "") : null,
     title: String(c.chapter_title || "").trim(), at: c.release_date ? new Date(c.release_date).toISOString() : null, url: `${SHNGM_SITE}/chapter/${c.chapter_id}`,
   }));
@@ -346,7 +371,7 @@ async function komikuPage(srcPage: number, q: string, o: Opt) {
     const a = [...b.matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)].find((x) => /<h3/i.test(x[2]));
     const title = stripTags(b.match(/<h3\b[^>]*>([\s\S]*?)<\/h3>/i)?.[1] || "");
     if (!a || !title) continue;
-    const img = imgSrc(b.match(/<img\b[^>]*>/i)?.[0] || "", KOMIKU_SITE).replace(/\?.*$/, "");
+    const img = komikuCover(imgSrc(b.match(/<img\b[^>]*>/i)?.[0] || "", KOMIKU_SITE).replace(/\?.*$/, ""), 300);
     const tp = (stripTags(b.match(/class=["'][^"']*\btpe1_inf\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i)?.[1] || "").match(/\b(manga|manhwa|manhua)\b/i)?.[1] || o.type || "").toLowerCase();
     items.push({ id: abs(a[1], KOMIKU_SITE), title, cover: await coverUrl(img, KOMIKU_SITE + "/"), type: tp });
   }
@@ -368,22 +393,76 @@ async function komikuDetail(id: string): Promise<Detail> {
   const desc = stripTags(block(top, /<(?:section|div)[^>]*id=["']Sinopsis["'][^>]*>/i).match(/<p\b[^>]*>([\s\S]*?)<\/p>/i)?.[1] || top.match(/<p[^>]*class=["']desc["'][^>]*>([\s\S]*?)<\/p>/i)?.[1] || "");
   const tags = [...block(top, /<ul[^>]*class=["'][^"']*\bgenre\b[^"']*["'][^>]*>/i).matchAll(/<li[^>]*class=["'][^"']*\bgenre\b[^"']*["'][^>]*>([\s\S]*?)<\/li>/gi)].map((x) => stripTags(x[1])).filter(Boolean);
   const st = row("Status").toLowerCase();
-  const chapters: Chapter[] = [];
-  for (const tr of block(listAt >= 0 ? h.slice(listAt) : h, /<table[^>]*id=["']Daftar_Chapter["'][^>]*>/i).matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)) {
-    if (!/class=["'][^"']*\bjudulseries\b/i.test(tr[1])) continue;
-    const a = tr[1].match(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
-    if (!a) continue;
-    const url = abs(a[1], page.url), name = stripTags(a[2]);
-    chapters.push({ id: url, ch: chNumFrom(name, url), title: chTitleFrom(name), url,
-      at: komikuDate(stripTags(tr[1].match(/class=["'][^"']*\btanggalseries\b[^"']*["'][^>]*>([\s\S]*?)<\/td>/i)?.[1] || "")) });
-  }
+  const chapters = komikuRows(block(listAt >= 0 ? h.slice(listAt) : h, /<table[^>]*id=["']Daftar_Chapter["'][^>]*>/i), page.url);
+  // halaman lebih dari batas (komik ribuan chapter, mis. Martial Peak): chapter lama ada di bagian yang dipotong.
+  // Aplikasi mengambil sisanya lewat action "more_chapters" mulai dari byte setelah baris chapter terakhir yang utuh.
+  const more = page.cut && listAt >= 0 ? komikuNext(h, 0) : null;
   return {
-    manga: { id: page.url, title, cover: await coverUrl(komikuCover(cover), page.url), desc, tags: tags.slice(0, 8),
+    manga: { id: page.url, title, cover: await coverUrl(komikuCover(cover, 500), page.url), desc, tags: tags.slice(0, 8),
       status: normStatus(st), author: row("(?:Pengarang|Komikus|Author)"), url: page.url,
       publisher: row("(?:Penerbit|Publisher|Serialisasi|Serialization)").slice(0, 120),
       views: toNum(row("(?:Pembaca|Dibaca|Dilihat|Views?)")) ?? toNum(stripTags(top).match(/([\d.,]+\s*(?:rb|ribu|jt|juta|k|m)?)\s*(?:x\s*)?(?:dibaca|pembaca|views?)\b/i)?.[1] || "") },
     chapters,
+    more,
   };
+}
+// baris chapter Komiku (<tr> berisi td.judulseries) dari potongan HTML mana pun
+function komikuRows(html: string, base: string): Chapter[] {
+  const out: Chapter[] = [];
+  for (const tr of html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)) {
+    if (!/class=["'][^"']*\bjudulseries\b/i.test(tr[1])) continue;
+    const a = tr[1].match(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
+    if (!a) continue;
+    const url = abs(a[1], base), name = stripTags(a[2]);
+    out.push({ id: url, ch: chNumFrom(name, url), title: chTitleFrom(name), url,
+      at: komikuDate(stripTags(tr[1].match(/class=["'][^"']*\btanggalseries\b[^"']*["'][^>]*>([\s\S]*?)<\/td>/i)?.[1] || "")) });
+  }
+  return out;
+}
+// panjang UTF-8 tanpa membuat salinan byte (hemat memori)
+function utf8Len(s: string, end = s.length) {
+  let n = 0;
+  for (let i = 0; i < end; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 0x80) n += 1; else if (c < 0x800) n += 2;
+    else if (c >= 0xd800 && c <= 0xdbff && i + 1 < end) { n += 4; i++; } else n += 3;
+  }
+  return n;
+}
+// posisi lanjutan: byte setelah baris chapter utuh terakhir; null bila tabel chapter sudah selesai di potongan ini
+function komikuNext(text: string, start: number): { offset: number } | null {
+  // baris terakhir bisa terpotong di tengah: pakai </tr> utuh terakhir yang berisi chapter
+  const endRow = text.lastIndexOf("</tr>");
+  if (endRow < 0 || text.lastIndexOf("judulseries", endRow) < 0) return null;
+  if (/<\/table>/i.test(text.slice(endRow, endRow + 4000))) return null;
+  return { offset: start + utf8Len(text, endRow + 5) };
+}
+const KOMIKU_CHUNK = 6 * 1024 * 1024;
+const KOMIKU_OVERLAP = 8192;   // mundur sedikit supaya baris di batas potongan tidak terlewat (duplikat disaring aplikasi)
+async function komikuMoreChapters(id: string, offset: number) {
+  const url = safeUrl(komikuUrl(id));
+  const from = Math.max(0, offset - KOMIKU_OVERLAP);
+  const headers = { "User-Agent": WEB_UA, Accept: "text/html,application/xhtml+xml,*/*;q=0.8", "Accept-Language": "id-ID,id;q=0.9,en;q=0.8", Referer: KOMIKU_SITE + "/", Range: `bytes=${from}-` };
+  let r: Response;
+  try { ({ r } = await fetchSafe(url, { headers }, 20000)); }
+  catch (e: any) { throw webErr(`${url.hostname} tidak bisa dihubungi (${e.message})`); }
+  if (!r.ok || !r.body) { await r.body?.cancel().catch(() => {}); throw webErr(`${url.hostname} membalas HTTP ${r.status}`, 502); }
+  // situs yang tidak mendukung Range mengirim halaman utuh (200): lewati byte yang sudah dibaca
+  const skip = r.status === 206 ? 0 : from;
+  const rd = r.body.getReader(), dec = new TextDecoder(), out: string[] = [];
+  let seen = 0, got = 0, cut = false;
+  for (;;) {
+    const { done, value } = await rd.read();
+    if (done) break;
+    let v = value;
+    if (seen < skip) { const drop = Math.min(v.length, skip - seen); seen += drop; v = v.subarray(drop); if (!v.length) continue; }
+    if (got + v.length > KOMIKU_CHUNK) { out.push(dec.decode(v.subarray(0, KOMIKU_CHUNK - got))); got = KOMIKU_CHUNK; cut = true; await rd.cancel().catch(() => {}); break; }
+    out.push(dec.decode(v, { stream: true })); got += v.length;
+  }
+  if (!cut) out.push(dec.decode());
+  if (seen < skip) return { chapters: [], more: null };
+  const text = out.join("");
+  return { chapters: komikuRows(text, url.href), more: cut ? komikuNext(text, from) : null };
 }
 async function komikuPages(id: string) {
   const page = await webFetch(komikuUrl(id), { referer: KOMIKU_SITE + "/" });
@@ -395,7 +474,12 @@ async function komikuPages(id: string) {
 const KIRYUU_SITE = (Deno.env.get("KIRYUU_SITE") || "https://v7.kiryuu.to").replace(/\/+$/, "");
 const kiryuuJson = async (path: string) => (await webFetch(KIRYUU_SITE + path, { json: true, referer: KIRYUU_SITE + "/", headers: { "X-Requested-With": "XMLHttpRequest" } })).json();
 const kiryuuTerms = (m: any, tax: string): string[] => ((m?._embedded?.["wp:term"] || []) as any[][]).find((g) => g?.[0]?.taxonomy === tax)?.map((t: any) => decodeEnt(String(t?.name || ""))) || [];
-const kiryuuCover = (m: any) => String(m?._embedded?.["wp:featuredmedia"]?.[0]?.source_url || m?.yoast_head_json?.og_image?.[0]?.url || "");
+// Sampul Kiryuu: WordPress menyimpan beberapa ukuran. Diukur 18-11-2026 (Mercenary Enrollment): asli 480 px 56 KB,
+// "medium" 231 px 26 KB, "card-thumbnail" 320 px 43 KB. Daftar memakai medium, halaman komik card-thumbnail.
+const kiryuuCover = (m: any, size = "medium") => {
+  const fm = m?._embedded?.["wp:featuredmedia"]?.[0];
+  return String(fm?.media_details?.sizes?.[size]?.source_url || fm?.source_url || m?.yoast_head_json?.og_image?.[0]?.url || "");
+};
 let kiryuuNonce: string | null = null;
 async function kiryuuGetNonce(fresh = false) {
   if (kiryuuNonce && !fresh) return kiryuuNonce;
@@ -411,7 +495,7 @@ async function kiryuuSearchPage(srcPage: number, q: string, o: Opt, retry = true
   fd.set("inclusion", o.genres.length > 1 ? "AND" : "OR"); fd.set("exclusion", "OR"); fd.set("page", String(srcPage));
   fd.set("genre", JSON.stringify(o.genres)); fd.set("genre_exclude", "[]"); fd.set("author", "[]"); fd.set("artist", "[]"); fd.set("project", "0");
   fd.set("type", JSON.stringify(o.type ? [o.type] : [])); fd.set("status", JSON.stringify(o.status ? [o.status === "hiatus" ? "on-hiatus" : o.status] : []));
-  fd.set("order", "desc"); fd.set("orderby", o.sort === "popular" ? "popular" : "updated"); fd.set("query", q);
+  fd.set("order", o.sort === "az" ? "asc" : "desc"); fd.set("orderby", o.sort === "popular" ? "popular" : o.sort === "rating" ? "rating" : o.sort === "az" || o.sort === "za" ? "title" : "updated"); fd.set("query", q);
   const html = (await webFetch(`${KIRYUU_SITE}/wp-admin/admin-ajax.php?action=advanced_search`, { method: "POST", body: fd, referer: KIRYUU_SITE + "/", headers: { "X-Requested-With": "XMLHttpRequest" } })).text;
   if (/nonce|invalid|forbidden/i.test(html) && !/\/manga\//.test(html) && retry) return await kiryuuSearchPage(srcPage, q, o, false);
   const slugs: string[] = [];
@@ -454,7 +538,7 @@ async function kiryuuDetail(id: string): Promise<Detail> {
   if (!m?.id) throw webErr("Seri Kiryuu tidak ditemukan", 404);
   return {
     manga: {
-      id, title: decodeEnt(stripTags(m.title?.rendered || "")), cover: await coverUrl(kiryuuCover(m), KIRYUU_SITE + "/"),
+      id, title: decodeEnt(stripTags(m.title?.rendered || "")), cover: await coverUrl(kiryuuCover(m, "card-thumbnail"), KIRYUU_SITE + "/"),
       desc: stripTags(String(m.content?.rendered || "").replace(/<\/p>\s*<p[^>]*>/gi, "\n\n")).trim(),
       tags: [...kiryuuTerms(m, "genre"), ...kiryuuTerms(m, "type")].slice(0, 8), status: kiryuuTerms(m, "status").map((s) => KIRYUU_STATUS[s] || normStatus(s)).find(Boolean) || "",
       author: kiryuuTerms(m, "series-author").join(", "), url: m.link || `${KIRYUU_SITE}/manga/${m.slug}/`,
@@ -506,7 +590,7 @@ async function westApi(path: string): Promise<any> {
 }
 const westSlug = (s: string) => { if (!/^[\w.%-]{1,200}$/.test(s)) throw webErr("ID WestManga tidak valid", 400); return s; };
 async function westBrowse(page: number, q: string, o: Opt) {
-  const p = new URLSearchParams({ page: String(page), per_page: String(o.limit), type: "Comic", orderBy: o.sort === "popular" ? "Popular" : "Update" });
+  const p = new URLSearchParams({ page: String(page), per_page: String(o.limit), type: "Comic", orderBy: o.sort === "popular" ? "Popular" : o.sort === "az" ? "Az" : o.sort === "za" ? "Za" : "Update" });
   if (q) p.set("q", q);
   if (o.type) p.set("country", WEST_COUNTRY[o.type]);
   if (o.status) p.set("status", o.status[0].toUpperCase() + o.status.slice(1));
@@ -693,7 +777,7 @@ async function tokensOf(userIds: string[]) {
 
 /* ---------- chapter baru → notifikasi ---------- */
 // gambar notifikasi diunduh oleh setiap HP penerima: pakai alamat asli sampul, bukan proxy (hemat Egress)
-const rawImg = (u: string) => { try { const x = new URL(u); return x.href.startsWith(SELF + "?") && x.searchParams.get("img") || u; } catch { return u; } };
+const rawImg = (u: string) => { try { const x = new URL(u); return /\/functions\/v1\/ninokuu-api(-dev)?$/.test(x.pathname) && x.searchParams.get("img") || u; } catch { return u; } };
 const deepLink = (src: string, id: string) => `ninokuu://comic/${src}/${encodeURIComponent(id)}`;
 async function notifyChapter(src: string, id: string, title: string, cover: string, ch: string) {
   const { data: fol } = await admin.from("library").select("user_id").eq("source", src).eq("comic_id", id).eq("notify", true);
@@ -829,32 +913,36 @@ async function userOf(req: Request) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   const url = new URL(req.url);
+  const seg = url.pathname.split("/").filter(Boolean).find((x) => /^ninokuu-api(-dev)?$/.test(x));
+  if (seg && seg !== FN_NAME) { FN_NAME = seg; SELF = `${SUPABASE_URL}/functions/v1/${FN_NAME}`; }
   try {
     if (req.method === "GET") {
       const img = url.searchParams.get("img");
       if (img) return await proxyImage(img, url.searchParams.get("ref") || "", url.searchParams.get("sig") || "", url.searchParams.get("c") === "1");
       let fcmProject: string | null = null;
       try { fcmProject = JSON.parse(Deno.env.get("FCM_SERVICE_ACCOUNT") || "null")?.project_id || null; } catch { fcmProject = "json-tidak-valid"; }
-      return json({ ok: true, name: NAME, version: VERSION, sources: SOURCES, serverKey: !!SERVICE_KEY, fcm: !!Deno.env.get("FCM_SERVICE_ACCOUNT"), fcmProject });
+      return json({ ok: true, name: FN_NAME, dev: IS_DEV(), version: VERSION, sources: SOURCES, serverKey: !!SERVICE_KEY, fcm: !!Deno.env.get("FCM_SERVICE_ACCOUNT"), fcmProject });
     }
     if (!SERVICE_KEY) return json({ error: "Edge Function tidak menemukan kunci server Supabase (SUPABASE_SERVICE_ROLE_KEY)." }, 500);
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || "");
 
     // Dipanggil Supabase Cron tiap 15 menit. Dengan kunci server: selalu jalan; tanpa kunci: paling cepat tiap 10 menit.
+    // Ninokuu Dev tidak menjalankan cron (notifikasi & pembersihan cukup dari function global, supaya tidak dobel)
+    if ((action === "cron" || action === "run_cron") && IS_DEV()) return json({ ok: true, skipped: "dev" });
     if (action === "cron") {
       const bearer = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
       return json({ ok: true, ...(await runCron(!!bearer && bearer === SERVICE_KEY)) });
     }
 
     // Jelajah & baca: terbuka untuk tamu
-    if (action === "browse" || action === "detail" || action === "pages" || action === "filters") {
+    if (action === "browse" || action === "detail" || action === "pages" || action === "filters" || action === "more_chapters" || action === "latest") {
       const src = body.source;
       if (!isSource(src)) return json({ error: "sumber tidak dikenal" }, 400);
       try {
         if (action === "browse") {
           const opt: Opt = {
-            sort: body.sort === "popular" ? "popular" : "update",
+            sort: (SORTS[src] || []).includes(body.sort) ? body.sort : "update",
             type: ["manga", "manhwa", "manhua"].includes(body.type) ? body.type : "",
             limit: Math.min(Math.max(5, Number(body.limit) || 20), 30),
             genres: (Array.isArray(body.genres) ? body.genres : []).map(String).filter((g: string) => /^[\w.-]{1,60}$/.test(g)).slice(0, src === "komiku" ? 2 : 10),
@@ -865,6 +953,17 @@ Deno.serve(async (req) => {
         }
         if (action === "filters") return json({ ok: true, source: src, ...(await filters(src)) });
         if (action === "detail") return json({ ok: true, source: src, ...(await detail(src, clip(body.comic_id, 2000))) });
+        // chapter terbaru saja (untuk label "Terbaru" di Koleksi): jauh lebih kecil dari detail lengkap
+        if (action === "latest") {
+          const top = newestChapter(await chaptersOf(src, clip(body.comic_id, 2000)));
+          return json({ ok: true, source: src, ch: top?.ch ?? null, at: top?.at ?? null });
+        }
+        if (action === "more_chapters") {
+          const off = Number(body.offset);
+          if (src !== "komiku") return json({ ok: true, source: src, chapters: [], more: null });
+          if (!Number.isInteger(off) || off < 1 || off > 300 * 1024 * 1024) return json({ error: "offset tidak valid" }, 400);
+          return json({ ok: true, source: src, ...(await komikuMoreChapters(clip(body.comic_id, 2000), off)) });
+        }
         return json({ ok: true, source: src, ...(await pages(src, clip(body.chapter_id, 2000))) });
       } catch (e: any) {
         return json({ error: e?.message || String(e), blocked: !!e?.blocked }, e?.status || 502);

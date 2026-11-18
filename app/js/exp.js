@@ -375,6 +375,26 @@ const conic = (c, cx, cy, fromDeg, colors) => {
   const g = c.createConicGradient((fromDeg - 90) * Math.PI / 180, cx, cy);
   colors.forEach((col, i) => g.addColorStop(i / Math.max(1, colors.length - 1), col)); return g;
 };
+// Hanya definisi sprite yang benar-benar dipakai bingkai ini (bukan seluruh sprite 9 rank ±2.700 elemen),
+// supaya gambar SVG sementara cepat diurai saat menggambar bingkai komentar/chat.
+let spriteDoc = null;
+const defsCache = new Map();
+function defsFor(sprite, markup) {
+  if (defsCache.has(markup)) return defsCache.get(markup);
+  spriteDoc ??= new DOMParser().parseFromString(sprite, "image/svg+xml");
+  const want = new Set(), out = [], seen = new Set();
+  const refs = (txt) => { for (const m of txt.matchAll(/(?:href="#|url\(#)([\w-]+)/g)) want.add(m[1]); };
+  refs(markup);
+  while (want.size) {
+    const id = want.values().next().value; want.delete(id);
+    if (seen.has(id)) continue; seen.add(id);
+    const el = spriteDoc.getElementById(id); if (!el) continue;
+    const html = new XMLSerializer().serializeToString(el); out.push(html); refs(html);
+  }
+  const res = `<defs>${out.join("")}</defs>`;
+  defsCache.set(markup, res);
+  return res;
+}
 const svgImg = async (inner, defs) => {
   const url = URL.createObjectURL(new Blob([`<svg xmlns="http://www.w3.org/2000/svg" viewBox="-52 -52 224 224" width="448" height="448">${defs}${inner}</svg>`], { type: "image/svg+xml" }));
   const im = await loadRaw(url, false); setTimeout(() => URL.revokeObjectURL(url), 2000); return im;
@@ -404,7 +424,7 @@ async function drawAvatar(c, ax, ay, AS, p, lv, F, opt = {}) {
   const medal = num1(/clip-path:inherit;background:radial-gradient\(circle at 40% 30%,(#[0-9A-Fa-f]+)/, ["#F2B33D"]);
   const glow = num1(/text-shadow:0 0 ([\d.]+)px (#[0-9A-Fa-f]+)/, ["6", "#FFFFFFaa"]);
   const svgs = [...tpl.matchAll(/<svg[^>]*>([\s\S]*?)<\/svg>/g)].map((m) => m[1]);
-  const defs = M.SPRITE.replace(/^<svg[^>]*>/, "").replace(/<\/svg>\s*$/, "");
+  const defs = defsFor(M.SPRITE, svgs.join(""));
   const [back, front] = await Promise.all(svgs.map((x) => svgImg(x, defs)));
   const sx = ax - 50 * k, sw = 217 * k;
   // cahaya berdenyut

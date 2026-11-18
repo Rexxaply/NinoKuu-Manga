@@ -58,9 +58,10 @@ baru (FCM), pengumuman developer, dan pembersihan chat/notifikasi lama. Deploy l
 
 | action | login | isi |
 |---|---|---|
-| `browse` | tidak | `source`, `page`, `q`, `sort` (`update`/`popular`), `type`, `limit`, `status` (`ongoing`/`completed`/`hiatus`), `genres` (id genre dari `filters`; Komiku maks 2) |
+| `browse` | tidak | `source`, `page`, `q`, `sort` (`update`/`popular`, plus `az`/`za`/`rating` bila sumbernya mendukung: Kiryuu semua, Shinigami `rating`, WestManga `az`/`za`), `type`, `limit`, `status` (`ongoing`/`completed`/`hiatus`), `genres` (id genre dari `filters`; Komiku maks 2) |
 | `filters` | tidak | `source` → daftar genre asli penyedia, status yang didukung, batas genre |
 | `detail` | tidak | `source`, `comic_id` |
+| `more_chapters` | tidak | `source`, `comic_id`, `offset` → sisa chapter (Komiku: halaman >8 MB, mis. Martial Peak). `detail` mengirim `more.offset` bila ada sisa |
 | `pages` | tidak | `source`, `chapter_id` → gambar via `?img=…&sig=…` |
 | `cron` | — | dipanggil Supabase Cron |
 | `report_chapters` | ya | APK melaporkan chapter Shinigami/WestManga |
@@ -110,6 +111,29 @@ Catatan:
 - Kalau proyek sudah terlanjur dijeda, pulihkan dulu lewat tombol **Restore** di dashboard Supabase.
 
 ## Aplikasi Android (APK)
+
+### Ninokuu Dev (aplikasi uji)
+
+Perubahan baru masuk dulu ke branch **`dev`**, bukan `main`. Workflow **Build Ninokuu Dev** (`apk-dev.yml`) membangun
+APK uji terpisah: nama **Ninokuu Dev**, paket `<paket>.dev` (bisa dipasang berdampingan dengan Ninokuu biasa),
+penanda **DEV** di atas layar, dan menu **Lainnya → Ninokuu Dev → Log error** untuk menyalin error lalu dikirim ke developer.
+
+Unduh: `https://github.com/Rexxaply/NinoKuu-Manga/releases/download/apk-dev/ninokuu-dev.apk` (Release `apk-dev`, prerelease).
+Aplikasi Dev memberi tahu sendiri bila ada build baru.
+
+| | Ninokuu (global) | Ninokuu Dev |
+|---|---|---|
+| branch | `main` | `dev` |
+| Edge Function | `ninokuu-api` | `ninokuu-api-dev` (kode sama; cron dimatikan supaya notifikasi tidak dobel) |
+| database & akun | sama | sama |
+| rilis | `apk-terbaru` | `apk-dev` |
+
+Alur: perbaikan → push ke `dev` → uji di Ninokuu Dev → bila beres, `dev` digabung ke `main` (naikkan `VERSION`)
+→ APK global dibangun dan `ninokuu-api` di-deploy ulang.
+
+Notifikasi HP di Ninokuu Dev (opsional): di Firebase Console tambahkan aplikasi Android dengan paket `<paket>.dev`,
+unduh `google-services.json` yang baru (berisi kedua paket), lalu ganti secret `GOOGLE_SERVICES_JSON`.
+Selama paket `.dev` belum terdaftar, Ninokuu Dev tetap jalan tanpa notifikasi HP.
 
 Dibangun dari folder `app/` dengan Capacitor oleh GitHub Actions; hasilnya di Release `apk-terbaru`:
 `https://github.com/Rexxaply/NinoKuu-Manga/releases/download/apk-terbaru/ninokuu.apk`

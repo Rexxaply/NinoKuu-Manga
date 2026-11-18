@@ -1,0 +1,22 @@
+# Ninokuu Dev: APK uji dari branch dev (paket <paket>.dev, nama "Ninokuu Dev", Edge Function ninokuu-api-dev).
+# Bisa dipasang berdampingan dengan Ninokuu global. Hasil: Release "apk-dev" (prerelease):
+#   https://github.com/<pemilik>/<repo>/releases/download/apk-dev/ninokuu-dev.apk
+# Alur: perubahan baru → branch dev → uji di Ninokuu Dev → bila beres, dev digabung ke main → rilis global.
+name: Build Ninokuu Dev
+
+on:
+  push:
+    branches: [dev]
+    paths: ["app/**", "apk/**", "VERSION", ".github/workflows/apk.yml", ".github/workflows/apk-dev.yml"]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  dev:
+    permissions:
+      contents: write
+    uses: ./.github/workflows/apk.yml
+    with:
+      channel: dev
+    secrets: inherit

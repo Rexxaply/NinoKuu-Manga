@@ -3,6 +3,7 @@ import * as api from "./api.js";
 import * as S from "./store.js";
 import { esc, icon, $, $$, toast, ago, rankBadge } from "./ui.js";
 import { frameImage } from "./exp.js";
+import * as O from "./online.js";
 
 // bingkai avatar rank untuk chat & komentar: gambar bingkai yang sama dengan profil, dibuat sekali per rank
 // (lihat frameImage di exp.js) supaya chat panjang tetap lancar. Mode Ringan: bingkai diam.
@@ -99,6 +100,8 @@ export function miniMsg(m) {
 export function bindSpoilers(el) {
   el.addEventListener("click", (e) => { const b = e.target.closest(".sp"); if (!b) return; e.preventDefault(); e.stopPropagation(); b.classList.toggle("open"); });
 }
+// jumlah orang yang sedang membuka Ninokuu saat ini (realtime). Belum tersambung → perkiraan lama (yang menulis 15 menit terakhir).
+const onlineText = (fallback) => { const n = O.count(); return n ? `${n} pembaca aktif` : `${fallback || 1} pembaca aktif`; };
 export async function vChat(view, ctx, opt = {}) {
   const { topbar, setActs, go, back, loading } = ctx;
   await framesReady();
@@ -141,7 +144,7 @@ export async function vChat(view, ctx, opt = {}) {
   const draw = () => {
     const staff = isStaff(), active = new Set(msgs.filter((m) => Date.now() - Date.parse(m.created_at) < 15 * 60e3).map((m) => m.user_id)).size;
     let prev = null;
-    $("#chat").innerHTML = `${pub ? `<div class="chat-info"><span class="online-dot"></span>${active || 1} pembaca aktif · Jaga obrolan tetap sopan, tandai spoiler.</div>`
+    $("#chat").innerHTML = `${pub ? `<div class="chat-info"><span class="online-dot"></span><span id="onl">${onlineText(active)}</span> · Jaga obrolan tetap sopan, tandai spoiler.</div>`
       : `<a class="room-h" href="${esc(opt.backHref || "#/home")}">${opt.cover || ""}<span class="rc-mid g4"><b class="t1">${esc(opt.sub || "")}</b><span class="mu xs">${msgs.length ? msgs.length + (msgs.length >= 100 ? "+" : "") + " komentar" : "Belum ada komentar"} · tandai spoiler dengan ||teks||</span></span></a>`}
   ${pin ? `<div class="pin" data-c="pinx"><span class="pin-ic">${icon("mega", 18)}</span><span class="rc-mid g4"><span class="pin-cap">Pengumuman · Developer · ${esc(ago(pin.created_at))}</span><b>${esc(pin.title)}</b>${pin.body ? `<span class="mu sm pre pin-body">${esc(pin.body)}</span>` : ""}</span>
       <button class="x-btn" data-c="${isDev() ? "unpin" : "pinhide"}" aria-label="${isDev() ? "Lepas pengumuman untuk semua pengguna" : "Sembunyikan pengumuman selama 24 jam"}">${icon("x", 14, 2.2)}</button></div>` : ""}
@@ -283,6 +286,7 @@ export async function vChat(view, ctx, opt = {}) {
   const endUser = () => setTimeout(() => { userScroll = false; }, 400);
   window.addEventListener("touchend", endUser, { passive: true });
   window.addEventListener("scroll", onScroll, { passive: true });
+  const offOnline = O.onCount((n) => { const el = $("#onl"); if (el && n) el.textContent = `${n} pembaca aktif`; });
   // pesan baru diambil tiap 5 detik selama halaman chat terbuka (tiap 30 detik muat ulang penuh)
   let n = 0;
   timer = setInterval(async () => {
@@ -290,7 +294,7 @@ export async function vChat(view, ctx, opt = {}) {
     const bottom = atBottom();
     try { const got = ++n % 6 === 0 ? (await load(true), 1) : await load(false); if (got) { const y = scrollY; draw(); if (bottom || stick) toBottom(); else window.scrollTo(0, y); } } catch {}
   }, 5000);
-  return () => { clearInterval(timer); ro?.disconnect(); window.removeEventListener("scroll", onScroll); window.removeEventListener("touchmove", markUser); window.removeEventListener("wheel", markUser); window.removeEventListener("touchend", endUser); window.removeEventListener("nk:kb", onKb); document.removeEventListener("selectionchange", onSel); if (att?.url) URL.revokeObjectURL(att.url); };
+  return () => { offOnline(); clearInterval(timer); ro?.disconnect(); window.removeEventListener("scroll", onScroll); window.removeEventListener("touchmove", markUser); window.removeEventListener("wheel", markUser); window.removeEventListener("touchend", endUser); window.removeEventListener("nk:kb", onKb); document.removeEventListener("selectionchange", onSel); if (att?.url) URL.revokeObjectURL(att.url); };
 }
 
 /* ---------- Panel developer: kontrol penyimpanan ---------- */
@@ -338,6 +342,21 @@ function annCard(a) {
 }
 
 /* ---------- Panel developer ---------- */
+// Panduan (khusus developer): domain situs sumber pindah → ganti alamat sampai jadi APK lagi.
+const gh = (path, label) => `<a href="https://github.com/Rexxaply/NinoKuu-Manga/${path}" target="_blank" rel="noopener">${label}</a>`;
+const step = (n, t, hint = "") => `<li><span class="gs-n">${n}</span><span class="gs-t"><b>${t}</b>${hint ? `<span class="mu xs">${hint}</span>` : ""}</span></li>`;
+const SITE_GUIDE = `<section class="col g10"><h2 class="cap m0">Panduan</h2>
+<details class="card guide"><summary><b>Situs sumber pindah alamat</b><span class="mu xs">Komiku & Kiryuu: langkah 1–2 · Shinigami & WestManga: langkah 1, 3–6</span></summary>
+<ol class="gsteps">
+${step(1, "Cari alamat baru", "Buka situs lama di browser → salin alamat barunya, mis. <code>https://v8.kiryuu.to</code>")}
+${step(2, "Komiku / Kiryuu: ganti di Supabase → selesai", "Supabase → ninokuu → Edge Functions → Secrets → ubah <code>KOMIKU_SITE</code> atau <code>KIRYUU_SITE</code> → Save. Tidak perlu APK baru.")}
+${step(3, "Shinigami / WestManga: ganti di GitHub", `Buka ${gh("blob/main/app/js/native.js", "app/js/native.js")} → ✏️ Edit → ganti alamat di dalam tanda kutip (cari <code>shinigami</code> atau <code>westmanga</code>)`)}
+${step(4, "Naikkan versi", `Buka ${gh("blob/main/VERSION", "VERSION")} → ✏️ Edit → angka terakhir +1, mis. <code>1.6.3</code> → <code>1.6.4</code>`)}
+${step(5, "Commit, tunggu APK jadi", `Tekan <b>Commit changes</b> → ${gh("actions", "tab Actions")} → tunggu centang hijau (±5 menit)`)}
+${step(6, "Pasang APK baru → selesai", `Lainnya → Versi aplikasi → perbarui, atau unduh ${gh("releases/download/apk-terbaru/ninokuu.apk", "ninokuu.apk")}`)}
+</ol>
+<p class="mu xs gs-foot">Mau uji dulu? Di langkah 3–4 pilih branch <code>dev</code> → hasilnya ${gh("releases/download/apk-dev/ninokuu-dev.apk", "ninokuu-dev.apk")}. Masih gagal → Ninokuu Dev → Lainnya → Log error → salin.</p>
+</details></section>`;
 export async function vDev(view, ctx) {
   const { topbar, setActs, back, loading } = ctx;
   const p = S.state.profile, dev = p?.role === "developer", staff = dev || p?.role === "moderator";
@@ -369,6 +388,7 @@ export async function vDev(view, ctx) {
       <div class="stat"><b>${nf(stats?.reports_open)}</b><span class="mu xs">Laporan chat</span></div><div class="stat"><b>${nf(stats?.bugs_open)}</b><span class="mu xs">Laporan komik</span></div></div>
     <div class="card row g10 sm"><span class="online-dot"></span><span class="grow">Keepalive terakhir ${stats?.last_keepalive ? esc(ago(stats.last_keepalive)) : "belum ada"} · cron ${stats?.last_cron ? esc(ago(stats.last_cron)) : "belum jalan"}</span><button class="btn ghost sm" data-d="cron">Jalankan cron</button></div></section>
   ${storageHtml(sto)}
+  ${dev ? SITE_GUIDE : ""}
   <section class="col g10"><h2 class="cap m0">Pengumuman</h2><div class="card col g12">
     <label class="fld">Judul<input id="at" maxlength="80" placeholder="Contoh: Maintenance server malam ini" value="${esc(form.title)}"></label>
     <label class="fld">Isi (opsional)<textarea id="ab" maxlength="500" rows="3" placeholder="Detail singkat untuk pembaca">${esc(form.body)}</textarea></label>

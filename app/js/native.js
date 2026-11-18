@@ -13,9 +13,12 @@ const vp = (v) => String(v).split(".").map((n) => parseInt(n, 10) || 0);
 export function cmpVersion(a, b) { const x = vp(a), y = vp(b); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0) ? 1 : -1; return 0; }
 // jenis pembaruan: mayor (perubahan besar), minor (fitur baru), patch (perbaikan)
 export function updateKind(from, to) { const x = vp(from), y = vp(to); return y[0] !== x[0] ? "mayor" : y[1] !== x[1] ? "minor" : "patch"; }
+// Ninokuu Dev: APK terpisah (paket .dev) dari branch dev, memakai Edge Function ninokuu-api-dev
+export const DEV = !!CFG.DEV;
+const RELEASE_TAG = CFG.RELEASE_TAG || "apk-terbaru";
 export const REPO = CFG.REPO || "Rexxaply/NinoKuu-Manga";
 export const WEB_URL = CFG.WEB_URL || `https://${REPO.split("/")[0].toLowerCase()}.github.io/${REPO.split("/")[1]}/`;
-export const APK_URL = `https://github.com/${REPO}/releases/download/apk-terbaru/ninokuu.apk`;
+export const APK_URL = DEV ? `https://github.com/${REPO}/releases/download/${RELEASE_TAG}/ninokuu-dev.apk` : `https://github.com/${REPO}/releases/download/apk-terbaru/ninokuu.apk`;
 // halaman unduh (landing page, repo Rexxaply/ninokuu-site)
 export const SITE_URL = "https://ninokuu.site/";
 
@@ -70,11 +73,10 @@ export async function nget(url, { headers = {}, type = "json" } = {}) {
   return { bytes: typeof r.data === "string" ? b64bytes(r.data) : new Uint8Array(r.data || []), type: h["content-type"] || "image/jpeg" };
 }
 // Hemat kuota (egress) Supabase: gambar sampul & halaman selalu dicoba langsung dari situs aslinya.
-// Alamat proxy ninokuu-api (…/functions/v1/ninokuu-api?img=…&ref=…&sig=…) hanya dipakai sebagai cadangan terakhir.
+// Alamat proxy ninokuu-api / ninokuu-api-dev (…?img=…&ref=…&sig=…) hanya dipakai sebagai cadangan terakhir.
 export function imgParts(url) {
   const s = String(url || "");
-  const i = s.indexOf("/functions/v1/ninokuu-api?");
-  if (i < 0) return { src: s, d: "", ref: "", px: "" };
+  if (!/\/functions\/v1\/ninokuu-api(-dev)?\?/.test(s)) return { src: s, d: "", ref: "", px: "" };
   const q = new URLSearchParams(s.slice(s.indexOf("?") + 1)), d = q.get("img") || "";
   return /^https:\/\//i.test(d) ? { src: d, d, ref: q.get("ref") || "", px: s } : { src: s, d: "", ref: "", px: "" };
 }
@@ -84,12 +86,22 @@ export function imgAttrs(url, { ref = "", px = "" } = {}) {
   const d = p.d || (/^https:\/\//i.test(p.src) ? p.src : ""), r = p.ref || ref, x = p.px || px;
   return `src="${e(p.src)}"${d ? ` data-d="${e(d)}"` : ""}${r ? ` data-ref="${e(r)}"` : ""}${x ? ` data-px="${e(x)}"` : ""}`;
 }
+// Situs gambar yang terbukti menolak dimuat langsung oleh WebView: halaman berikutnya langsung lewat jaringan HP,
+// tanpa menunggu percobaan langsung gagal dulu (itu yang membuat jeda sebelum gambar muncul).
+const nativeHosts = new Set();
+const hostOf = (u) => { try { return new URL(u).hostname; } catch { return ""; } };
+export const nativeFirst = (u) => isApp && !!u && nativeHosts.has(hostOf(u));
 // gambar langsung gagal: APK → ambil lewat jaringan HP (dengan Referer, tanpa Supabase); lalu proxy; lalu menyerah
 export async function imgFallback(im) {
   const st = Number(im.dataset.fb || 0);
   im.dataset.fb = String(st + 1);
   if (st === 0 && isApp && im.dataset.d) {
-    try { im.src = await imageViaNative(im.dataset.d, im.dataset.ref || ""); return true; } catch {}
+    try {
+      im.src = await imageViaNative(im.dataset.d, im.dataset.ref || "");
+      const h = hostOf(im.dataset.d);
+      if (h && !nativeHosts.has(h)) { nativeHosts.add(h); logDev("img", `${h} menolak dimuat langsung; halaman berikutnya langsung lewat jaringan HP`); }
+      return true;
+    } catch {}
   }
   if (st <= 1 && im.dataset.px && im.getAttribute("src") !== im.dataset.px) { im.dataset.fb = "2"; im.src = im.dataset.px; return true; }
   return false;
@@ -108,13 +120,20 @@ export async function imageViaNative(url, referer) {
 
 /* ---------- Shinigami (API JSON) ---------- */
 const SHNG = (() => {
-  const API = "https://api.shngm.io", SITE = "https://11.shinigami.asia";
+  const API = "https://api.shinigami.io", SITE = "https://s1.shinigami.mx";
   const get = (path) => nget(API + path, { headers: { Origin: SITE, Referer: SITE + "/" } });
   const coverOf = (o) => String(o?.cover_portrait_url || o?.cover_image_url || "");
   const STATUS = { 1: "ongoing", 2: "completed", 3: "hiatus" };
   async function chapters(id) {
-    const j = await get(`/v1/chapter/${encodeURIComponent(id)}/list?page_size=3000`);
-    return (j?.data || []).filter((c) => c?.chapter_id).map((c) => ({
+    // API baru: maks. 2000 per permintaan, sisanya lewat meta.next_cursor
+    let all = [], cur = "";
+    for (let i = 0; i < 10; i++) {
+      const j = await get(`/v1/chapter/${encodeURIComponent(id)}/list?limit=2000${cur ? `&cursor=${encodeURIComponent(cur)}` : ""}`);
+      all = all.concat(j?.data || []);
+      cur = j?.meta?.has_next && j.meta.next_cursor ? String(j.meta.next_cursor) : "";
+      if (!cur) break;
+    }
+    return all.filter((c) => c?.chapter_id).map((c) => ({
       id: String(c.chapter_id), ch: c.chapter_number != null ? String(c.chapter_number).replace(/\.0+$/, "") : null,
       title: String(c.chapter_title || "").trim(), at: c.release_date ? new Date(c.release_date).toISOString() : null, url: `${SITE}/chapter/${c.chapter_id}`,
     }));
@@ -124,15 +143,15 @@ const SHNG = (() => {
     chapters,
     async browse(b) {
       const page = Math.max(1, Number(b.page) || 1), limit = Math.min(30, Number(b.limit) || 20);
-      const p = new URLSearchParams({ page: String(page), page_size: String(limit), sort: b.sort === "popular" ? "popularity" : "latest", sort_order: "desc" });
+      const p = new URLSearchParams({ limit: String(limit), offset: String((page - 1) * limit), sort: b.sort === "popular" ? "popularity" : b.sort === "rating" ? "rating" : "latest", sort_order: "desc" });
       if (b.q) p.set("q", b.q);
       if (b.type) p.set("format", b.type);
       if (b.genres?.length) { p.set("genre_include", b.genres.join(",")); p.set("genre_include_mode", "and"); }
       if (b.status) p.set("status", b.status);
       const j = await get(`/v1/manga/list?${p}`);
       const items = (j?.data || []).filter((m) => m?.manga_id).map((m) => ({ id: String(m.manga_id), title: String(m.title || ""), cover: coverOf(m), type: b.type || "" }));
-      const total = j?.meta?.total_page != null ? Number(j.meta.total_page) : null;
-      return { ok: true, items, hasNext: total != null ? page < total : items.length >= limit };
+      const more = j?.meta?.has_next;
+      return { ok: true, items, hasNext: typeof more === "boolean" ? more : items.length >= limit };
     },
     async detail(b) {
       const id = b.comic_id;
@@ -191,7 +210,7 @@ const WEST = (() => {
     chapters: async (id) => ((await detailRaw(id)).chapters || []).filter((c) => c?.slug).map(mapCh),
     async browse(b) {
       const page = Math.max(1, Number(b.page) || 1), limit = Math.min(30, Number(b.limit) || 20);
-      const p = new URLSearchParams({ page: String(page), per_page: String(limit), type: "Comic", orderBy: b.sort === "popular" ? "Popular" : "Update" });
+      const p = new URLSearchParams({ page: String(page), per_page: String(limit), type: "Comic", orderBy: b.sort === "popular" ? "Popular" : b.sort === "az" ? "Az" : b.sort === "za" ? "Za" : "Update" });
       if (b.q) p.set("q", b.q);
       if (b.type) p.set("country", COUNTRY[b.type]);
       if (b.status) p.set("status", b.status[0].toUpperCase() + b.status.slice(1));
@@ -234,7 +253,8 @@ export async function direct(action, body) {
 }
 
 /* ---------- Notifikasi (Firebase Cloud Messaging) ---------- */
-const PN = () => plugin("PushNotifications");
+// Ninokuu Dev tanpa Firebase (paket .dev belum didaftarkan) → plugin notifikasi tidak dipanggil sama sekali
+const PN = () => (CFG.PUSH === false ? null : plugin("PushNotifications"));
 export const pushSupported = () => !!PN();
 export async function pushStatus() {
   if (!PN()) return "unsupported";
@@ -280,6 +300,8 @@ function openLink(u, go) {
   if (m) go(`#/c/${m[1]}/${m[2]}`);
   else if (/^ninokuu:\/\/chat/i.test(u)) go("#/chat");
   else if (/^ninokuu:\/\/verified/i.test(u)) go("#/more", "verified");
+  else if (/^ninokuu:\/\/reset/i.test(u)) go("#/more", "reset");          // ninokuu.site/resetpassword setelah password diganti
+  else if (/^ninokuu:\/\/more/i.test(u)) go("#/more");
   else if (/^https?:/i.test(u)) window.open(u, "_blank");
   else go("#/home");
 }
@@ -329,7 +351,7 @@ export async function checkBlockedSources(lib, call) {
 export async function latestBuild() {
   if (!isApp) return null;
   try {
-    const j = await nget(`https://api.github.com/repos/${REPO}/releases/tags/apk-terbaru`, { headers: { Accept: "application/vnd.github+json" } });
+    const j = await nget(`https://api.github.com/repos/${REPO}/releases/tags/${RELEASE_TAG}`, { headers: { Accept: "application/vnd.github+json" } });
     const name = String(j?.name || "");
     const n = Number(name.match(/build (\d+)/i)?.[1] || 0);
     const version = name.match(/v(\d+\.\d+\.\d+)/i)?.[1] || null;
@@ -338,7 +360,38 @@ export async function latestBuild() {
       .filter((x) => x && !/^(Co-Authored-By|Claude-Session|Dibangun otomatis|Unduh |Pembaruan bisa)/i.test(x)).slice(0, 12);
     if (!version && !n) return null;
     // rilis lama tanpa nomor versi dibandingkan lewat nomor build
-    const newer = version ? cmpVersion(version, VERSION) > 0 : n > BUILD;
-    return { version, build: n, newer, kind: version ? updateKind(VERSION, version) : "patch", url: `${SITE_URL}update/`, notes, at: j?.published_at || null };
+    // Dev: setiap build baru dihitung pembaruan (nomor versi bisa sama selama belum rilis global)
+    const newer = DEV ? n > BUILD : version ? cmpVersion(version, VERSION) > 0 : n > BUILD;
+    return { version, build: n, newer, kind: version ? updateKind(VERSION, version) : "patch", url: DEV ? `https://github.com/${REPO}/releases/tag/${RELEASE_TAG}` : `${SITE_URL}update/`, notes, at: j?.published_at || null };
   } catch { return null; }
+}
+
+/* ---------- Ninokuu Dev: catatan error untuk dikirim ke developer ---------- */
+const LOGK = "ninokuu:devlog";
+export const devLog = () => { try { return JSON.parse(localStorage.getItem(LOGK)) || []; } catch { return []; } };
+export const clearDevLog = () => { try { localStorage.removeItem(LOGK); } catch {} };
+export function logDev(kind, msg, extra = "") {
+  if (!DEV) return;
+  const l = devLog();
+  l.push({ t: new Date().toISOString(), k: kind, m: String(msg || "").slice(0, 500), x: String(extra || "").slice(0, 1500), r: location.hash });
+  try { localStorage.setItem(LOGK, JSON.stringify(l.slice(-80))); } catch {}
+}
+if (DEV) {
+  addEventListener("error", (e) => { if (e.target === window || e.error) logDev("error", e.message || e.error?.message, e.error?.stack || `${e.filename}:${e.lineno}`); });
+  addEventListener("unhandledrejection", (e) => logDev("promise", e.reason?.message || e.reason, e.reason?.stack || ""));
+}
+
+/* ---------- layar penuh saat membaca ---------- */
+// APK: bilah status Android disembunyikan (plugin StatusBar). Web: Fullscreen API (butuh ketukan pengguna).
+let fsOn = false;
+export async function setFullscreen(on) {
+  if (on === fsOn) return;
+  fsOn = on;
+  const sb = plugin("StatusBar");
+  if (sb) { try { await (on ? sb.hide() : sb.show()); } catch {} return; }
+  if (isApp) return;
+  try {
+    if (on && !document.fullscreenElement && document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen({ navigationUI: "hide" });
+    if (!on && document.fullscreenElement) await document.exitFullscreen();
+  } catch { fsOn = false; }
 }

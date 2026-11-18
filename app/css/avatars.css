@@ -38,3 +38,9 @@ body.nk-lite .nk-tw,body.nk-lite .nk-ring,body.nk-lite .nk-pulse,body.nk-lite .n
 @media (prefers-reduced-motion: reduce){.nk-spin,.nk-ring,.nk-tw{animation:none}}
 /* komet tidak tampil diam sebelum animasinya mulai (saat halaman baru dimuat) */
 .nk-comet{animation-fill-mode:backwards}
+/* Bingkai avatar di lapisan GPU sendiri: gambar ulangnya tidak ikut menggambar ulang seluruh halaman.
+   Dijeda saat layar berpindah (.fx-hold), saat di luar layar (.fx-off), dan sprite hanya jalan bila #nk-sprite.run. */
+.av-wrap{will-change:transform}
+.fx-hold *,.fx-hold::before,.fx-hold::after,.rk-b.fx-hold,.fx-off *,.fx-off::before,.fx-off::after,.rk-b.fx-off{animation-play-state:paused!important}
+#nk-sprite *{animation-play-state:paused!important}
+#nk-sprite g.run *{animation-play-state:running!important}

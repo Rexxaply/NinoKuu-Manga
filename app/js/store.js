@@ -11,7 +11,9 @@ export const state = {
   lib: new Map(Object.entries(api.lsGet("lib", {}))),     // key → {source, comic_id, title, cover, notify, added_at}
   hist: new Map(Object.entries(api.lsGet("hist", {}))),   // key → {source, comic_id, title, cover, chapter, chapter_id, page, read_at}
   profile: api.lsGet("profile"),                          // {name, exp, role, verified}
-  settings: { readMode: "scroll", updView: "list", searchView: "grid", ...api.lsGet("settings", {}) },
+  // autoHide: menu bacaan hilang saat menggulir · screenMode: "standard" | "fullscreen" (bilah status HP disembunyikan
+  // saat layar bacaan diketuk) · chapterEnd: "menu" (menu muncul di akhir chapter) | "auto" (langsung lanjut chapter)
+  settings: { readMode: "scroll", updView: "list", searchView: "grid", autoHide: true, screenMode: "standard", chapterEnd: "menu", ...api.lsGet("settings", {}) },
 };
 const saveLocal = () => {
   api.lsSet("lib", Object.fromEntries(state.lib));
