@@ -23,6 +23,7 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 - Info komik ⇄ pembaca dengan animasi yang sama seperti Beranda → info komik: isi halaman meluncur dari samping, bar meluncur dari tepi layar; tombol kembali (juga tombol kembali Android) menurunkan/menaikkan bar dulu sebelum info komik meluncur masuk
 - Masuk ke pembaca lebih mulus: halaman langsung tampil tanpa bergeser ke samping, bar atas & bawah meluncur masuk dari tepi layar
 - Review desain (Apple HIG): label badge minimal 11 px; Top 10 tanpa celah antara judul & jenis; dukungan "Kurangi transparansi" dan "Tingkatkan kontras"
+- Indikator gulir tipis gaya iOS di tepi kanan pembaca: muncul saat halaman bergerak, menghilang sendiri saat berhenti
 - Posisi baca dikirim ke server paling sering 1× per 20 detik (sebelumnya setiap ganti halaman); tetap tersimpan di HP seketika
 
 ### Detail

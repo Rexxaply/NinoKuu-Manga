@@ -998,6 +998,22 @@ async function vReader(src, id, chId) {
     if (!S.state.settings.autoHide || atEnd || seeking || menuOpen() || Date.now() < quietUntil || pinch || !rd.classList.contains("ui")) { anchor = pos; return; }
     if (Math.abs(pos - anchor) > (slide ? 30 : 40)) { rd.classList.remove("ui"); anchor = pos; }
   };
+  // indikator gulir tipis di tepi kanan (gaya iOS): muncul saat halaman bergerak, menghilang ±0,9 dtk setelah berhenti
+  if (!slide) {
+    const sb = document.createElement("div"); sb.className = "r-sb"; sb.setAttribute("aria-hidden", "true"); sb.innerHTML = "<i></i>";
+    rd.append(sb);
+    const th = sb.firstChild; let sbT = 0, sbRaf = 0;
+    const sbDraw = () => {
+      sbRaf = 0;
+      const H = box.clientHeight, S2 = box.scrollHeight, track = sb.clientHeight; if (S2 <= H + 4 || !track) return;
+      const len = Math.max(36, Math.round(track * H / S2)), y = Math.round((track - len) * Math.min(1, box.scrollTop / (S2 - H)));
+      th.style.height = len + "px"; th.style.transform = `translate3d(0, ${y}px, 0)`;
+    };
+    box.addEventListener("scroll", () => {
+      if (!sbRaf) sbRaf = requestAnimationFrame(sbDraw);
+      sb.classList.add("on"); clearTimeout(sbT); sbT = setTimeout(() => sb.classList.remove("on"), 900);
+    }, { passive: true });
+  }
   box.addEventListener("scroll", () => {
     if (rafPos) return;
     rafPos = requestAnimationFrame(() => {
