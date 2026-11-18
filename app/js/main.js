@@ -1387,15 +1387,20 @@ function vFav(tab) {
   if (tab && ["lib", "hist", "dl"].includes(tab)) fav.tab = tab;
   const grid = S.state.settings.favView === "grid";
   const readOf = (m) => S.histItem(m.source, m.comic_id);
+  // ada chapter yang belum dibaca (untuk lencana +N / lanjut di tampilan daftar)
   const isNew = (m) => { const r = readOf(m); return m.latest != null && r && parseFloat(m.latest) > parseFloat(r.chapter); };
+  // label "NEW UPDATE" & filter "New update": chapter terbaru rilis < 24 jam lalu dan belum dibaca sampai chapter itu
+  // tanggal tanpa jam (sebagian sumber) = tengah malam waktu HP pada hari itu, jadi rilis "hari ini" tetap terhitung baru
+  const tsOf = (v) => { const d = /^(\d{4})-(\d\d)-(\d\d)$/.exec(v || ""); const t = d ? new Date(+d[1], d[2] - 1, +d[3]).getTime() : Date.parse(v || ""); return Number.isFinite(t) ? t : 0; };
+  const isFresh = (m) => { const t = tsOf(m.latestAt), r = readOf(m); return t > 0 && Date.now() - t < 864e5 && !(r && parseFloat(r.chapter) >= parseFloat(m.latest)); };
   // urutan koleksi: update terbaru (tanggal chapter terakhir yang diketahui saat komik dibuka), terakhir ditambah, judul
   const fs = FAV_SORTS.some(([k]) => k === S.state.settings.favSort) ? S.state.settings.favSort : "update";
   const byAdded = (a, b) => (b.added_at || "").localeCompare(a.added_at || "");
   const byTitle = (a, b) => String(a.title || "").localeCompare(String(b.title || ""), "id", { sensitivity: "base", numeric: true });
   const libAll = [...S.state.lib.values()].sort(fs === "added" ? byAdded : fs === "az" ? byTitle : fs === "za" ? (a, b) => byTitle(b, a)
-    : (a, b) => (b.latestAt || b.added_at || "").localeCompare(a.latestAt || a.added_at || ""));
+    : (a, b) => (tsOf(b.latestAt) || tsOf(b.added_at)) - (tsOf(a.latestAt) || tsOf(a.added_at)) || byTitle(a, b));   // dibanding sebagai waktu (format tanggal tiap sumber berbeda)
   const lib = libAll.filter((m) => (!fav.q || m.title.toLowerCase().includes(fav.q.toLowerCase()))
-    && (fav.filter === "all" || (fav.filter === "new" ? isNew(m) : m.type === fav.filter)));
+    && (fav.filter === "all" || (fav.filter === "new" ? isFresh(m) : m.type === fav.filter)));
   const hist = S.history();
   // baris riwayat: judul, sumber · waktu, "Ch. 23 · hal 12/48" + bar halaman; tombol Lanjut (ke halaman terakhir)
   // atau Berikutnya (bila chapter itu sudah selesai dibaca)
@@ -1435,7 +1440,7 @@ function vFav(tab) {
       : `<div class="empty"><span class="empty-ic">${icon("heart", 24)}</span><b>Koleksi masih kosong</b><span>Ketuk ikon hati di halaman komik untuk menyimpannya di sini.</span><a class="btn ghost" href="#/search">Cari komik</a></div>`)
     : grid ? `<div class="g3 favg">${lib.map((m) => { const r = readOf(m); return `<a class="grid-card" href="${comicHref(m.source, m.comic_id)}"><span class="gc-cv">${cover(m.cover, m.title, "fav3")}
         <span class="stack">${m.latest != null ? `<span class="st-red">Terbaru ${esc(m.latest)}</span>` : ""}<span class="st-dark">${r ? "Dibaca " + esc(r.chapter) : "Belum dibaca"}</span></span>
-        ${isNew(m) ? `<span class="new-up">NEW UPDATE</span>` : ""}${m.notify ? `<span class="bell-b">${icon("bellF", 12)}</span>` : ""}</span>
+        ${isFresh(m) ? `<span class="new-up">NEW UPDATE</span>` : ""}${m.notify ? `<span class="bell-b">${icon("bellF", 12)}</span>` : ""}</span>
         <b class="fg-t">${esc(m.title)}</b><span class="mu xs">${srcType(m)}</span></a>`; }).join("")}</div>`
     : `<div class="frows">${lib.map(favRow).join("")}</div>`}`;
   } else if (fav.tab === "hist") {
