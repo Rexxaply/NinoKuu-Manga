@@ -62,14 +62,20 @@ export function maybeShow(ctx) {
   setTimeout(() => popup(info, ctx), 900);
 }
 
+// Satu lapisan gelap dipakai ulang saat berpindah pop-up → changelog → slide (tidak berkedip/muncul ulang);
+// hanya kartunya yang berganti dengan animasi masuk singkat.
 function host(cls) {
-  document.querySelector(".tw-host")?.remove();
-  const h = document.createElement("div");
+  let h = document.querySelector(".tw-host:not(.out)");
+  if (!h) { h = document.createElement("div"); document.body.append(h); }
   h.className = "tw-host " + cls;
-  document.body.append(h);
+  h.onclick = null;
   return h;
 }
-const close = () => document.querySelector(".tw-host")?.remove();
+const close = () => {
+  const h = document.querySelector(".tw-host:not(.out)"); if (!h) return;
+  h.classList.add("out"); h.onclick = null;
+  setTimeout(() => h.remove(), 220);
+};
 
 function popup(info, ctx) {
   const h = host("tw-pop");
@@ -78,12 +84,12 @@ function popup(info, ctx) {
     <button class="btn primary" data-tw="look">${icon("play", 16, 2)}Lihat</button>
     <button class="btn ghost" data-tw="log">Hanya baca Changelog</button>
     <button class="tw-skip" data-tw="close">Tutup</button></div>`;
-  h.addEventListener("click", (e) => {
+  h.onclick = (e) => {
     const b = e.target.closest("[data-tw]"); if (!b) return;
     if (b.dataset.tw === "look") tour(info, ctx, 0);
     else if (b.dataset.tw === "log") changelog(info, ctx);
     else close();
-  });
+  };
 }
 
 function changelog(info, ctx) {
@@ -95,34 +101,68 @@ function changelog(info, ctx) {
       <span class="cap mt8">Perbaikan bug</span>
       ${info.fixes.map((t) => `<div class="tw-it"><span class="gold">${icon("check", 15, 2.2)}</span><span class="sm">${esc(t)}</span></div>`).join("")}</div>
     <div class="row g8"><button class="btn ghost grow" data-tw="close">Tutup</button><button class="btn primary grow" data-tw="look">Lihat fiturnya</button></div></div>`;
-  h.addEventListener("click", (e) => {
+  h.onclick = (e) => {
     const b = e.target.closest("[data-tw]"); if (!b) return;
     if (b.dataset.tw === "look") tour(info, ctx, 0); else close();
-  });
+  };
 }
 
-// Slide gambar: hanya gambar slide ini & berikutnya yang dimuat.
+// Slide gambar (carousel): semua slide ada di satu jalur yang digeser dengan transform, jadi pindah slide
+// tidak membangun ulang kartu (gambar tidak berkedip/reset). Geser mengikuti jari 1:1, karet di ujung,
+// dan lemparan cepat langsung pindah. Gambar dimuat untuk slide ini dan tetangganya saja.
 const IMG = (n) => `img/new/${n}.webp`;
-function tour(info, ctx, i) {
-  const steps = info.tour, st = steps[i];
-  if (!st) { close(); return; }
+const GAP = 12;
+function tour(info, ctx, start = 0) {
+  const steps = info.tour, n = steps.length;
   const h = host("tw-pop");
-  if (steps[i + 1]) new Image().src = IMG(steps[i + 1].img);
-  const last = i === steps.length - 1;
-  h.innerHTML = `<div class="tw-card glass tw-slide" role="dialog" aria-modal="true" aria-label="${esc(st.title)}">
-    <div class="tw-shot"><img src="${IMG(st.img)}" alt="${esc(st.title)}" width="420" height="909" decoding="async" draggable="false"></div>
-    <b class="tw-t">${esc(st.title)}</b><p class="tw-p">${esc(st.text)}</p>
-    <div class="tw-dots" aria-label="Slide ${i + 1} dari ${steps.length}">${steps.map((_, k) => `<span class="${k === i ? "on" : ""}"></span>`).join("")}</div>
-    <div class="row g8"><button class="tw-b grow" data-tw="prev" ${i ? "" : "disabled"}>Sebelumnya</button><button class="tw-b on grow" data-tw="next">${last ? "Selesai" : "Berikutnya"}</button></div>
+  h.innerHTML = `<div class="tw-card glass tw-slide" role="dialog" aria-modal="true" aria-roledescription="carousel" aria-label="Fitur baru">
+    <div class="tw-view"><div class="tw-track">${steps.map((st, k) => `<div class="tw-shot" aria-label="Slide ${k + 1} dari ${n}"><img data-src="${IMG(st.img)}" alt="${esc(st.title)}" width="420" height="909" decoding="async" draggable="false"></div>`).join("")}</div></div>
+    <div class="tw-txt" aria-live="polite">${steps.map((st) => `<div class="tw-tx"><b class="tw-t">${esc(st.title)}</b><p class="tw-p">${esc(st.text)}</p></div>`).join("")}</div>
+    <div class="tw-dots" aria-hidden="true">${steps.map(() => "<span></span>").join("")}</div>
+    <div class="row g8"><button class="tw-b grow" data-tw="prev">Sebelumnya</button><button class="tw-b on grow" data-tw="next">Berikutnya</button></div>
     <button class="tw-skip" data-tw="close">Lewati</button></div>`;
-  const go = (k) => { if (k >= 0) tour(info, ctx, k); };
-  h.addEventListener("click", (e) => {
+  const view = h.querySelector(".tw-view"), track = h.querySelector(".tw-track");
+  const imgs = [...h.querySelectorAll(".tw-shot img")], txs = [...h.querySelectorAll(".tw-tx")], dots = [...h.querySelectorAll(".tw-dots span")];
+  const prevB = h.querySelector("[data-tw=prev]"), nextB = h.querySelector("[data-tw=next]");
+  let i = 0;
+  const load = (k) => { const im = imgs[k]; if (im?.dataset.src) { im.src = im.dataset.src; delete im.dataset.src; } };
+  const pos = (px = 0) => `translate3d(calc(${-i} * (100% + ${GAP}px) + ${px}px), 0, 0)`;
+  const show = (k, anim = true) => {
+    i = Math.max(0, Math.min(n - 1, k));
+    track.classList.toggle("drag", !anim);
+    track.style.transform = pos();
+    txs.forEach((t, j) => { t.classList.toggle("on", j === i); t.toggleAttribute("inert", j !== i); });
+    dots.forEach((d, j) => d.classList.toggle("on", j === i));
+    prevB.disabled = i === 0;
+    nextB.textContent = i === n - 1 ? "Selesai" : "Berikutnya";
+    load(i); load(i + 1); load(i - 1);
+  };
+  show(start, false);
+  h.onclick = (e) => {
     const b = e.target.closest("[data-tw]"); if (!b) return;
-    if (b.dataset.tw === "next") go(i + 1); else if (b.dataset.tw === "prev") go(i - 1); else close();
-  });
-  // geser kiri/kanan pada gambar untuk pindah slide
-  let x0 = null;
-  const shot = h.querySelector(".tw-shot");
-  shot.addEventListener("touchstart", (e) => { x0 = e.touches[0].clientX; }, { passive: true });
-  shot.addEventListener("touchend", (e) => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null; if (Math.abs(dx) > 50) go(dx < 0 ? i + 1 : i - 1); });
+    if (b.dataset.tw === "next") { if (i === n - 1) close(); else show(i + 1); }
+    else if (b.dataset.tw === "prev") show(i - 1);
+    else close();
+  };
+  // geser: arah ditentukan di gerakan pertama; vertikal dibiarkan, horizontal mengikuti jari
+  let x0 = 0, y0 = 0, t0 = 0, dx = 0, axis = "";
+  view.addEventListener("touchstart", (e) => { const t = e.touches[0]; x0 = t.clientX; y0 = t.clientY; t0 = e.timeStamp; dx = 0; axis = ""; }, { passive: true });
+  view.addEventListener("touchmove", (e) => {
+    const t = e.touches[0], mx = t.clientX - x0, my = t.clientY - y0;
+    if (!axis) { if (Math.abs(mx) < 6 && Math.abs(my) < 6) return; axis = Math.abs(mx) > Math.abs(my) ? "x" : "y"; if (axis === "x") track.classList.add("drag"); }
+    if (axis !== "x") return;
+    e.preventDefault();
+    const edge = (i === 0 && mx > 0) || (i === n - 1 && mx < 0);
+    dx = edge ? mx * 0.35 : mx;                                   // karet di slide pertama/terakhir
+    track.style.transform = pos(dx);
+  }, { passive: false });
+  const end = (e) => {
+    if (axis !== "x") return;
+    axis = "";
+    const w = view.clientWidth, v = dx / Math.max(1, e.timeStamp - t0);   // px/ms
+    const go = Math.abs(dx) > w * 0.25 || Math.abs(v) > 0.45 ? (dx < 0 ? 1 : -1) : 0;
+    show(i + go);
+  };
+  view.addEventListener("touchend", end);
+  view.addEventListener("touchcancel", end);
 }

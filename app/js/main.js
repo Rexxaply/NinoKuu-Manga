@@ -980,13 +980,13 @@ async function vReader(src, id, chId) {
     rtog: (el) => {
       const k = el.dataset.k, on = !S.state.settings[k];
       S.setSetting(k, on);
-      el.outerHTML = toggleRow(k, ...READ_OPTS.find((o) => o[0] === k).slice(1), "rtog");
+      flipToggle(el, on);
       if (k === "autoHide") anchor = slide ? Math.abs(box.scrollLeft) : box.scrollTop;
     },
     rch: (el) => {
       const k = el.dataset.k, v = el.dataset.v;
       S.setSetting(k, v);
-      el.closest(".ch-opt").outerHTML = choiceRow(k);
+      flipChoice(el);
       if (k === "screenMode") syncFs();
       if (k === "chapterEnd") { if (v === "auto" && atEnd) autoNextStart(); else autoNextStop(); }
     },
@@ -1338,6 +1338,13 @@ const READ_CHOICES = [
   ["chapterEnd", "Di akhir chapter", [["menu", "Tampilkan menu", "Menu muncul saat sampai di akhir chapter; pilih sendiri lanjut atau tidak."], ["auto", "Otomatis lanjut", "Sampai di akhir chapter, chapter berikutnya terbuka sendiri (bisa dibatalkan)."]]],
 ];
 const choiceVal = (k) => { const c = READ_CHOICES.find((x) => x[0] === k); const v = S.state.settings[k]; return c[2].some((o) => o[0] === v) ? v : c[2][0][0]; };
+// ubah tampilan sakelar/pilihan di tempat (tanpa menggambar ulang) supaya animasinya terlihat
+const flipToggle = (el, on) => { el.setAttribute("aria-checked", String(on)); el.querySelector(".switch")?.classList.toggle("on", on); };
+const flipChoice = (el) => {
+  const box = el.closest(".ch-opt"), k = el.dataset.k, v = el.dataset.v;
+  box.querySelectorAll("[data-act=rch]").forEach((b) => b.setAttribute("aria-selected", String(b === el)));
+  const o = READ_CHOICES.find((x) => x[0] === k)[2].find((x) => x[0] === v); const d = box.querySelector(".lh"); if (o && d) d.textContent = o[2];
+};
 const choiceRow = (k) => {
   const [, t, opts] = READ_CHOICES.find((x) => x[0] === k), cur = choiceVal(k);
   return `<div class="ch-opt" data-ck="${k}"><b>${t}</b><div class="seg s2" role="tablist">${opts.map(([v, n]) => `<button role="tab" aria-selected="${v === cur}" data-act="rch" data-k="${k}" data-v="${v}">${n}</button>`).join("")}</div><span class="mu xs lh">${opts.find((o) => o[0] === cur)[2]}</span></div>`;
@@ -1610,7 +1617,7 @@ async function vPage(name) {
   <section class="sec"><h2 class="cap">Bacaan</h2><div class="group" id="setRead">${readPrefs("rtog")}</div></section></div><div class="pad-nav"></div>`;
     };
     draw();
-    setActs({ back: () => back("#/more"), gfx: (el) => { S.setSetting("gfx", el.dataset.v); applyGfx(); draw(); }, rtog: (el) => { S.setSetting(el.dataset.k, !S.state.settings[el.dataset.k]); draw(); }, rch: (el) => { S.setSetting(el.dataset.k, el.dataset.v); draw(); } });
+    setActs({ back: () => back("#/more"), gfx: (el) => { S.setSetting("gfx", el.dataset.v); applyGfx(); draw(); }, rtog: (el) => { const on = !S.state.settings[el.dataset.k]; S.setSetting(el.dataset.k, on); flipToggle(el, on); }, rch: (el) => { S.setSetting(el.dataset.k, el.dataset.v); flipChoice(el); } });
     return;
   } else if (name === "about") {
     html = topbar("Tentang aplikasi") + `<div class="px col g14 mt10"><div class="card col center g10 big-card"><img src="icons/logo.png" alt="Ninokuu" class="about-logo">
