@@ -260,7 +260,7 @@ async function openNotif() {
     <div class="pop-h"><span class="cap m0">Notifikasi</span>${unread ? `<button class="link-red sm" data-n="readall">Tandai dibaca</button>` : ""}</div>
     <div class="pop-list">${!S.loggedIn() ? `<p class="pop-empty">Masuk untuk menerima notifikasi chapter baru dari komik yang loncengnya kamu nyalakan.<br><a class="gold b" href="#/more">Masuk</a></p>`
       : notifs.length ? notifs.map((x) => `<button class="pop-i ${readSet.has(x.id) ? "" : "unread"}" data-n="open" data-id="${x.id}">
-          <span class="pop-cv">${x.cover ? `<img src="${esc(x.cover)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-rm>` : icon(x.comic_id ? "book" : "mega", 15)}</span>
+          <span class="pop-cv">${x.cover ? `<img ${N.imgAttrs(x.cover)} alt="" loading="lazy" referrerpolicy="no-referrer" data-rm>` : icon(x.comic_id ? "book" : "mega", 15)}</span>
           <span class="rc-mid g1"><span class="t1 pop-t">${esc(x.title)}</span><span class="t1 mu xs">${esc(x.body || "")} · ${esc(ago(x.created_at))}</span></span>
           ${readSet.has(x.id) ? "" : `<span class="dot" aria-label="Belum dibaca"></span>`}</button>`).join("")
       : `<p class="pop-empty">Belum ada notifikasi. Nyalakan lonceng di info komik.</p>`}</div>
@@ -419,7 +419,7 @@ async function vDetail(src, id) {
     view.innerHTML = `
 <div class="dbar" id="dbar"><button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 21, 2)}</button><span class="dbar-t">${esc(m.title)}</span>
   <button class="r-round glass" data-act="dl" aria-label="Unduh chapter">${icon("down", 20, 2)}</button><button class="pill-btn glass" data-act="report">${icon("bug", 17)}Laporkan</button></div>
-<div class="dt-bg ${heroCol ? "tinted" : ""}" id="dtbg" aria-hidden="true"${heroCol ? ` style="--hc:${heroCol}"` : ""}><div class="dt-img" style="background-image:url('${esc(m.cover)}')"></div><div class="dt-tint"></div></div>
+<div class="dt-bg ${heroCol ? "tinted" : ""}" id="dtbg" aria-hidden="true"${heroCol ? ` style="--hc:${heroCol}"` : ""}><div class="dt-img" style="background-image:url('${esc(N.imgParts(m.cover).src)}')"></div><div class="dt-tint"></div></div>
 <div class="hero has-bar dt">
   <div class="hero-in">${cover(m.cover, m.title, "det")}
     <div class="hero-t"><span class="meta"><span class="tag-s">${esc(srcName(src))}</span>${type ? `<span>${esc(typeName(type))}</span>` : ""}</span><h1 id="dtTitle" title="${esc(m.title)}">${esc(m.title)}</h1>
@@ -643,7 +643,7 @@ async function vReader(src, id, chId) {
   const longStrip = kind === "manhwa" || kind === "manhua" || (kind !== "manga" && !!stripSeen[stripKey]);
   let slide = st.readMode === "slide" && !longStrip;
   const rtl = st.readDir !== "ltr";
-  const imgs = p.images.map((im, i) => `<img class="r-img" data-i="${i + 1}" src="${esc(im.local || im.direct ? im.u : api.pageUrl(im.p))}"${im.direct ? ` data-direct="${esc(im.u)}"` : ""} alt="Halaman ${i + 1}" ${i > 2 ? 'loading="lazy"' : ""} decoding="async" referrerpolicy="no-referrer" draggable="false">`);
+  const imgs = p.images.map((im, i) => `<img class="r-img" data-i="${i + 1}" ${im.local ? `src="${esc(im.u)}"` : N.imgAttrs(im.u, { ref: p.ref || "", px: im.p ? api.pageUrl(im.p) : "" })} alt="Halaman ${i + 1}" ${i > 2 ? 'loading="lazy"' : ""} decoding="async" referrerpolicy="no-referrer" draggable="false">`);
 
   view.innerHTML = `<div class="reader ui ${slide ? "slide" : ""}" id="rd">
   ${slide ? `<div class="r-slides" id="rbox" dir="${rtl ? "rtl" : "ltr"}">${imgs.map((im) => `<div class="r-slide">${im}</div>`).join("")}<div class="r-slide r-endslide"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span>${isLocal ? "" : `${chLike(null)}<a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini</a>`}</div></div>`
@@ -675,11 +675,8 @@ async function vReader(src, id, chId) {
       <button class="r-sq glass" data-act="next" aria-label="${next ? "Chapter berikutnya" : "Kembali ke info komik"}">${next ? icon("chev", 22, 2.2) : icon("home", 21, 2)}</button>
     </div></div></div>`;
   const rd = $("#rd"), box = $("#rbox"), pages = $("#rpages");
-  // APK: gambar langsung dari situs; bila ditolak WebView, ambil ulang lewat jaringan HP
-  $$(".r-img[data-direct]", rd).forEach((im) => im.addEventListener("error", async () => {
-    if (im.dataset.tried) return; im.dataset.tried = "1";
-    try { im.src = await N.imageViaNative(im.dataset.direct, p.ref); } catch {}
-  }));
+  // halaman dimuat langsung dari situs aslinya (tidak memakai kuota Supabase); bila ditolak,
+  // penangan error di ui.js mencoba jaringan HP (APK) lalu proxy sebagai cadangan terakhir
   const meta = { source: src, comic_id: id, title: d.manga.title, cover: d.manga.cover, chapter: ch.ch, chapter_id: ch.id, pages: total, type: typeFromTags(d.manga.tags) };
   if (!isLocal) S.saveHistory({ ...meta, page: 1 });
   // EXP baca: hanya setelah chapter dibaca sampai habis (akhir chapter terlihat)
