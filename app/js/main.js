@@ -1709,15 +1709,41 @@ function openDevLog() {
     if (b.dataset.s === "clear") { N.clearDevLog(); closeSheet(); toast("Log dihapus"); if (route.name === "more") vMore(); }
   });
 }
+// Pembaruan dicek saat aplikasi dibuka, saat kembali dari latar belakang, dan tiap 15 menit selama dipakai,
+// jadi pengguna tidak perlu menutup-buka aplikasi. Sedang membaca → spanduk kecil di atas (tidak menutupi halaman);
+// di halaman lain → lembar pembaruan. Tiap versi hanya diumumkan sekali per sesi (dan tidak lagi bila dipilih "Nanti").
+let updLast = 0, updShown = "";
 async function checkUpdate(manual) {
   if (manual) toast("Memeriksa pembaruan…", 1500);
+  updLast = Date.now();
   const r = await N.latestBuild();
   if (!r) { if (manual) toast("Tidak bisa memeriksa pembaruan. Periksa koneksi internet."); return; }
   if (r.newer) {
+    const key = String(r.version || r.build);
     let later = ""; try { later = sessionStorage.getItem("ninokuu:updLater") || ""; } catch {}
-    if (manual || later !== String(r.version || r.build)) showUpdate(r);
+    if (manual) { updBanner(null); showUpdate(r); return; }
+    if (later === key || updShown === key) return;
+    updShown = key;
+    if (route.name === "reader") updBanner(r); else showUpdate(r);
   } else if (manual) toast(`Kamu sudah memakai versi terbaru (v${VERSION}).`);
 }
+function updBanner(r) {
+  document.querySelector(".upd-ban")?.remove();
+  if (!r) return;
+  const el = document.createElement("div");
+  el.className = "upd-ban glass"; el.setAttribute("role", "status");
+  el.innerHTML = `<span class="upd-ban-t"><b>Pembaruan tersedia</b><span class="mu xs">${r.version ? "Versi " + esc(r.version) : "Build " + esc(r.build)}</span></span>
+    <button class="upd-ban-go" data-u="go">Lihat</button><button class="upd-ban-x" data-u="x" aria-label="Tutup">${icon("x", 16, 2.2)}</button>`;
+  el.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-u]"); if (!b) return;
+    el.classList.add("out"); setTimeout(() => el.remove(), 260);
+    if (b.dataset.u === "go") showUpdate(r);
+    else { try { sessionStorage.setItem("ninokuu:updLater", String(r.version || r.build)); } catch {} }
+  });
+  document.body.append(el);
+  setTimeout(() => { if (el.isConnected) { el.classList.add("out"); setTimeout(() => el.remove(), 260); } }, 12000);
+}
+const updTick = () => { if (document.visibilityState === "visible" && Date.now() - updLast > 14 * 60e3) checkUpdate(false); };
 
 let exitArmed = false, exitT = null;
 function startApp() {
@@ -1725,6 +1751,8 @@ function startApp() {
   N.onKeyboard(setKeyboard);
   N.onPushReceived(() => refreshDots());
   setTimeout(() => checkUpdate(false), 2500);
+  setInterval(updTick, 60e3);                                   // tiap menit dicek apakah sudah 15 menit sejak cek terakhir
+  N.onResume(() => { if (Date.now() - updLast > 5 * 60e3) setTimeout(() => checkUpdate(false), 1200); });
   N.onPushOpen((h) => go(h));
   N.onUrlOpen((h, why) => {
     go(h);

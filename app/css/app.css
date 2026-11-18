@@ -1284,3 +1284,13 @@ body.short .r-menu { top: calc(60px + env(safe-area-inset-top)); max-height: cal
   .g2 { grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); }
   .cats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
+
+/* spanduk pembaruan (muncul di atas saat membaca, tidak menutupi halaman) */
+.upd-ban { position: fixed; z-index: 40; left: 50%; top: calc(10px + env(safe-area-inset-top)); width: min(100% - 24px, 420px); transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px; border-radius: 22px; border: 1px solid rgba(255, 255, 255, .14);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .14); animation: updIn .42s cubic-bezier(.32, .72, 0, 1); }
+.upd-ban.out { transform: translate(-50%, calc(-100% - 20px - env(safe-area-inset-top))); transition: transform .26s cubic-bezier(.4, 0, 1, 1); }
+@keyframes updIn { from { transform: translate(-50%, calc(-100% - 20px - env(safe-area-inset-top))); } }
+.upd-ban-t { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; font-size: 14px; }
+.upd-ban-go { height: 36px; padding: 0 16px; border: 0; border-radius: 18px; background: var(--red); color: #fff; font-weight: 700; font-size: 13px; }
+.upd-ban-x { width: 36px; height: 36px; border: 0; border-radius: 18px; background: rgba(255, 255, 255, .08); color: var(--mu); display: grid; place-items: center; }
