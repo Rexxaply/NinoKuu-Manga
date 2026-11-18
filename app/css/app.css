@@ -1008,3 +1008,8 @@ body.tw-lock { overflow: hidden; touch-action: none; }
 .r-togs .rc-mid { gap: 2px; line-height: 1.35; }
 .r-togs .mrow b { font-size: 13.5px; }
 .r-togs .mrow .mu.sm { font-size: 12px; }
+/* tombol muat ulang di bar atas pembaca */
+.r-reload { position: relative; }
+.r-fdot { position: absolute; top: 8px; right: 8px; width: 9px; height: 9px; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 2px rgba(11, 16, 24, .9); }
+.r-fdot[hidden] { display: none; }
+@media (max-width: 420px) { .r-top .r-round { width: 46px; height: 46px; } .r-top .r-pill { min-height: 46px; padding: 5px 14px; } }

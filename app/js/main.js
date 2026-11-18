@@ -734,6 +734,7 @@ async function vReader(src, id, chId) {
     <button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 22, 2)}</button>
     <button class="r-pill glass" data-act="chlist" aria-label="Daftar chapter"><b class="t1">${esc(d.manga.title)}</b><span class="mu xs row g4">Chapter ${esc(ch.ch)}${icon("chev", 12, 2.4)}</span></button>
     ${isLocal ? "" : `<a class="r-round glass" href="${commentsHref(src, id, chId)}" aria-label="Komentar chapter">${icon("msg", 20)}</a>`}
+    <button class="r-round glass r-reload" data-act="reload" aria-label="Muat ulang chapter">${icon("refresh", 20)}<span class="r-fdot" id="rfdot" hidden></span></button>
     <button class="r-round glass" data-act="menu" aria-label="Pengaturan mode baca" aria-expanded="false">${icon("dots", 22)}</button>
   </div>
   <div class="r-menu-bg" data-act="closeMenu" hidden></div>
@@ -743,7 +744,6 @@ async function vReader(src, id, chId) {
       const on = (slide ? "slide" : "scroll") === k, off = k === "slide" && longStrip;
       return `<button class="r-mode ${on ? "on" : ""}" role="radio" aria-checked="${on}" data-act="rmode" data-v="${k}" ${off ? "disabled" : ""}><span class="${on ? "redt" : "mu"}">${icon(ic, 20)}</span><span class="col grow"><b>${n}</b><span class="mu xs">${dsc}</span></span>${on ? `<span class="redt">${icon("check", 18, 2.4)}</span>` : ""}</button>`; }).join("")}
     <button class="r-mode" data-act="chlist"><span class="gold">${icon("list", 20)}</span><span class="col grow"><b>Daftar chapter</b><span class="mu xs">${d.chapters.length} chapter · cari & pindah chapter</span></span></button>
-    <button class="r-mode" data-act="reload"><span class="gold">${icon("refresh", 20)}</span><span class="col grow"><b>Muat ulang chapter</b><span class="mu xs" id="rfailn">Untuk gambar yang gagal dimuat</span></span></button>
     <button class="r-mode" data-act="rreport"><span class="redt">${icon("bug", 20)}</span><span class="col grow"><b>Laporkan masalah chapter</b><span class="mu xs">Gambar rusak, halaman hilang, dll.</span></span></button>
     <span class="cap mt4">Bacaan</span><div class="r-togs">${readPrefs("rtog")}</div>
     ${slide ? `<span class="cap mt4">Arah geser</span><div class="seg s3">${[["rtl", "Kanan ke kiri"], ["ltr", "Kiri ke kanan"]].map(([k, n]) => `<button role="tab" aria-selected="${(rtl ? "rtl" : "ltr") === k}" data-act="rdir" data-v="${k}">${n}</button>`).join("")}</div>` : ""}
@@ -933,7 +933,7 @@ async function vReader(src, id, chId) {
     },
     cancelNext: () => { autoNextStop(true); toast("Lanjut otomatis dibatalkan untuk chapter ini"); },
     reimg: (el) => { const im = $(`.r-img[data-i="${el.dataset.i}"]`, rd); if (im) reloadImg(im); },
-    reload: () => { menu(false); if (failed.size) { [...failed].forEach(reloadImg); toast(`Memuat ulang ${failed.size || "semua"} gambar…`); } else vReader(src, id, chId); },
+    reload: () => { menu(false); if (failed.size) { const n = failed.size; [...failed].forEach(reloadImg); toast(`Memuat ulang ${n} gambar yang gagal…`); } else { toast("Memuat ulang chapter…", 1500); vReader(src, id, chId); } },
     prev: () => prev && goReplace(readHref(src, id, prev.id)),
     main: () => (next ? goReplace(readHref(src, id, next.id)) : toComic()),
     next: () => (next ? goReplace(readHref(src, id, next.id)) : toComic()),
@@ -942,7 +942,8 @@ async function vReader(src, id, chId) {
   // dan otomatis dicoba lagi saat internet tersambung kembali
   const failed = new Set();
   $$(".r-img", rd).forEach((im) => { im.dataset.o = im.getAttribute("src") || ""; });
-  const paintFail = () => { const el = $("#rfailn"); if (el) el.textContent = failed.size ? `${failed.size} gambar gagal dimuat · ketuk untuk mencoba lagi` : "Untuk gambar yang gagal dimuat"; };
+  // tombol muat ulang di bar atas: titik merah = ada gambar yang gagal
+  const paintFail = () => { const el = $("#rfdot"); if (el) el.hidden = !failed.size; const b = $("[data-act=reload]", rd); if (b) b.setAttribute("aria-label", failed.size ? `Muat ulang ${failed.size} gambar yang gagal` : "Muat ulang chapter"); };
   const markFail = (im) => {
     im.classList.add("fail"); failed.add(im);
     if (!im.nextElementSibling?.classList.contains("r-fail")) im.insertAdjacentHTML("afterend", `<button class="r-fail" data-act="reimg" data-i="${im.dataset.i}">${icon("refresh", 18, 2)}<span>Halaman ${im.dataset.i} gagal dimuat<br><b>Ketuk untuk muat ulang</b></span></button>`);
