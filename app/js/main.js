@@ -1627,7 +1627,10 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
 // - Tinggi layar penuh (kbBase) hanya diambil saat keyboard pasti tertutup (dan = tinggi terbesar yang terlihat),
 //   karena di sebagian HP layar menyusut SEBELUM laporan "keyboard muncul" datang.
 // - Dihitung ulang setiap layar berubah ukuran; nilai terakhir dicatat di Log error (Ninokuu Dev) untuk diagnosa.
-let kbBase = window.innerHeight, kbOpen = false, kbH = 0;
+let kbBase = window.innerHeight, kbOpen = false, kbH = 0, kbStick = false;
+// seperti aplikasi chat: bila sedang di pesan terbawah saat keyboard muncul, tetap menempel di bawah setelah layar menyusut
+const kbAtEnd = () => window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 160;
+const kbKeepEnd = () => { if (kbStick) window.scrollTo(0, document.documentElement.scrollHeight); };
 const kbCss = (h) => { const dpr = window.devicePixelRatio || 1; return h > kbBase * 0.62 && dpr > 1.2 ? h / dpr : h; };
 const applyKb = () => {
   const shrink = Math.max(0, kbBase - window.innerHeight), vv = window.visualViewport;
@@ -1640,6 +1643,7 @@ const applyKb = () => {
   const lift = vvKnows ? vvCover : shrink > 80 ? 0 : h - shrink;
   const v = lift > 40 ? Math.round(Math.min(lift, window.innerHeight * 0.7)) : 0;
   document.documentElement.style.setProperty("--kb", v + "px");
+  kbKeepEnd();
   if (N.DEV) N.logDev("kb", `keyboard ${Math.round(kbH)} → ${Math.round(h)} px, layar ${kbBase}→${window.innerHeight} (susut ${shrink}), vv ${vv ? Math.round(vv.height) + "+" + Math.round(vv.offsetTop) : "-"}, tutup ${Math.round(vvCover)}, angkat ${v}px`);
 };
 window.addEventListener("resize", () => { if (kbOpen) { if (kbH) applyKb(); } else if (window.innerHeight > kbBase) kbBase = window.innerHeight; });
@@ -1649,6 +1653,7 @@ addEventListener("orientationchange", () => setTimeout(() => { if (!kbOpen) kbBa
 function setKeyboard(h, phase) {
   const root = document.documentElement;
   if (h > 0) {
+    if (!kbOpen) kbStick = !!document.querySelector("#chatroot") && kbAtEnd();
     kbOpen = true;
     if (phase !== "did") return;
     kbH = h; applyKb();
@@ -1656,7 +1661,7 @@ function setKeyboard(h, phase) {
     const ae = document.activeElement;
     if (ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName) && !ae.closest(".composer, .chbar")) setTimeout(() => ae.scrollIntoView({ block: "center", behavior: "smooth" }), 60);
   } else {
-    kbOpen = false; kbH = 0;
+    kbOpen = false; kbH = 0; kbStick = false;
     if (phase === "did") setTimeout(() => { if (!kbOpen) kbBase = window.innerHeight; }, 250);   // tinggi penuh yang pasti benar
     root.style.setProperty("--kb", "0px");
     document.body.classList.remove("kb-open");

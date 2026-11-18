@@ -21,6 +21,9 @@
         "sound",
         "alert"
       ]
+    },
+    "Keyboard": {
+      "resizeOnFullScreen": true
     }
   }
 }
