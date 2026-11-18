@@ -1789,13 +1789,27 @@ async function vPage(name) {
     html = topbar("Backup data offline") + `<div class="px col g14 mt6"><p class="mu sm lh m0">Simpan salinan data Ninokuu ke file di HP. Berguna sebelum ganti HP atau memasang ulang aplikasi.</p>
   <div class="card col g6"><b>Isi backup</b><span class="mu sm">${S.state.lib.size} judul koleksi · ${S.state.hist.size} riwayat baca · pengaturan</span></div>
   <button class="btn primary" data-act="dl">${icon("down", 18, 2)}Simpan file backup</button></div>`;
-    acts2.dl = () => {
+    acts2.dl = async (el) => {
       const data = { app: "ninokuu", v: 1, at: new Date().toISOString(), lib: [...S.state.lib.values()], hist: [...S.state.hist.values()], settings: S.state.settings };
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: "application/json" }));
-      a.download = `ninokuu-backup-${new Date().toISOString().slice(0, 10)}.json`;
-      a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-      toast("File backup disimpan ke folder Download");
+      const d = new Date(), pad = (n) => String(n).padStart(2, "0");
+      const name = `ninokuu-backup-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`, text = JSON.stringify(data);
+      if (!DL.supported()) {   // web: unduh lewat browser
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([text], { type: "application/json" })); a.download = name;
+        a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+        toast("File backup diunduh"); return;
+      }
+      // APK: WebView tidak bisa mengunduh lewat tautan, jadi file ditulis langsung ke penyimpanan HP
+      el.disabled = true;
+      try {
+        const r = await DL.saveText(name, text);
+        el.parentNode.querySelector(".bk-res")?.remove();
+        el.insertAdjacentHTML("afterend", `<div class="card col g6 bk-res"><b class="gold row g6">${icon("check", 16, 2.4)} File backup tersimpan</b><span class="mu sm" style="word-break:break-all">${esc(r.where)}</span>
+          ${r.uri ? `<button class="btn" data-act="bkshare">${icon("send", 17, 2)}Bagikan / simpan ke tempat lain</button>` : ""}</div>`);
+        acts2.bkshare = () => DL.shareFile(r.uri, "Backup Ninokuu").catch((e) => toast(e.message || "Gagal membagikan"));
+        toast("File backup tersimpan");
+      } catch (e) { toast(e?.message || "Gagal menyimpan file backup"); }
+      el.disabled = false;
     };
   } else if (name === "restore") {
     html = topbar("Pulihkan data") + `<div class="px col g14 mt6"><p class="mu sm lh m0">Pilih file backup (.json) dari HP. Data di file digabung dengan data yang sudah ada; judul yang sama tidak terduplikat.</p>

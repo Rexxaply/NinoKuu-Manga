@@ -55,6 +55,20 @@ function storeDir() {
 }
 export const where = async () => ((await storeDir()) === "DOCUMENTS" ? "Internal / Documents / Ninokuu" : "Penyimpanan aplikasi / Ninokuu");
 
+// file teks (mis. backup .json) ke Documents/Ninokuu/Backup; kembalikan lokasi yang bisa dibaca + uri untuk dibagikan
+export async function saveText(name, text) {
+  const f = fs(); if (!f) throw new Error("Penyimpanan HP tidak tersedia.");
+  const dir = await storeDir(), path = "Ninokuu/Backup/" + name;
+  await f.writeFile({ path, data: text, directory: dir, encoding: "utf8", recursive: true });
+  let uri = ""; try { uri = (await f.getUri({ path, directory: dir })).uri || ""; } catch {}
+  return { where: (dir === "DOCUMENTS" ? "Internal / Documents / Ninokuu / Backup / " : "Penyimpanan aplikasi / Ninokuu / Backup / ") + name, uri };
+}
+export async function shareFile(uri, title) {
+  const C = window.Capacitor, SH = C?.Plugins?.Share || (C?.isPluginAvailable?.("Share") ? C.registerPlugin?.("Share") : null);
+  if (!SH || !uri) throw new Error("Tidak bisa membuka menu bagikan.");
+  await SH.share({ title, files: [uri], dialogTitle: title });
+}
+
 const b64 = (u8) => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = no; r.readAsDataURL(new Blob([u8])); });
 async function writeBytes(dir, path, u8) {
   const CH = 3 << 20;                               // potongan 3 MB (kelipatan 3 → base64 bisa disambung)

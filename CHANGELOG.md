@@ -17,6 +17,7 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 - Menu baru di Lainnya: "Yang baru di versi ini", berisi pop-up fitur baru dan panduan bergambar yang bisa dibuka kapan saja
 - Pengguna yang sempat memasang 1.6.3 kini juga melihat panduan "Yang baru di 1.7.0"
 - Perbaikan menu ⋯ pembaca: tanda pilihan aktif (Scroll, Layar, Akhir chapter) tidak lagi hilang setelah menu ditutup lalu dibuka lagi
+- Backup data offline di APK kini benar-benar membuat file (Documents/Ninokuu/Backup), lengkap dengan tombol bagikan untuk menyimpannya ke Drive, WhatsApp, atau tempat lain
 - Pilihan yang sedang aktif (mis. Scroll di menu ⋯ pembaca) tidak bisa ditekan lagi, jadi tidak memuat ulang pembaca
 - Menu ⋯ pembaca, bar bawah, dan semua tombol kaca memakai buram gaya iOS (lebih kuat, warna lebih hidup)
 - Efek kaca tidak lagi "mati" sesaat saat pindah halaman, membuka/menutup pop-up, atau membuka pembaca (animasi tanpa memudarkan induknya)
