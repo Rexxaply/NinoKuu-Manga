@@ -1380,3 +1380,12 @@ body.is-app.nk-fs { --sat: env(safe-area-inset-top, 0px); }
 }
 /* lanjut dari halaman terakhir: isi disembunyikan sesaat sampai posisi gulirnya pasti (tanpa lompatan dari halaman 1) */
 .reader.resuming .r-pages, .reader.resuming .r-slide { visibility: hidden; }
+/* Bar pembaca: tombol-tombolnya (kembali, ⋯, Lanjut ke Chapter, dll.) ikut meluncur .4 dtk bersama barnya.
+   Aturan umum efek tekan di atas memberi transform 100 ms dan membuat tombol "melompat" ke tempatnya;
+   di sini efek tekan memakai properti scale (terpisah dari transform) supaya keduanya tidak saling mengganggu. */
+.reader .r-top > *, .reader .r-bottom > *, .reader .r-btns > * {
+  transition: transform .4s cubic-bezier(.32, .72, 0, 1), opacity 0s linear 0s, scale 100ms var(--ease-out, ease-out), background-color .25s, color .25s; }
+.reader:not(.ui) .r-top > *, .reader:not(.ui) .r-bottom > *, .reader:not(.ui) .r-btns > * {
+  transition: transform .4s cubic-bezier(.32, .72, 0, 1), opacity 0s linear .4s, scale 100ms var(--ease-out, ease-out), background-color .25s, color .25s; }
+.reader.enter .r-top > *, .reader.enter .r-bottom > *, .reader.enter .r-btns > * { transition: none; }
+.reader .r-round:active, .reader .r-sq:active, .reader .r-main:active { transform: none; scale: .96; }
