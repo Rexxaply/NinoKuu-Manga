@@ -27,6 +27,7 @@ img { display: block; }
 /* layar sentuh (HP): tanpa bilah gulir. Di WebView Android bilah gulir bergaya memakan 8 px di kanan sehingga
    tampak seperti pita hitam yang tidak simetris dengan sisi kiri (terutama di pembaca) */
 @media (pointer: coarse) { ::-webkit-scrollbar { width: 0; height: 0; display: none; } html, .r-scroll { scrollbar-width: none; } }
+.r-scroll { scrollbar-width: none; } .r-scroll::-webkit-scrollbar { display: none; width: 0; }
 
 #view { max-width: 980px; margin: 0 auto; padding-top: var(--sat); }
 /* animasi meluncur tidak boleh membuat halaman lebih lebar dari layar (bar bawah sempat hilang) */

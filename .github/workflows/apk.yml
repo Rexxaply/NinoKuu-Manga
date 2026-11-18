@@ -200,6 +200,12 @@ jobs:
             // (tidak untuk Ninokuu Dev, supaya tautan tetap dibuka aplikasi global tanpa pilihan ganda)
             if (process.env.CHANNEL !== "dev" && !m.includes(`android:scheme="ninokuu"`)) m = m.replace(/(<activity\b[\s\S]*?MainActivity[\s\S]*?>)/, `$1\n            <intent-filter>\n                <action android:name="android.intent.action.VIEW" />\n                <category android:name="android.intent.category.DEFAULT" />\n                <category android:name="android.intent.category.BROWSABLE" />\n                <data android:scheme="ninokuu" />\n            </intent-filter>`);
             fs.writeFileSync(mf, m);'
+          # bilah gulir bawaan WebView (abu-abu di tepi kanan) dimatikan: pembaca memakai indikator gulir sendiri
+          MA=$(find android/app/src/main/java -name MainActivity.java | head -1)
+          PKG=$(grep -m1 '^package ' "$MA")
+          printf '%s\n\nimport android.os.Bundle;\nimport android.webkit.WebView;\nimport com.getcapacitor.BridgeActivity;\n\npublic class MainActivity extends BridgeActivity {\n    @Override\n    public void onCreate(Bundle savedInstanceState) {\n        super.onCreate(savedInstanceState);\n        WebView w = getBridge().getWebView();\n        w.setVerticalScrollBarEnabled(false);\n        w.setHorizontalScrollBarEnabled(false);\n    }\n}\n' "$PKG" > "$MA"
+          grep -q "setVerticalScrollBarEnabled(false)" "$MA" || { echo "::error::Gagal mematikan bilah gulir WebView"; exit 1; }
+          cat "$MA"
           grep -q 'android:allowBackup="false"' android/app/src/main/AndroidManifest.xml || { echo "::error::allowBackup belum false"; exit 1; }
           grep -n "ninokuu_bg" android/app/src/main/res/values/styles.xml | head -3
           grep -n "POST_NOTIFICATIONS\|EXTERNAL_STORAGE\|ic_stat_ninokuu\|screenOrientation\|scheme=" android/app/src/main/AndroidManifest.xml
