@@ -38,9 +38,36 @@ export const srcName = (id) => SOURCES.find((s) => s.id === id)?.name || id;
 export const TYPES = [{ id: "", name: "Semua" }, { id: "manga", name: "Manga" }, { id: "manhwa", name: "Manhwa" }, { id: "manhua", name: "Manhua" }];
 export const typeName = (t) => TYPES.find((x) => x.id === t)?.name || "";
 
-// sampul dengan cadangan huruf awal bila gambar gagal dimuat
+// sampul; bila tidak ada atau gagal dimuat → logo Ninokuu (+ tombol muat ulang untuk yang gagal)
 export const cover = (url, title, cls = "") =>
-  `<span class="cover ${cls}" data-ini="${esc((title || "?").trim()[0] || "?")}">${url ? `<img ${imgAttrs(url)} alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-rm>` : ""}</span>`;
+  `<span class="cover ${cls}${url ? "" : " cv-none"}" data-ini="${esc((title || "?").trim()[0] || "?")}">${url ? `<img ${imgAttrs(url)} alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-rm>` : ""}</span>`;
+
+// Sampul gagal: gambar disembunyikan, logo Ninokuu tampil, dan tombol muat ulang kecil di pojok.
+// Ketuk tombolnya (tidak ikut membuka komik) → dicoba lagi dari awal (langsung, jaringan HP, lalu proxy).
+// Saat internet tersambung lagi, semua sampul yang gagal dicoba ulang otomatis.
+function coverFail(img) {
+  const cv = img.closest(".cover"); if (!cv) return false;
+  cv.classList.remove("cv-load"); cv.classList.add("cv-fail");
+  if (!cv.querySelector(".cv-re")) cv.insertAdjacentHTML("beforeend", `<button class="cv-re" type="button" aria-label="Muat ulang sampul">${icon("refresh", 14, 2.2)}</button>`);
+  return true;
+}
+export function retryCover(cv) {
+  const img = cv.querySelector("img"); if (!img) return;
+  const o = img.dataset.o || img.getAttribute("src"); if (!o) return;
+  cv.classList.add("cv-load"); img.dataset.fb = "0";
+  img.removeAttribute("src");
+  requestAnimationFrame(() => { img.src = o; });
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest?.(".cv-re"); if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  retryCover(b.closest(".cover"));
+}, true);
+document.addEventListener("load", (e) => {
+  const cv = e.target instanceof HTMLImageElement && e.target.closest(".cover.cv-fail, .cover.cv-load"); if (!cv) return;
+  cv.classList.remove("cv-fail", "cv-load"); cv.querySelector(".cv-re")?.remove();
+}, true);
+addEventListener("online", () => document.querySelectorAll(".cover.cv-fail").forEach(retryCover));
 
 export const comicHref = (src, id) => `#/c/${src}/${encodeURIComponent(id)}`;
 export const readHref = (src, id, ch) => `#/r/${src}/${encodeURIComponent(id)}/${encodeURIComponent(ch)}`;
@@ -72,8 +99,9 @@ export const rankText = (name, tier) => `<b class="rk-t t${tier}"><span class="r
 document.addEventListener("error", async (e) => {
   const t = e.target;
   if (!(t instanceof HTMLImageElement) || t.classList.contains("r-img")) return;   // halaman bacaan: diurus pembaca (main.js)
+  if (!t.dataset.o && t.getAttribute("src")) t.dataset.o = t.getAttribute("src");   // alamat asli, untuk muat ulang
   if ((t.dataset.d || t.dataset.px) && await imgFallback(t)) return;
-  if (t.hasAttribute("data-rm")) t.remove();
+  if (t.hasAttribute("data-rm") && !coverFail(t)) t.remove();
 }, true);
 
 /* ---------- Lembar bawah: geser turun untuk menutup (Apple "fluid interfaces") ----------

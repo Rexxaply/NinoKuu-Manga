@@ -1126,3 +1126,14 @@ button, [role="button"], .seg, .chips, #nav { -webkit-user-select: none; user-se
 .rq-row > b, .rq-row > span { font-size: 13px; white-space: nowrap; }
 .rq-row .seg { flex: 0 1 150px; min-width: 136px; padding: 3px; box-sizing: border-box; }
 .rq-row .seg button { flex: 1 1 0; min-width: 0; min-height: 32px; font-size: 12px; padding: 0 4px; }
+
+/* sampul tidak ada / gagal dimuat: logo Ninokuu + tombol muat ulang kecil */
+.cover.cv-fail, .cover.cv-none { background: #141D26 url("../img/cover-logo.webp") center 45% / 62% auto no-repeat; }
+.cover.cv-fail::before, .cover.cv-none::before { content: none; }
+.cover.cv-fail img { opacity: 0; }
+.cv-re { position: absolute; z-index: 2; right: 6px; bottom: 6px; width: 28px; height: 28px; padding: 0; border-radius: 50%; display: grid; place-items: center;
+  background: rgba(8, 12, 18, .72); border: 1px solid rgba(255, 255, 255, .2); color: #fff; }
+.cv-re::before { content: ""; position: absolute; inset: -8px; }
+.cv-re:active { scale: .9; }
+.cover.sm .cv-re, .cover.fav .cv-re { width: 22px; height: 22px; right: 3px; bottom: 3px; }
+.cover.cv-load .cv-re svg { animation: spinb .8s linear infinite; }
