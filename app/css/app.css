@@ -325,7 +325,19 @@ body.nav-off #nav { transform: translate(-50%, 120px); opacity: 0; pointer-event
   background: rgba(224, 36, 43, .16); border: 1px solid rgba(255, 255, 255, .10); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14); transition: left .42s cubic-bezier(.34, 1.45, .5, 1); }
 #nav a { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: #C2C9D6; font-size: 11px; font-weight: 500; transition: color .3s; }
 #nav a[aria-current="true"] { color: var(--redt); font-weight: 700; }
-@media (prefers-reduced-motion: reduce) { .nav-ind, #nav { transition: none; } }
+/* bar ringkas (gaya iOS): lebar menyusut seperti pegas ke 1 tombol di tengah, tab lain memudar & mengecil */
+#nav { transition: transform .35s cubic-bezier(.2, .8, .2, 1), opacity .3s, width .55s cubic-bezier(.32, 1.25, .5, 1); }
+#nav a { min-width: 0; overflow: hidden; transition: color .3s, flex-grow .5s cubic-bezier(.32, 1.15, .5, 1), opacity .22s ease-out, transform .45s cubic-bezier(.32, 1.25, .5, 1); }
+#nav a span { transition: opacity .18s ease-out, max-height .4s cubic-bezier(.32, 1.15, .5, 1); max-height: 16px; white-space: nowrap; }
+.nav-ind { transition: left .42s cubic-bezier(.34, 1.45, .5, 1), width .5s cubic-bezier(.32, 1.25, .5, 1); }
+body.nav-min #nav { width: 68px; }
+body.nav-min #nav a:not([aria-current="true"]) { flex-grow: 0; opacity: 0; transform: scale(.5); pointer-events: none; }
+body.nav-min #nav a { gap: 0; }
+body.nav-min #nav a span { opacity: 0; max-height: 0; }
+body.nav-min .nav-ind { left: 6px; width: calc(100% - 12px); }
+body.nav-min #nav a[aria-current="true"] svg { transform: scale(1.08); }
+#nav a svg { transition: transform .45s cubic-bezier(.32, 1.25, .5, 1); }
+@media (prefers-reduced-motion: reduce) { .nav-ind, #nav, #nav a, #nav a span, #nav a svg { transition: none; } }
 
 #toast { position: fixed; z-index: 40; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom)); transform: translate(-50%, 20px); max-width: min(92vw, 440px); padding: 12px 18px; border-radius: 18px;
   background: rgba(28, 37, 51, .96); border: 1px solid rgba(255, 255, 255, .12); font-size: 13.5px; opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s; text-align: center; }
@@ -979,7 +991,6 @@ body.nk-dev::after { content: "DEV"; position: fixed; top: calc(env(safe-area-in
 .spin-s { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .18); border-top-color: var(--red); animation: spinb .8s linear infinite; }
 
 /* pop-up "Yang baru" & tur sorotan fitur */
-body.tw-lock { overflow: hidden; touch-action: none; }
 .tw-host { position: fixed; inset: 0; z-index: 200; }
 .tw-pop { display: grid; place-items: center; padding: 20px; background: rgba(5, 8, 14, .72); animation: fadeIn .2s ease-out; }
 .tw-card { width: 100%; max-width: 380px; padding: 22px 18px 14px; border-radius: 26px; display: flex; flex-direction: column; gap: 10px; text-align: center; }
@@ -991,16 +1002,18 @@ body.tw-lock { overflow: hidden; touch-action: none; }
 .tw-scroll { overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 4px 2px; }
 .tw-it { display: flex; gap: 10px; align-items: flex-start; line-height: 1.45; }
 .tw-it > span:first-child { flex: none; margin-top: 2px; }
-.tw-shade { position: absolute; inset: 0; background: rgba(5, 8, 14, .74); }
-.tw-shade.clear { background: transparent; }
-.tw-spot { position: absolute; border-radius: 16px; box-shadow: 0 0 0 200vmax rgba(5, 8, 14, .78); outline: 2px solid rgba(255, 255, 255, .85); outline-offset: 2px; transition: all .25s ease; pointer-events: none; }
-.tw-tip { position: absolute; left: 16px; right: 16px; max-width: 520px; margin: 0 auto; padding: 14px 16px; border-radius: 18px; background: rgba(20, 27, 39, .97); border: 1px solid rgba(255, 255, 255, .08); box-shadow: 0 14px 40px rgba(0, 0, 0, .45); display: flex; flex-direction: column; gap: 4px; color: #fff; text-align: center; font-size: 14px; line-height: 1.5; }
-.tw-tip span { color: #d6dbe5; }
-.tw-tip.tw-full { top: 50%; transform: translateY(-50%); padding: 18px; border-radius: 22px; }
-.tw-bar { position: absolute; left: 12px; right: 12px; bottom: calc(14px + env(safe-area-inset-bottom)); max-width: 560px; margin: 0 auto; padding: 8px 8px 8px 12px; border-radius: 20px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .tw-b { min-height: 40px; padding: 0 14px; border-radius: 13px; border: 1px solid var(--line); background: var(--s1); color: var(--tx); font: inherit; font-size: 13px; font-weight: 700; }
 .tw-b.on { background: var(--red); border-color: var(--red); color: #fff; }
 .tw-b:disabled { opacity: .4; }
+.tw-slide { gap: 8px; padding-top: 14px; }
+.tw-shot { height: min(50vh, 460px, 130vw); width: auto; aspect-ratio: 420 / 909; margin: 0 auto 4px; border-radius: 20px; overflow: hidden; background: var(--s1); border: 1px solid rgba(255, 255, 255, .12); box-shadow: 0 10px 28px rgba(0, 0, 0, .4); touch-action: pan-y; animation: twIn .32s cubic-bezier(.32, 1.15, .5, 1); }
+.tw-shot img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }
+@supports (height: 1dvh) { .tw-shot { height: min(50dvh, 460px, 130vw); } }
+.tw-dots { display: flex; justify-content: center; gap: 6px; margin: 2px 0 4px; }
+.tw-dots span { width: 6px; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .25); transition: width .3s cubic-bezier(.32, 1.15, .5, 1), background-color .2s; }
+.tw-dots span.on { width: 18px; background: var(--red); }
+@keyframes twIn { from { opacity: 0; transform: scale(.96); } }
+@media (prefers-reduced-motion: reduce) { .tw-shot { animation: none; } }
 /* menu ⋯ pembaca: isi tidak boleh menyusut (sebelumnya baris terpotong/bertumpuk saat menu dibatasi tingginya) */
 .r-menu { width: min(300px, calc(100vw - 24px)); }
 .r-menu > * { flex-shrink: 0; }

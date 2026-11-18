@@ -1,17 +1,17 @@
-// Pop-up "Yang baru" setelah aplikasi diperbarui (sekali per versi) + tur sorotan fitur baru.
-// - Lihat: tur langkah demi langkah. Layar lain digelapkan, hanya tombol/fitur yang baru yang terang,
-//   keterangan di bawahnya. Selama tur layar tidak bisa digeser atau diketuk, kecuali tombol
-//   Sebelumnya / Berikutnya / Lewati. Langkah tanpa sasaran (fitur seluruh layar) tidak menggelapkan layar.
+// Pop-up "Yang baru" setelah aplikasi diperbarui (sekali per versi).
+// - Lihat: slide gambar fitur baru (tangkapan layar ringan di img/new/, ±15 KB per gambar, dimuat saat dibuka).
+//   Tidak memindahkan halaman aplikasi, jadi ringan. Sebelumnya / Berikutnya / Lewati, bisa juga digeser.
 // - Hanya baca Changelog: ringkasan fitur (penting di atas, perbaikan bug paling bawah).
 // - Tutup: lewati. Versi yang sudah ditampilkan dicatat, jadi pop-up tidak muncul lagi.
 import { esc, icon } from "./ui.js";
 
-// Isi per versi. Langkah tur: hash halaman, sel = elemen yang disorot (null = seluruh layar).
+// Isi per versi. Slide: img = nama file di img/new/ (tanpa .webp).
 export const WHATS_NEW = {
   "1.6.3": {
     title: "Yang baru di Ninokuu 1.6.3",
     intro: "Lebih hemat kuota, membaca lebih nyaman, dan aplikasi terasa lebih responsif saat disentuh.",
     features: [
+      ["Bar bawah ringkas", "Saat digulir ke bawah, bar menu mengecil jadi 1 tombol di tengah dengan animasi ala iOS. Ketuk untuk membukanya lagi."],
       ["Hemat kuota", "Halaman chapter dimuat bertahap saat mendekati layar (sebelumnya seluruh chapter sekaligus). Sampul di daftar memakai versi kecil, sampai 94% lebih ringan."],
       ["Lanjut dari halaman terakhir", "Keluar di halaman 12/48, buka lagi chapter itu → langsung ke halaman 12."],
       ["Zoom cubit lebih mulus", "Gambar mengikuti jari saat dicubit dan digeser. Manhwa/manhua maks. 300%, manga 400%."],
@@ -33,12 +33,12 @@ export const WHATS_NEW = {
       "File CBZ/ZIP besar bisa dibuka; pesan error menyebut alasan sebenarnya.",
     ],
     tour: [
-      { hash: "#/home", sel: "[data-act=hsort]", title: "Urutkan Beranda", text: "Update terbaru, Populer, Judul A-Z/Z-A, atau Rating (pilihan menyesuaikan sumber)." },
-      { hash: "#/home", sel: "#upd", title: "15 judul per muatan", text: "Gulir ke bawah, judul berikutnya dimuat otomatis. Posisinya tetap saat kamu kembali." },
-      { hash: "#/fav", sel: "[data-act=fsort]", title: "Urutkan koleksi", text: "Update terbaru, Terakhir ditambah, Judul A-Z, atau Judul Z-A. Label Terbaru muncul sendiri." },
-      { hash: "#/more", sel: "[data-act=settings]", title: "Pengaturan", text: "Mode efek avatar dan pilihan bacaan sekarang ada di sini." },
-      { hash: "#/p/settings", sel: "#setRead", title: "Pilihan bacaan", text: "Sembunyikan menu otomatis, Mode standar/fullscreen, dan pilihan di akhir chapter. Juga ada di menu ⋯ saat membaca." },
-      { hash: null, sel: null, title: "Saat membaca", text: "Chapter yang belum selesai lanjut dari halaman terakhir. Ikon muat ulang ada di bar atas. Cubit untuk zoom, gambar mengikuti jari. Halaman dimuat bertahap supaya hemat kuota." },
+      { img: "bar", title: "Bar bawah ringkas", text: "Gulir ke bawah, bar mengecil jadi 1 tombol di tengah. Ketuk tombol itu untuk memunculkan Beranda, Cari, Favorit, dan Lainnya lagi." },
+      { img: "sort", title: "Urutkan Beranda", text: "Ketuk ikon urutkan di Update terbaru. Pilihan menyesuaikan sumber. 15 judul per muatan, berikutnya dimuat otomatis." },
+      { img: "koleksi", title: "Koleksi 3 kolom", text: "Urutkan koleksi lewat ikon di samping pencarian. Label Terbaru muncul sendiri tanpa membuka komiknya." },
+      { img: "pengaturan", title: "Pengaturan bacaan", text: "Lainnya → Pengaturan: sembunyikan menu otomatis, Mode standar/fullscreen, dan pilihan di akhir chapter." },
+      { img: "baca", title: "Saat membaca", text: "Ikon muat ulang ada di bar atas; titik merah berarti ada gambar yang gagal. Chapter lanjut dari halaman terakhir, cubit untuk zoom." },
+      { img: "menu", title: "Menu ⋯ pembaca", text: "Pilihan bacaan yang sama juga bisa diubah langsung dari menu ⋯ saat membaca." },
     ],
   },
 };
@@ -69,7 +69,7 @@ function host(cls) {
   document.body.append(h);
   return h;
 }
-const close = () => { document.querySelector(".tw-host")?.remove(); document.body.classList.remove("tw-lock"); };
+const close = () => document.querySelector(".tw-host")?.remove();
 
 function popup(info, ctx) {
   const h = host("tw-pop");
@@ -101,51 +101,28 @@ function changelog(info, ctx) {
   });
 }
 
-// tur: layar dikunci (tidak bisa digeser/diketuk) kecuali tombol tur
-const block = (e) => { if (!e.target.closest?.(".tw-bar")) e.preventDefault(); };
-async function tour(info, ctx, i) {
+// Slide gambar: hanya gambar slide ini & berikutnya yang dimuat.
+const IMG = (n) => `img/new/${n}.webp`;
+function tour(info, ctx, i) {
   const steps = info.tour, st = steps[i];
-  if (!st) { end(ctx); return; }
-  const h = host("tw-tour");
-  document.body.classList.add("tw-lock");
-  h.addEventListener("touchmove", block, { passive: false });
-  h.addEventListener("wheel", block, { passive: false });
-  h.innerHTML = `<div class="tw-shade"></div>`;
-  // pindah halaman dulu; elemen dicari setelah halaman baru tergambar (bukan sisa halaman sebelumnya)
-  if (st.hash && location.hash !== st.hash) { ctx.go(st.hash); await new Promise((r) => setTimeout(r, 250)); }
-  const el = st.sel ? await waitFor(st.sel) : null;
-  if (document.querySelector(".tw-host") !== h) return;            // tur ditutup selagi menunggu
-  let box = "";
-  if (el) {
-    // tunggu halaman selesai memulihkan posisi gulirnya sendiri, baru sorot elemennya
-    await new Promise((r) => setTimeout(r, 350));
-    el.scrollIntoView({ block: "center", behavior: "instant" });
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-    if (document.querySelector(".tw-host") !== h) return;
-    const r = el.getBoundingClientRect(), pad = 8;
-    const top = Math.max(6, r.top - pad), left = Math.max(6, r.left - pad), w = Math.min(innerWidth - 12, r.width + pad * 2), hh = Math.min(innerHeight * 0.6, r.height + pad * 2);
-    box = `<div class="tw-spot" style="top:${top}px;left:${left}px;width:${w}px;height:${hh}px"></div>`;
-    const below = top + hh + 190 < innerHeight;
-    box += `<div class="tw-tip" style="${below ? `top:${top + hh + 12}px` : `bottom:${innerHeight - top + 12}px`}"><b>${esc(st.title)}</b><span>${esc(st.text)}</span></div>`;
-  } else {
-    box = `<div class="tw-tip tw-full"><b>${esc(st.title)}</b><span>${esc(st.text)}</span></div>`;
-  }
-  h.innerHTML = `${el ? "" : `<div class="tw-shade clear"></div>`}${box}
-    <div class="tw-bar glass"><button class="tw-b" data-tw="skip">Lewati</button><span class="mu xs">${i + 1} / ${steps.length}</span>
-      <span class="row g8"><button class="tw-b" data-tw="prev" ${i ? "" : "disabled"}>Sebelumnya</button><button class="tw-b on" data-tw="next">${i === steps.length - 1 ? "Selesai" : "Berikutnya"}</button></span></div>`;
+  if (!st) { close(); return; }
+  const h = host("tw-pop");
+  if (steps[i + 1]) new Image().src = IMG(steps[i + 1].img);
+  const last = i === steps.length - 1;
+  h.innerHTML = `<div class="tw-card glass tw-slide" role="dialog" aria-modal="true" aria-label="${esc(st.title)}">
+    <div class="tw-shot"><img src="${IMG(st.img)}" alt="${esc(st.title)}" width="420" height="909" decoding="async" draggable="false"></div>
+    <b class="tw-t">${esc(st.title)}</b><p class="tw-p">${esc(st.text)}</p>
+    <div class="tw-dots" aria-label="Slide ${i + 1} dari ${steps.length}">${steps.map((_, k) => `<span class="${k === i ? "on" : ""}"></span>`).join("")}</div>
+    <div class="row g8"><button class="tw-b grow" data-tw="prev" ${i ? "" : "disabled"}>Sebelumnya</button><button class="tw-b on grow" data-tw="next">${last ? "Selesai" : "Berikutnya"}</button></div>
+    <button class="tw-skip" data-tw="close">Lewati</button></div>`;
+  const go = (k) => { if (k >= 0) tour(info, ctx, k); };
   h.addEventListener("click", (e) => {
-    e.stopPropagation();
     const b = e.target.closest("[data-tw]"); if (!b) return;
-    if (b.dataset.tw === "next") tour(info, ctx, i + 1);
-    else if (b.dataset.tw === "prev") tour(info, ctx, i - 1);
-    else end(ctx);
+    if (b.dataset.tw === "next") go(i + 1); else if (b.dataset.tw === "prev") go(i - 1); else close();
   });
-}
-function end(ctx) { close(); ctx.go("#/home"); }
-function waitFor(sel, ms = 4000) {
-  return new Promise((res) => {
-    const t0 = Date.now();
-    const tick = () => { const el = document.querySelector(`#view ${sel}`) || document.querySelector(sel); if (el && el.getBoundingClientRect().height) return res(el); if (Date.now() - t0 > ms) return res(null); setTimeout(tick, 80); };
-    tick();
-  });
+  // geser kiri/kanan pada gambar untuk pindah slide
+  let x0 = null;
+  const shot = h.querySelector(".tw-shot");
+  shot.addEventListener("touchstart", (e) => { x0 = e.touches[0].clientX; }, { passive: true });
+  shot.addEventListener("touchend", (e) => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null; if (Math.abs(dx) > 50) go(dx < 0 ? i + 1 : i - 1); });
 }

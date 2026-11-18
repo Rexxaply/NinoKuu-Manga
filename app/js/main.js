@@ -62,6 +62,7 @@ async function render() {
   // navigasi bawah: indikator bergeser ke tab aktif; disembunyikan (meluncur turun) di luar layar utama tab
   const onRoot = TABS.includes(route.name);
   document.body.classList.toggle("nav-off", !onRoot);
+  navReset();
   const ti = Math.max(0, TABS.indexOf(tab ?? prevTab));
   nav.style.setProperty("--ti", ti);
   $$("#nav a").forEach((a) => a.setAttribute("aria-current", String(a.dataset.tab === tab)));
@@ -85,6 +86,30 @@ async function render() {
   requestAnimationFrame(() => window.scrollTo(0, y || 0));
 }
 window.addEventListener("hashchange", render);
+
+// Bar bawah ringkas (gaya iOS): gulir ke bawah ±48 px → bar mengecil jadi 1 tombol (tab aktif) di tengah.
+// Ketuk tombol itu → bar terbuka lagi. Kembali ke paling atas halaman juga membukanya.
+// Lompatan gulir buatan aplikasi (pulihkan posisi, ganti halaman) diabaikan supaya bar tidak mengecil sendiri.
+let navLastY = null, navAcc = 0;
+const setNavMin = (on) => {
+  if (document.body.classList.contains("nav-min") === on) return;
+  document.body.classList.toggle("nav-min", on);
+  nav.setAttribute("aria-label", on ? "Buka menu utama" : "Menu utama");
+};
+const navReset = () => { navLastY = null; navAcc = 0; setNavMin(false); };
+window.addEventListener("scroll", () => {
+  const y = window.scrollY;
+  if (navLastY == null || Math.abs(y - navLastY) > 400) { navLastY = y; navAcc = 0; return; }
+  const d = y - navLastY; navLastY = y;
+  if (document.body.classList.contains("nav-off")) return;
+  if (y < 30) { navAcc = 0; setNavMin(false); return; }
+  if (d > 0) { navAcc += d; if (navAcc > 48) setNavMin(true); } else navAcc = 0;
+}, { passive: true });
+nav.addEventListener("click", (e) => {
+  if (!document.body.classList.contains("nav-min")) return;
+  e.preventDefault(); e.stopPropagation();
+  navAcc = 0; setNavMin(false);
+}, true);
 const go = (h) => { location.hash = h; };
 // ganti halaman tanpa menambah riwayat (dipakai saat pindah chapter)
 const goReplace = (h) => { if (h === location.hash) return; replacing = true; location.replace(h); };
