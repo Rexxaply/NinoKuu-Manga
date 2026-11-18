@@ -1582,6 +1582,8 @@ const choiceRow = (k) => {
 };
 const readPrefs = (act) => READ_OPTS.map(([k, t, dsc]) => toggleRow(k, t, dsc, act)).join("") + READ_CHOICES.map(([k]) => choiceRow(k)).join("");
 const toggleRow = (k, t, dsc, act = "rtog") => { const on = !!S.state.settings[k]; return `<button class="mrow" data-act="${act}" data-k="${k}" role="switch" aria-checked="${on}"><span class="rc-mid"><b>${t}</b><span class="mu sm">${dsc}</span></span><span class="switch ${on ? "on" : ""}"><span></span></span></button>`; };
+// bar unduhan di baris "Unduhan" (Lainnya): terbuka saat ada unduhan berjalan, garis berkilau saat aktif, abu-abu saat dijeda
+const dlBar = (a) => `<span class="dl-mbar${a ? " on" : ""}${a?.paused ? " pz" : ""}" id="dlmbar" aria-hidden="true"><i style="width:${a ? Math.max(3, a.pct).toFixed(1) : 0}%"></i></span>`;
 const group = (t, inner) => `<section class="sec s20"><h2 class="cap">${t}</h2><div class="group">${inner}</div></section>`;
 // bingkai avatar kosmik dari prototipe (dimuat sekali saat dibutuhkan); cadangan: cincin warna sederhana
 let AVM = null;
@@ -1628,7 +1630,7 @@ ${user ? `<button class="me mx" data-act="level">${avatarHtml(p, lv)}
     </form>
     ${authMode === "in" ? `<button class="btn ghost" data-act="auth" data-v="up">Belum punya akun? Daftar</button><button class="link" data-act="auth" data-v="reset">Lupa password?</button>` : `<button class="btn ghost" data-act="auth" data-v="in">Sudah punya akun? Masuk</button>`}</div>`}
 ${["developer", "moderator"].includes(p?.role) ? group("Developer", mrow("dev", "Panel developer", p.role === "developer" ? "Moderasi, pengumuman, statistik" : "Moderasi chat", "dev")) : ""}
-${group("Bacaanmu", mrow("star", "Level &amp; Rank", user ? `${lv.rank} · Lv ${lv.lv}${X.cachedStatus() ? ` · 🔥 ${X.cachedStatus().streak} hari` : ""}` : "Masuk untuk mulai naik level", "level") + (user ? mrow("share", "Rekap bacaan", "7 & 30 hari · bagikan sebagai gambar", "recap") : "") + mrow("down", "Unduhan", DL.supported() ? `<span id="dlsub">${DL.savedCount()} file tersimpan${DL.progressLine() ? " · " + esc(DL.progressLine()) : ""}</span>` : "Baca offline di aplikasi APK", "dlrow") + mrow("clock", "Riwayat baca", `${S.history().length} judul`, "goHist") + mrow("sliders", "Pengaturan", "Mode efek avatar · tampilan layar & akhir chapter saat membaca", "settings"))}
+${group("Bacaanmu", mrow("star", "Level &amp; Rank", user ? `${lv.rank} · Lv ${lv.lv}${X.cachedStatus() ? ` · 🔥 ${X.cachedStatus().streak} hari` : ""}` : "Masuk untuk mulai naik level", "level") + (user ? mrow("share", "Rekap bacaan", "7 & 30 hari · bagikan sebagai gambar", "recap") : "") + mrow("down", "Unduhan", DL.supported() ? `<span id="dlsub">${DL.savedCount()} file tersimpan${DL.progressLine() ? " · " + esc(DL.progressLine()) : ""}</span>${dlBar(DL.active())}` : "Baca offline di aplikasi APK", "dlrow") + mrow("clock", "Riwayat baca", `${S.history().length} judul`, "goHist") + mrow("sliders", "Pengaturan", "Mode efek avatar · tampilan layar & akhir chapter saat membaca", "settings"))}
 <section class="sec s20"><h2 class="cap">Pengalaman baca</h2><div class="card col g12"><span class="b145">Mode baca</span>
   ${seg([{ id: "scroll", name: "Scroll (webtoon)" }, { id: "slide", name: "Slide (halaman)" }], st.readMode, "rmode", "s2")}
   ${st.readMode === "slide" ? `<span class="mu sm">Arah geser</span>${seg([{ id: "rtl", name: "Kanan ke kiri" }, { id: "ltr", name: "Kiri ke kanan" }], st.readDir === "ltr" ? "ltr" : "rtl", "dir", "s2")}` : ""}
@@ -2072,7 +2074,13 @@ if (!N.isApp && "serviceWorker" in navigator && location.protocol === "https:") 
   X.startDaily();
   DL.start();
   // progres unduhan di baris "Unduhan" halaman Lainnya
-  window.addEventListener("nk:dl", () => { const el = document.getElementById("dlsub"); if (el) { const pl = DL.progressLine(); el.textContent = `${DL.savedCount()} file tersimpan${pl ? " · " + pl : ""}`; } });
+  window.addEventListener("nk:dl", () => {
+    const el = document.getElementById("dlsub"); if (!el) return;
+    const pl = DL.progressLine(); el.textContent = `${DL.savedCount()} file tersimpan${pl ? " · " + pl : ""}`;
+    const a = DL.active(), bar = document.getElementById("dlmbar"); if (!bar) return;
+    bar.classList.toggle("on", !!a); bar.classList.toggle("pz", !!a?.paused);
+    if (a) bar.firstElementChild.style.width = Math.max(3, a.pct).toFixed(1) + "%";
+  });
   // bingkai avatar (berkas besar) dimuat di latar belakang agar menu Lainnya langsung tampil
   setTimeout(() => (window.requestIdleCallback || setTimeout)(() => loadAvatars()), 1200);
 })();

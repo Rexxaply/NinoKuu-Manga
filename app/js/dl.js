@@ -25,7 +25,8 @@ const saveQueue = (q) => api.lsSet("dlQueue", q);
 export const fmt = () => (FMTS.includes(api.lsGet("dlFmt")) ? api.lsGet("dlFmt") : "CBZ");
 const autoWhen = () => (AUTO_WHEN.includes(api.lsGet("dlAutoWhen")) ? api.lsGet("dlAutoWhen") : "Jangan");
 const autoOld = () => !!api.lsGet("dlAutoOld", false);
-const emit = () => window.dispatchEvent(new Event("nk:dl"));
+// detail.t: add (masuk antrean) · prog (halaman) · ch (1 chapter selesai) · done (1 komik selesai) · err · pause · resume · cancel
+const emit = (d = {}) => window.dispatchEvent(new CustomEvent("nk:dl", { detail: d }));
 const mbS = (b) => { if (b > 0 && b < 104858) return Math.max(1, Math.round(b / 1024)) + " KB"; const m = b / 1048576; return m >= 1000 ? (m / 1024).toFixed(1).replace(".", ",") + " GB" : (m < 10 ? m.toFixed(1).replace(".", ",") : Math.round(m)) + " MB"; };
 const chLabel = (a, b) => (a === b ? `Ch. ${a}` : `Ch. ${a}–${b}`);
 const safe = (s) => String(s || "").replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || "Tanpa judul";
@@ -193,19 +194,19 @@ export function enqueue(d, src, id, chs) {
   saveQueue(q);
   // simpan info komik seperlunya supaya chapter bisa dibuka saat offline
   api.lsSet(`dlDetail:${src}|${id}`, { manga: { id, title: d.manga.title, cover: d.manga.cover || "", tags: d.manga.tags || [] }, chapters: d.chapters.slice(0, 5000).map((c) => ({ id: c.id, ch: c.ch })) });
-  emit(); run();
+  emit({ t: "add" }); run();
   return items.length;
 }
 export function toggleJob(jid) {
   const q = queue(), j = q.find((x) => x.jid === jid); if (!j) return;
   j.paused = !j.paused; j.err = ""; saveQueue(q);
   if (j.paused && stopFlag?.jid === jid) stopFlag.stop = true;
-  emit(); if (!j.paused) run();
+  emit({ t: j.paused ? "pause" : "resume" }); if (!j.paused) run();
 }
 export function cancelJobs(jids) {
   const set = new Set(jids), q = queue();
   if (stopFlag && set.has(stopFlag.jid)) stopFlag.stop = true;
-  saveQueue(q.filter((j) => !set.has(j.jid))); jids.forEach((k) => delete prog[k]); emit();
+  saveQueue(q.filter((j) => !set.has(j.jid))); jids.forEach((k) => delete prog[k]); emit({ t: "cancel" });
 }
 export function run() {
   if (running || !supported()) return;
@@ -222,12 +223,12 @@ export function run() {
           await dlChapter(j, it, stopFlag);
           const q = queue(), cur = q.find((x) => x.jid === j.jid);
           if (cur) { cur.done++; cur.err = ""; saveQueue(q); }
-          prog[j.jid] = null; emit();
+          prog[j.jid] = null; emit({ t: "ch" });
         } catch (e) {
-          if (e === STOP) { prog[j.jid] = null; emit(); continue; }
+          if (e === STOP) { prog[j.jid] = null; emit({ t: "pause" }); continue; }
           const q = queue(), cur = q.find((x) => x.jid === j.jid);
           if (cur) { cur.paused = true; cur.err = e.message || "Gagal mengunduh"; saveQueue(q); }
-          toast(`Unduhan ${j.title} dijeda: ${e.message || "gagal"}`, 4000); emit();
+          emit({ t: "err", title: j.title, cover: j.cover, err: e.message || "Gagal mengunduh" });
         }
       }
     } finally { running = false; stopFlag = null; }
@@ -236,19 +237,18 @@ export function run() {
 function finishJob(jid) {
   const q = queue(), j = q.find((x) => x.jid === jid);
   saveQueue(q.filter((x) => x.jid !== jid)); delete prog[jid];
-  if (j) toast(`Unduhan selesai: ${j.title}`);
-  emit();
+  emit(j ? { t: "done", title: j.title, cover: j.cover, n: j.items.length } : {});
 }
 async function dlChapter(j, it, flag) {
   const p = await retry(() => api.call("pages", { source: j.src, chapter_id: it.chId }));
   const imgs = p.images || []; if (!imgs.length) throw new Error("Chapter tidak berisi gambar");
-  prog[j.jid] = { page: 0, pages: imgs.length }; emit();
+  prog[j.jid] = { page: 0, pages: imgs.length }; emit({ t: "prog" });
   const files = [];
   for (let i = 0; i < imgs.length; i += 3) {
     if (flag.stop) throw STOP;
     const got = await Promise.all(imgs.slice(i, i + 3).map((im) => retry(() => pageBytes(im, p.ref))));
     got.forEach((g, k) => files.push({ name: pad(i + k + 1) + extOf(g.type), data: g.u8 }));
-    prog[j.jid] = { page: Math.min(imgs.length, i + 3), pages: imgs.length }; emit();
+    prog[j.jid] = { page: Math.min(imgs.length, i + 3), pages: imgs.length }; emit({ t: "prog" });
   }
   if (flag.stop) throw STOP;
   const dir = await storeDir(), base = `Ninokuu/${safe(j.title)}`, name = `Chapter ${safe(it.ch)}`;
@@ -459,6 +459,55 @@ function groups() {
   return [...g.values()].map((x) => { const n = x.chs.map(numOf).filter(Number.isFinite).sort((a, b) => a - b); x.range = n.length ? chLabel(n[0], n[n.length - 1]) : `${x.chs.length} chapter`; return x; });
 }
 export const savedCount = () => Object.keys(idx()).length;
+// unduhan yang sedang berjalan (atau yang pertama di antrean bila semua dijeda)
+export function active() {
+  const q = queue(), j = q.find((x) => !x.paused) || q[0]; if (!j) return null;
+  const n = j.items.length, p = prog[j.jid];
+  return { jid: j.jid, title: j.title, cover: j.cover, pct: jobPct(j), n, at: Math.min(n, j.done + 1), ch: j.items[Math.min(n - 1, j.done)]?.ch, page: p?.page || 0, pages: p?.pages || 0, paused: !!j.paused, err: j.err || "", more: q.length - 1 };
+}
+
+/* ---------- kartu unduhan melayang (kiri bawah, pasangan pil +EXP di kanan) ----------
+   Muncul saat unduhan dimulai, tiap 1 chapter selesai, saat gagal, dan saat selesai; persentase & bar berjalan
+   terus selama kartu terlihat. Hilang sendiri ±3,5 dtk setelah kejadian terakhir. Ketuk → Favorit › Unduhan. */
+let popEl = null, popT = 0;
+const popShow = (ms) => { clearTimeout(popT); popT = setTimeout(popHide, ms); };
+function popHide() {
+  const el = popEl; popEl = null; if (!el) return;
+  el.classList.remove("on"); setTimeout(() => el.remove(), 420);
+}
+function popFill(el, st) {
+  // st: { title, cover, pct, line, state: run|done|err|pause }
+  el.dataset.st = st.state;
+  const cv = el.querySelector(".dp-cv");
+  if (cv.dataset.u !== (st.cover || "") || cv.dataset.t !== st.title) { cv.dataset.u = st.cover || ""; cv.dataset.t = st.title; cv.innerHTML = cover(st.cover, st.title, "xs"); }
+  el.querySelector(".dp-t").textContent = st.title;
+  el.querySelector(".dp-l").textContent = st.line;
+  el.querySelector(".dp-p").textContent = st.state === "done" ? "" : st.state === "err" ? "" : Math.round(st.pct) + "%";
+  el.querySelector(".dp-bar i").style.width = Math.max(2, Math.min(100, st.pct)).toFixed(1) + "%";
+  el.setAttribute("aria-label", `${st.title}: ${st.line}`);
+}
+const runLine = (a) => a.paused ? "Dijeda" : `Ch. ${a.ch} · ${a.at}/${a.n} chapter${a.pages ? ` · hal ${a.page}/${a.pages}` : ""}${a.more > 0 ? ` · +${a.more} antrean` : ""}`;
+function onDlPop(e) {
+  const t = e.detail?.t; if (!t || !supported()) return;
+  if (t === "cancel") { const a = active(); if (!a) popHide(); else if (popEl) popFill(popEl, { title: a.title, cover: a.cover, pct: a.pct, line: runLine(a), state: a.paused ? "pause" : "run" }); return; }
+  if (t === "prog" && !popEl) return;                    // halaman berjalan: hanya memperbarui kartu yang sedang tampil
+  if (document.body.dataset.screen === "fav" && document.querySelector(".dl-qcard")) { popHide(); return; }   // daftar antrean sedang terlihat
+  let st;
+  if (t === "done") st = { title: e.detail.title, cover: e.detail.cover, pct: 100, line: `Selesai · ${e.detail.n} chapter tersimpan`, state: "done" };
+  else if (t === "err") st = { title: e.detail.title, cover: e.detail.cover, pct: active()?.pct || 0, line: "Dijeda: " + e.detail.err, state: "err" };
+  else { const a = active(); if (!a) { popHide(); return; } st = { title: a.title, cover: a.cover, pct: a.pct, line: runLine(a), state: a.paused ? "pause" : "run" }; }
+  if (!popEl) {
+    popEl = document.createElement("button");
+    popEl.type = "button"; popEl.className = "dl-pop"; popEl.setAttribute("role", "status");
+    popEl.innerHTML = `<span class="dp-cv"></span><span class="dp-mid"><span class="dp-top"><b class="dp-t"></b><span class="dp-p"></span></span><span class="dp-l"></span><span class="dp-bar"><i></i></span></span><span class="dp-ic" aria-hidden="true">${icon("down", 15, 2.4)}${icon("check", 15, 2.6)}</span>`;
+    popEl.addEventListener("click", () => { popHide(); location.hash = "#/fav/dl"; });
+    popFill(popEl, { ...st, pct: Math.max(0, st.pct - 6) });
+    document.body.append(popEl);
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (!popEl) return; popEl.classList.add("on"); popFill(popEl, st); }));
+  } else popFill(popEl, st);
+  if (t !== "prog") popShow(t === "done" ? 2800 : t === "err" ? 4200 : 3600);
+}
+window.addEventListener("nk:dl", onDlPop);
 export function progressLine() {
   const q = queue(), j = q[0]; if (!j) return "";
   return `Mengunduh ${j.title} · ${Math.round(jobPct(j))}%${q.length > 1 ? ` · +${q.length - 1} antrean` : ""}`;

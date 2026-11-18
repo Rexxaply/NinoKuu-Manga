@@ -25,6 +25,8 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 - Review desain (Apple HIG): label badge minimal 11 px; Top 10 tanpa celah antara judul & jenis; dukungan "Kurangi transparansi" dan "Tingkatkan kontras"
 - Indikator gulir tipis gaya iOS di tepi kanan pembaca: muncul saat halaman bergerak, menghilang sendiri saat berhenti
 - Posisi baca dikirim ke server paling sering 1× per 20 detik (sebelumnya setiap ganti halaman); tetap tersimpan di HP seketika
+- Kartu unduhan melayang di kiri bawah (pasangan pil +EXP): sampul, judul, chapter & halaman yang sedang diunduh, persentase dan bar berkilau; berubah hijau dengan tanda centang saat selesai, abu-abu saat dijeda/gagal; ketuk untuk membuka Favorit › Unduhan
+- Baris Unduhan di Lainnya menampilkan bar progres yang terbuka pelan saat ada unduhan berjalan
 - Bilah gulir bawaan Android di pembaca disembunyikan; yang tampil hanya indikator gulir tipis Ninokuu
 - Pindah ke Favorit tidak lagi tersendat saat aplikasi baru dibuka: Koleksi tidak digambar ulang belasan kali selama chapter terbaru dicek, cukup kartu yang berubah yang diperbarui (sampul tidak berkedip)
 
