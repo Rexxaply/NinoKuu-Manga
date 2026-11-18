@@ -7,6 +7,33 @@ import { esc, icon } from "./ui.js";
 
 // Isi per versi. Slide: img = nama file di img/new/ (tanpa .webp).
 export const WHATS_NEW = {
+  "1.8.0": {
+    title: "Yang baru di Ninokuu 1.8.0",
+    intro: "Dukung Ninokuu lewat Trakteer, pembaruan muncul sendiri tanpa membuka ulang aplikasi, backup jadi file sungguhan, dan banyak tampilan yang dirapikan.",
+    features: [
+      ["Traktir Ninokuu", "Kartu baru di Lainnya untuk mendukung Ninokuu lewat Trakteer. Ninokuu tetap gratis & tanpa iklan."],
+      ["Pembaruan otomatis terdeteksi", "Dicek tiap 15 menit dan saat kembali ke aplikasi. Sedang membaca? Cukup spanduk kecil di atas, bacaan tidak tertutup."],
+      ["Backup jadi file", "File backup disimpan di Documents/Ninokuu/Backup dan bisa dibagikan ke Drive, WhatsApp, atau tempat lain."],
+      ["Label NEW UPDATE rapi", "Hanya untuk chapter yang rilis kurang dari 24 jam, dan komik itu selalu di urutan teratas."],
+      ["Jendela mengambang", "Ninokuu bisa dipakai di jendela mengambang/layar terbagi saat HP miring, dengan tata letak yang menyesuaikan."],
+      ["Chat ikut keyboard", "Judul tetap di atas, kolom tulis meluncur halus tepat di atas keyboard, pesan terbaru tetap terlihat."],
+      ["Kaca gaya iOS", "Menu ⋯ pembaca, bar bawah, dan tombol kaca lebih buram dan warnanya lebih hidup."],
+      ["Yang baru kapan saja", "Lainnya → Yang baru di versi ini: buka lagi pop-up dan panduan bergambar kapan pun."],
+    ],
+    fixes: [
+      "Kolom chat tidak lagi terlempar ke atas layar saat keyboard muncul; judul halaman tidak tertimpa bilah status.",
+      "Tab Level & Rank tidak lagi menutupi kartu level.",
+      "Chip filter Koleksi tidak melompat ke awal; tombol grid/daftar Pencarian sejajar dengan chip.",
+      "Pilihan yang sedang aktif (mis. Scroll) tidak memuat ulang pembaca bila ditekan lagi; tanda pilihan di menu ⋯ tidak hilang.",
+      "Efek kaca tidak \"mati\" saat pindah halaman; bar Mulai baca meluncur halus tanpa bayangan melompat.",
+    ],
+    tour: [
+      { img: "trakteer", title: "Traktir Ninokuu", text: "Di Lainnya, ketuk kartu Traktir Ninokuu. Lembar penjelasan muncul dulu, lalu Kirim hadiah membuka Trakteer." },
+      { img: "update", title: "Pembaruan muncul sendiri", text: "Tidak perlu membuka ulang aplikasi. Saat membaca cukup spanduk kecil di atas: ketuk Lihat untuk memperbarui." },
+      { img: "baru", title: "NEW UPDATE rapi", text: "Label hanya untuk chapter yang rilis kurang dari 24 jam. Urutan Update terbaru menaruhnya paling atas." },
+      { img: "backup", title: "Backup jadi file", text: "Simpan file backup ke Documents/Ninokuu/Backup, lalu bagikan ke Drive atau WhatsApp sebelum ganti HP." },
+    ],
+  },
   "1.7.0": {
     title: "Yang baru di Ninokuu 1.7.0",
     intro: "Tampilan baru yang lebih rapi, lanjut baca cukup 1 ketukan, lebih hemat kuota, dan animasi lebih mulus di semua halaman.",
@@ -56,14 +83,14 @@ const markSeen = (v) => { try { localStorage.setItem(SEEN, v); } catch {} };
 // Dev: sekali setiap isi changelog berubah, termasuk pemasangan baru, supaya bisa diuji.
 // Dev: muncul lagi hanya bila ISI changelog berubah (bukan setiap build), supaya isinya bisa dicek tanpa berulang.
 const hashOf = (o) => { let h = 0; const t = JSON.stringify(o || ""); for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
-// Versi yang isinya sama dengan versi lain (hanya nomornya diganti): tidak menampilkan pop-up yang sama 2 kali.
-// 1.6.3 dirilis 18 Nov 2026 lalu dinomori ulang jadi 1.7.0 (fitur baru = naik minor) tanpa perubahan isi.
-const SAME_AS = { "1.7.0": ["1.6.3"] };
+// Versi PATCH (mis. 1.8.1) tanpa entri sendiri memakai entri versi MINOR-nya (1.8.0) dan tidak memunculkan
+// pop-up lagi bagi yang sudah melihatnya: pop-up hanya untuk fitur baru, bukan setiap perbaikan kecil.
+const lineOf = (v) => String(v).split(".").slice(0, 2).join(".") + ".0";
+const entryOf = (v) => (WHATS_NEW[v] ? v : WHATS_NEW[lineOf(v)] ? lineOf(v) : v);
 export function maybeShow(ctx) {
-  const { version, dev } = ctx;
+  const { dev } = ctx, version = entryOf(ctx.version);
   const info = WHATS_NEW[version];
   const key = dev ? `${version}-dev-${hashOf(info)}` : version;
-  if (!dev && (SAME_AS[version] || []).includes(seen())) { markSeen(key); return; }
   const before = seen();
   if (before === key) return;
   markSeen(key);
@@ -73,6 +100,13 @@ export function maybeShow(ctx) {
 
 // Satu lapisan gelap dipakai ulang saat berpindah pop-up → changelog → slide (tidak berkedip/muncul ulang);
 // hanya kartunya yang berganti dengan animasi masuk singkat.
+// Buka lagi "Yang baru" kapan saja (Lainnya → Yang baru di versi ini): pop-up + panduan bergambar
+export function showNow(ctx) {
+  const info = WHATS_NEW[entryOf(ctx.version)];
+  if (!info) return false;
+  popup(info, ctx);
+  return true;
+}
 function host(cls) {
   let h = document.querySelector(".tw-host:not(.out)");
   if (!h) { h = document.createElement("div"); document.body.append(h); }

@@ -1,13 +1,56 @@
 # Changelog Ninokuu
 
 Catatan perubahan per versi. Versi terbaru di atas.
+Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambarnya di `app/img/new/`.
 
 **Aturan nomor versi** (`MAYOR.MINOR.PATCH`, berkas `VERSION`):
 - **PATCH** (1.7.0 → 1.7.1): hanya perbaikan bug, ganti alamat situs sumber, dan perubahan kecil tanpa fitur baru.
 - **MINOR** (1.7.x → 1.8.0): ada fitur baru atau perubahan tampilan yang terasa, dan masih cocok dengan data/server lama.
 - **MAYOR** (1.x → 2.0.0): perubahan besar yang tidak cocok dengan versi lama, misalnya format data atau server baru, atau desain ulang total.
-- Setiap naik versi, tambahkan entri `WHATS_NEW` di `app/js/tour.js` dengan nomor yang sama, beserta gambar slidenya. Build global gagal bila entri itu tidak ada.
-Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambarnya di `app/img/new/`.
+- Setiap naik MINOR/MAYOR, tambahkan entri `WHATS_NEW` di `app/js/tour.js` dengan nomor yang sama, beserta gambar slidenya. Build global gagal bila entri itu tidak ada. Versi PATCH memakai entri MINOR-nya dan tidak memunculkan pop-up lagi.
+
+---
+
+## 1.8.0 — 18 Nov 2026
+
+Naik MINOR (1.7.0 → 1.8.0) karena ada fitur baru (Trakteer, cek pembaruan otomatis, backup ke file, jendela mengambang). 1.7.1 hanya pernah ada di Ninokuu Dev dan isinya ikut di versi ini.
+
+### Ringkasan
+- Traktir Ninokuu: dukung Ninokuu lewat Trakteer dari kartu baru di Lainnya
+- Pembaruan muncul sendiri tanpa membuka ulang aplikasi (cek tiap 15 menit); saat membaca cukup spanduk kecil di atas
+- Backup data jadi file sungguhan di Documents/Ninokuu/Backup, bisa dibagikan ke Drive/WhatsApp
+- Label NEW UPDATE hanya untuk chapter yang rilis kurang dari 24 jam; urutan Update terbaru lebih akurat
+- Bisa dipakai di jendela mengambang/layar terbagi saat HP miring, tata letak menyesuaikan
+- Chat: kolom tulis tepat di atas keyboard dan meluncur halus, judul tidak tertimpa bilah status
+- Kaca gaya iOS di menu ⋯ pembaca, bar bawah, dan tombol; efek kaca tidak lagi mati saat pindah halaman
+- Menu "Yang baru di versi ini" di Lainnya untuk membuka panduan kapan saja
+- Perbaikan tab Level & Rank yang menutupi kartu level
+- Perbaikan chip filter Koleksi yang melompat, tombol grid Pencarian kini sejajar
+- Pilihan aktif (mis. Scroll) tidak memuat ulang pembaca bila ditekan lagi
+- Bar Mulai baca meluncur halus tanpa bayangan melompat
+
+### Detail
+- Menu baru di Lainnya: "Yang baru di versi ini", berisi pop-up fitur baru dan panduan bergambar yang bisa dibuka kapan saja
+- Perbaikan menu ⋯ pembaca: tanda pilihan aktif (Scroll, Layar, Akhir chapter) tidak lagi hilang setelah menu ditutup lalu dibuka lagi
+- Mode jendela mengambang/layar terbagi saat HP miring kini bisa dipakai (pesan "Putar HP" hanya untuk layar penuh); tata letak dipadatkan untuk jendela pendek: bar bawah lebih ramping, kolom kartu lebih banyak, judul dan sampul lebih kecil
+- Pembaruan aplikasi kini terdeteksi tanpa perlu membuka ulang aplikasi: dicek tiap 15 menit dan saat kembali ke aplikasi; saat sedang membaca muncul spanduk kecil di atas (tidak menutupi halaman)
+- Perbaikan halaman Level & Rank: tab Ringkasan/Riwayat/Tangga tidak lagi turun menutupi kartu level
+- Label NEW UPDATE di Koleksi kini konsisten: hanya untuk chapter terbaru yang rilis kurang dari 24 jam, tetap tampil walau sudah dibaca (filter "New update" mengikuti aturan yang sama); urutan "Update terbaru" dibandingkan sebagai waktu sungguhan, bukan teks tanggal
+- Perbaikan chip filter Koleksi (Manga/Manhwa/Manhua): deretan chip tidak lagi melompat ke awal setelah memilih, pilihan aktif selalu terlihat penuh
+- Pencarian: tombol grid/daftar kini sejajar di ujung deretan chip Semua/Manga/Manhwa/Manhua (keempat chip muat penuh)
+- Dukung Ninokuu lewat Trakteer: kartu "Traktir Ninokuu" di Lainnya dengan lembar penjelasan sebelum membuka halaman Trakteer
+- Backup data offline di APK kini benar-benar membuat file (Documents/Ninokuu/Backup), lengkap dengan tombol bagikan untuk menyimpannya ke Drive, WhatsApp, atau tempat lain
+- Pilihan yang sedang aktif (mis. Scroll di menu ⋯ pembaca) tidak bisa ditekan lagi, jadi tidak memuat ulang pembaca
+- Menu ⋯ pembaca, bar bawah, dan semua tombol kaca memakai buram gaya iOS (lebih kuat, warna lebih hidup)
+- Efek kaca tidak lagi "mati" sesaat saat pindah halaman, membuka/menutup pop-up, atau membuka pembaca (animasi tanpa memudarkan induknya)
+- Perbaikan kolom chat yang terlempar ke atas layar saat keyboard muncul: posisi kolom kini mengikuti bagian layar yang benar-benar terlihat (termasuk saat Android menggeser layar), tidak diangkat dua kali; layar chat kini menyusut di atas keyboard seperti aplikasi chat (judul tetap di atas, pesan terbaru tetap terlihat tepat di atas kolom), kolom meluncur halus mengikuti keyboard, dan judul halaman tidak lagi tertimpa bilah status (tanpa jarak atas berlebih)
+- Bayangan di belakang bar Mulai baca ikut naik bersama bar dan tidak lagi melompat saat animasi selesai
+- Bar "Mulai baca" di halaman komik dan bar bawah daftar chapter meluncur naik dengan halus saat halaman dibuka (sebelumnya hilang sesaat lalu muncul tiba-tiba)
+- Perbaikan bar bawah saat kembali dari halaman komik/chat ke Beranda: isi halaman tidak lagi tembus di balik bar
+
+### Langkah rilis
+- `VERSION` 1.8.0, entri `WHATS_NEW["1.8.0"]` + 4 slide baru (`trakteer`, `update`, `baru`, `backup`) di `app/img/new/`
+- Tidak ada perubahan server (`ninokuu-api` tetap 1.5.0)
 
 ---
 

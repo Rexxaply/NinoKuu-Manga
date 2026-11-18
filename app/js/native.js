@@ -381,14 +381,19 @@ if (DEV) {
   addEventListener("unhandledrejection", (e) => logDev("promise", e.reason?.message || e.reason, e.reason?.stack || ""));
 }
 
+/* ---------- bilah status tidak menimpa aplikasi ---------- */
+// Pastikan isi aplikasi selalu di bawah bilah status (judul tidak tertimpa jam/ikon), juga setelah keyboard/layar penuh.
+try { plugin("StatusBar")?.setOverlaysWebView?.({ overlay: false })?.catch?.(() => {}); } catch {}
+
 /* ---------- layar penuh saat membaca ---------- */
 // APK: bilah status Android disembunyikan (plugin StatusBar). Web: Fullscreen API (butuh ketukan pengguna).
 let fsOn = false;
 export async function setFullscreen(on) {
   if (on === fsOn) return;
   fsOn = on;
+  document.body.classList.toggle("nk-fs", !!on);   // layar penuh: jarak aman atas kembali ke nilai sistem (lubang kamera)
   const sb = plugin("StatusBar");
-  if (sb) { try { await (on ? sb.hide() : sb.show()); } catch {} return; }
+  if (sb) { try { await (on ? sb.hide() : sb.show()); if (!on) await sb.setOverlaysWebView?.({ overlay: false }); } catch {} return; }
   if (isApp) return;
   try {
     if (on && !document.fullscreenElement && document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen({ navigationUI: "hide" });

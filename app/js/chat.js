@@ -351,7 +351,7 @@ const SITE_GUIDE = `<section class="col g10"><h2 class="cap m0">Panduan</h2>
 ${step(1, "Cari alamat baru", "Buka situs lama di browser → salin alamat barunya, mis. <code>https://v8.kiryuu.to</code>")}
 ${step(2, "Komiku / Kiryuu: ganti di Supabase → selesai", "Supabase → ninokuu → Edge Functions → Secrets → ubah <code>KOMIKU_SITE</code> atau <code>KIRYUU_SITE</code> → Save. Tidak perlu APK baru.")}
 ${step(3, "Shinigami / WestManga: ganti di GitHub", `Buka ${gh("blob/main/app/js/native.js", "app/js/native.js")} → ✏️ Edit → ganti alamat di dalam tanda kutip (cari <code>shinigami</code> atau <code>westmanga</code>)`)}
-${step(4, "Naikkan versi", `Buka ${gh("blob/main/VERSION", "VERSION")} → ✏️ Edit. Ganti alamat situs = perbaikan → angka terakhir +1, mis. <code>1.7.0</code> → <code>1.7.1</code>`)}
+${step(4, "Naikkan versi", `Buka ${gh("blob/main/VERSION", "VERSION")} → ✏️ Edit. Ganti alamat situs = perbaikan → angka terakhir +1, mis. <code>1.8.0</code> → <code>1.8.1</code>`)}
 ${step(5, "Commit, tunggu APK jadi", `Tekan <b>Commit changes</b> → ${gh("actions", "tab Actions")} → tunggu centang hijau (±5 menit)`)}
 ${step(6, "Pasang APK baru → selesai", `Lainnya → Versi aplikasi → perbarui, atau unduh ${gh("releases/download/apk-terbaru/ninokuu.apk", "ninokuu.apk")}`)}
 </ol>

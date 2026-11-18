@@ -60,7 +60,10 @@ jobs:
         run: |
           V=$(tr -d ' \n\r' < VERSION)
           node -e '
-            const fs = require("fs"), v = process.argv[1], t = fs.readFileSync("app/js/tour.js", "utf8");
+            const fs = require("fs"), t = fs.readFileSync("app/js/tour.js", "utf8");
+            // versi PATCH tanpa entri sendiri memakai entri MINOR-nya (x.y.0)
+            const line = process.argv[1].split(".").slice(0, 2).join(".") + ".0";
+            const v = t.includes(`"${process.argv[1]}": {`) ? process.argv[1] : line;
             const i = t.indexOf(`"${v}": {`), bad = [];
             if (i < 0) bad.push(`tidak ada entri "${v}" di WHATS_NEW (app/js/tour.js)`);
             else {

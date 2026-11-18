@@ -100,7 +100,7 @@ async function render() {
   prevName = route.name; if (tab) prevTab = tab;
   // animasi masuk dimulai setelah layar baru terisi, supaya layar lama tidak ikut "meluncur lagi"
   const my = ++renderSeq;
-  view.classList.remove("in", "in-f", "in-b");
+  view.classList.remove("in", "in-f", "in-b"); delete view.dataset.upDone;
   view.innerHTML = ""; fxIo?.disconnect(); fxVis.clear(); fxSprite();
   let animated = false;
   // Selama layar baru meluncur masuk, animasi hiasan (bingkai avatar kosmik, kilau rank) dijeda: SVG beranimasi
@@ -108,7 +108,9 @@ async function render() {
   const animate = () => {
     if (animated || my !== renderSeq) return; animated = true;
     holdFx(true); clearTimeout(movingT);
-    movingT = setTimeout(() => { holdFx(false); watchFx(); }, 420);
+    // kelas animasi dilepas setelah selesai: halaman yang digambar ulang (data datang) tidak ikut meluncur lagi
+    movingT = setTimeout(() => { holdFx(false); watchFx(); if (my === renderSeq) view.classList.remove("in", "in-f", "in-b"); }, 420);
+    for (const c of view.children) c.classList.toggle("vfix", getComputedStyle(c).position === "fixed");
     void view.offsetWidth; view.classList.add("in", fwd ? "in-f" : "in-b");
   };
   const job = (VIEWS[route.name] || VIEWS.home)(...route.params);
@@ -122,6 +124,8 @@ async function render() {
   requestAnimationFrame(() => window.scrollTo(0, y || 0));
 }
 window.addEventListener("hashchange", render);
+// bar "Mulai baca" / bar bawah daftar chapter: meluncur naik sekali per kunjungan halaman (lihat app.css .rfab-wrap)
+view.addEventListener("animationend", (e) => { if (e.animationName === "fixUp") view.dataset.upDone = "1"; });
 
 // Bar bawah ringkas (gaya iOS): gulir ke bawah ±48 px → bar mengecil jadi 1 tombol (tab aktif) di tengah.
 // Ketuk tombol itu → bar terbuka lagi. Kembali ke paling atas halaman juga membukanya.
@@ -156,6 +160,11 @@ const back = (fallback = "#/home") => (navIdx > 0 ? history.back() : goReplace(f
 // kembali ke halaman tertentu: mundur bila itu memang halaman sebelumnya, selain itu ganti halaman ini
 const backTo = (href, alsoOk = []) => { const prev = navStack[navIdx - 1]; if (navIdx > 0 && (prev === href || alsoOk.includes(prev))) history.back(); else goReplace(href); };
 
+// pilihan segmen yang sedang aktif tidak bisa ditekan lagi (mis. "Scroll" saat sudah Scroll → tidak memuat ulang)
+document.addEventListener("click", (e) => {
+  const b = e.target.closest?.(".seg > button, .fseg > button");
+  if (b && (b.getAttribute("aria-selected") === "true" || b.getAttribute("aria-checked") === "true")) { e.preventDefault(); e.stopImmediatePropagation(); }
+}, true);
 let acts = {};
 view.addEventListener("click", (e) => {
   const el = e.target.closest("[data-act]");
@@ -422,9 +431,9 @@ async function vSearch(type) {
   <div class="sh-pop" id="shpop" role="listbox" aria-label="Pencarian terakhir"></div></label>
   <span id="fltbtn"></span></div>
 <div class="sec s14">${seg(SOURCES, sState.src, "src")}</div>
-<div class="px mt10" id="tchips"></div>
+<div class="px mt10 t-row"><div id="tchips"></div>${viewBtn(S.state.settings.searchView === "grid", "view")}</div>
 <div class="px" id="factive"></div>
-<div class="sec-h px mt10"><span class="mu sm" id="sinfo"></span>${viewBtn(S.state.settings.searchView === "grid", "view")}</div>
+<div class="sec-h px mt10"><span class="mu sm" id="sinfo"></span></div>
 <div id="sres" class="px">${loading(6, "sk-lrow")}</div>
 <button class="btn ghost wide" data-act="more" id="sMore" hidden>Muat lagi</button>
 <div class="pad-nav"></div>`;
@@ -1378,15 +1387,20 @@ function vFav(tab) {
   if (tab && ["lib", "hist", "dl"].includes(tab)) fav.tab = tab;
   const grid = S.state.settings.favView === "grid";
   const readOf = (m) => S.histItem(m.source, m.comic_id);
+  // ada chapter yang belum dibaca (untuk lencana +N / lanjut di tampilan daftar)
   const isNew = (m) => { const r = readOf(m); return m.latest != null && r && parseFloat(m.latest) > parseFloat(r.chapter); };
+  // label "NEW UPDATE" & filter "New update": chapter terbaru rilis < 24 jam lalu (tetap tampil walau sudah dibaca, supaya rapi)
+  // tanggal tanpa jam (sebagian sumber) = tengah malam waktu HP pada hari itu, jadi rilis "hari ini" tetap terhitung baru
+  const tsOf = (v) => { const d = /^(\d{4})-(\d\d)-(\d\d)$/.exec(v || ""); const t = d ? new Date(+d[1], d[2] - 1, +d[3]).getTime() : Date.parse(v || ""); return Number.isFinite(t) ? t : 0; };
+  const isFresh = (m) => { const t = tsOf(m.latestAt); return t > 0 && Date.now() - t < 864e5; };
   // urutan koleksi: update terbaru (tanggal chapter terakhir yang diketahui saat komik dibuka), terakhir ditambah, judul
   const fs = FAV_SORTS.some(([k]) => k === S.state.settings.favSort) ? S.state.settings.favSort : "update";
   const byAdded = (a, b) => (b.added_at || "").localeCompare(a.added_at || "");
   const byTitle = (a, b) => String(a.title || "").localeCompare(String(b.title || ""), "id", { sensitivity: "base", numeric: true });
   const libAll = [...S.state.lib.values()].sort(fs === "added" ? byAdded : fs === "az" ? byTitle : fs === "za" ? (a, b) => byTitle(b, a)
-    : (a, b) => (b.latestAt || b.added_at || "").localeCompare(a.latestAt || a.added_at || ""));
+    : (a, b) => (tsOf(b.latestAt) || tsOf(b.added_at)) - (tsOf(a.latestAt) || tsOf(a.added_at)) || byTitle(a, b));   // dibanding sebagai waktu (format tanggal tiap sumber berbeda)
   const lib = libAll.filter((m) => (!fav.q || m.title.toLowerCase().includes(fav.q.toLowerCase()))
-    && (fav.filter === "all" || (fav.filter === "new" ? isNew(m) : m.type === fav.filter)));
+    && (fav.filter === "all" || (fav.filter === "new" ? isFresh(m) : m.type === fav.filter)));
   const hist = S.history();
   // baris riwayat: judul, sumber · waktu, "Ch. 23 · hal 12/48" + bar halaman; tombol Lanjut (ke halaman terakhir)
   // atau Berikutnya (bila chapter itu sudah selesai dibaca)
@@ -1426,7 +1440,7 @@ function vFav(tab) {
       : `<div class="empty"><span class="empty-ic">${icon("heart", 24)}</span><b>Koleksi masih kosong</b><span>Ketuk ikon hati di halaman komik untuk menyimpannya di sini.</span><a class="btn ghost" href="#/search">Cari komik</a></div>`)
     : grid ? `<div class="g3 favg">${lib.map((m) => { const r = readOf(m); return `<a class="grid-card" href="${comicHref(m.source, m.comic_id)}"><span class="gc-cv">${cover(m.cover, m.title, "fav3")}
         <span class="stack">${m.latest != null ? `<span class="st-red">Terbaru ${esc(m.latest)}</span>` : ""}<span class="st-dark">${r ? "Dibaca " + esc(r.chapter) : "Belum dibaca"}</span></span>
-        ${isNew(m) ? `<span class="new-up">NEW UPDATE</span>` : ""}${m.notify ? `<span class="bell-b">${icon("bellF", 12)}</span>` : ""}</span>
+        ${isFresh(m) ? `<span class="new-up">NEW UPDATE</span>` : ""}${m.notify ? `<span class="bell-b">${icon("bellF", 12)}</span>` : ""}</span>
         <b class="fg-t">${esc(m.title)}</b><span class="mu xs">${srcType(m)}</span></a>`; }).join("")}</div>`
     : `<div class="frows">${lib.map(favRow).join("")}</div>`}`;
   } else if (fav.tab === "hist") {
@@ -1544,7 +1558,11 @@ ${N.DEV ? group("Ninokuu Dev", mrow("bug", "Log error", `${N.devLog().length} ca
 ${N.isApp ? group("Aplikasi", `<span id="updrow"></span>` + (N.pushSupported() || !N.DEV ? mrow("bell", "Notifikasi HP", `<span id="pushst">Memeriksa…</span>`, "pushset") : mrow("bell", "Notifikasi HP", "Belum aktif di Ninokuu Dev (paket .dev belum didaftarkan di Firebase)", "")) + mrow("info", "Versi aplikasi", `v${esc(VERSION)}${N.DEV ? " Dev" : ""} · ketuk untuk cek pembaruan`, "checkupd"))
   : group("Aplikasi Android", mrow("down", "Pasang aplikasi Android (APK)", "Baca Shinigami &amp; WestManga, notifikasi chapter baru di HP", "getapk"))}
 ${group("Data &amp; penyimpanan", mrow("cloud", "Backup data offline", "Simpan koleksi, riwayat, dan pengaturan ke file", "backup") + mrow("restore", "Pulihkan data", "Dari file backup", "restore") + mrow("trash", "Bersihkan cache", "Gambar sampul &amp; halaman yang tersimpan", "cache"))}
-${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord Ninokuu", "discord") + mrow("info", "Tentang aplikasi", "Versi " + esc(VERSION), "about") + mrow("shield", "Kebijakan privasi", "", "privacy") + mrow("doc", "Ketentuan pengguna", "", "terms") + mrow("heart", "Dukung di Trakteer", "Traktir pengembang", "trakteer"))}
+<section class="sec s20"><button class="tk-card" data-act="trakteer" aria-label="Dukung Ninokuu di Trakteer">
+  <span class="tk-ic">${icon("gift", 26, 2)}</span>
+  <span class="tk-t"><b>Traktir Ninokuu</b><span>Gratis &amp; tanpa iklan berkat dukunganmu. Kirim hadiah kecil lewat Trakteer.</span></span>
+  <span class="tk-go">${icon("chev", 18, 2.4)}</span></button></section>
+${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord Ninokuu", "discord") + mrow("star", "Yang baru di versi ini", `Fitur baru &amp; panduan bergambar v${esc(VERSION)}`, "whatsnew") + mrow("info", "Tentang aplikasi", "Versi " + esc(VERSION), "about") + mrow("shield", "Kebijakan privasi", "", "privacy") + mrow("doc", "Ketentuan pengguna", "", "terms"))}
 <p class="mu xs center mt18">Ninokuu versi ${esc(VERSION)}</p><div class="pad-nav"></div>`;
   if (N.isApp) {
     refreshPushStatus();
@@ -1571,6 +1589,7 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
     auth: (el) => { authMode = el.dataset.v; vMore(); },
     level: () => go("#/p/level"), recap: () => go("#/p/recap"), dlrow: () => go("#/fav/dl"), dev: () => go("#/p/dev"), photo: () => openPhoto(), goName: () => go("#/p/name"), goEmail: () => go("#/p/email"), goPass: () => go("#/p/pass"),
     goHist: () => go("#/fav/hist"), goDl: () => go("#/fav/dl"),
+    whatsnew: () => { if (!T.showNow({ version: VERSION, build: N.BUILD, dev: N.DEV, go })) toast("Belum ada catatan untuk versi ini"); },
     about: () => go("#/p/about"), privacy: () => go("#/p/privacy"), terms: () => go("#/p/terms"),
     backup: () => go("#/p/backup"), restore: () => go("#/p/restore"),
     getapk: () => window.open(N.SITE_URL, "_blank"),
@@ -1596,7 +1615,7 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
         toast(r.ok ? "Tes notifikasi dikirim. Cek bilah notifikasi HP." : "Tes gagal: " + (err || "server tidak bisa mengirim notifikasi"), 7000);
       } catch (e) { showPush("error"); toast("Pendaftaran notifikasi gagal: " + e.message, 5000); }
     },
-    discord: () => soon("Server Discord Ninokuu sedang disiapkan."), trakteer: () => soon("Halaman Trakteer sedang disiapkan. Terima kasih!"),
+    discord: () => soon("Server Discord Ninokuu sedang disiapkan."), trakteer: () => openTrakteer(),
     rmode: (el) => { S.setSetting("readMode", el.dataset.v); vMore(); },
     dir: (el) => { S.setSetting("readDir", el.dataset.v); vMore(); },
     logout: async () => { if (!confirm("Keluar dari akun? Koleksi dan riwayatmu tetap aman di server.")) return; await S.flushHistory(); await api.signOut(); S.clearUserData(); toast("Kamu sudah keluar"); vMore(); },
@@ -1612,24 +1631,89 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
 /* ---------- khusus APK: notifikasi, tombol kembali, cek chapter sumber yang diblokir server ---------- */
 // Keyboard: bila WebView tidak menyusut saat keyboard muncul, angkat elemen bawah (kolom chat, dll.)
 // setinggi bagian keyboard yang belum "dimakan" oleh penyusutan layar.
-let kbBase = window.innerHeight, kbOpen = false;
-window.addEventListener("resize", () => { if (!kbOpen) kbBase = window.innerHeight; });
+// Dihitung ulang setiap kali layar berubah ukuran: di sebagian HP, keyboard dilaporkan "sudah muncul" sebelum
+// WebView menyusut. Dulu tingginya dihitung sekali saja → kolom chat terangkat 2× (melompat ke atas layar).
+// Keyboard: kolom bawah (chat, lembar, dll.) diangkat setinggi bagian keyboard yang MENUTUPI layar.
+// - Bila layar aplikasi sudah menyusut karena keyboard (Android adjustResize), tidak perlu diangkat lagi (--kb 0).
+//   Dulu tinggi keyboard tetap ditambahkan → kolom terangkat 2× dan seluruh isi chat terdorong keluar layar.
+// - Bila layar tidak menyusut (keyboard melayang di atas aplikasi), angkat setinggi keyboard. Tinggi dari Android
+//   kadang dalam piksel fisik (mis. 900 di HP 2,75×): dinormalkan ke piksel tampilan.
+// - Tinggi layar penuh (kbBase) hanya diambil saat keyboard pasti tertutup (dan = tinggi terbesar yang terlihat),
+//   karena di sebagian HP layar menyusut SEBELUM laporan "keyboard muncul" datang.
+// - Dihitung ulang setiap layar berubah ukuran; nilai terakhir dicatat di Log error (Ninokuu Dev) untuk diagnosa.
+let kbBase = window.innerHeight, kbOpen = false, kbH = 0, kbStick = false;
+// seperti aplikasi chat: bila sedang di pesan terbawah saat keyboard muncul, tetap menempel di bawah setelah layar menyusut
+const kbAtEnd = () => window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 160;
+const kbKeepEnd = () => { if (kbStick) window.scrollTo(0, document.documentElement.scrollHeight); };
+const kbCss = (h) => { const dpr = window.devicePixelRatio || 1; return h > kbBase * 0.62 && dpr > 1.2 ? h / dpr : h; };
+const applyKb = () => {
+  const shrink = Math.max(0, kbBase - window.innerHeight), vv = window.visualViewport;
+  // Bila visualViewport tahu ada keyboard, ia juga tahu berapa jauh layar digeser (offsetTop) oleh Android/Chromium.
+  // Bagian bawah yang terlihat = offsetTop + height; komposer cukup diangkat sejauh yang masih tertutup.
+  // (Dulu tinggi keyboard ikut dipakai walau layar sudah digeser → komposer naik dua kali dan nyangkut di atas.)
+  const vvKnows = vv && window.innerHeight - vv.height > 40;
+  const vvCover = vv ? Math.max(0, window.innerHeight - (vv.height + vv.offsetTop)) : 0;
+  const h = kbCss(kbH);
+  const lift = vvKnows ? vvCover : shrink > 80 ? 0 : h - shrink;
+  const v = lift > 40 ? Math.round(Math.min(lift, window.innerHeight * 0.7)) : 0;
+  document.documentElement.style.setProperty("--kb", v + "px");
+  kbKeepEnd();
+  if (N.DEV) N.logDev("kb", `keyboard ${Math.round(kbH)} → ${Math.round(h)} px, layar ${kbBase}→${window.innerHeight} (susut ${shrink}), vv ${vv ? Math.round(vv.height) + "+" + Math.round(vv.offsetTop) : "-"}, tutup ${Math.round(vvCover)}, angkat ${v}px`);
+};
+window.addEventListener("resize", () => { if (kbOpen) { if (kbH) applyKb(); } else if (window.innerHeight > kbBase) kbBase = window.innerHeight; });
+window.visualViewport?.addEventListener("resize", () => { if (kbOpen) applyKb(); });
+window.visualViewport?.addEventListener("scroll", () => { if (kbOpen) applyKb(); });
+// Chat: saat layar menyusut/membesar karena keyboard, kolom (dan pesan bila menempel di bawah) meluncur halus
+// dari posisi lama ke posisi baru, mengikuti gerak keyboard, alih-alih melompat.
+let flipH = window.innerHeight, chatEnd = true;
+addEventListener("scroll", () => { if (!kbOpen) chatEnd = kbAtEnd(); }, { passive: true });
+addEventListener("resize", () => {
+  const d = window.innerHeight - flipH; flipH = window.innerHeight;
+  if (Math.abs(d) < 80 || !document.querySelector("#chatroot")) return;
+  const shrink = d < 0, stick = shrink && (chatEnd || kbStick);
+  if (stick) window.scrollTo(0, document.documentElement.scrollHeight);
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const els = [document.querySelector("#chatroot .composer"), stick && document.querySelector("#chat")].filter(Boolean);
+  for (const el of els) el.animate([{ transform: `translate3d(0, ${-d}px, 0)` }, { transform: "translate3d(0, 0, 0)" }], { duration: 280, easing: "cubic-bezier(.2, .8, .2, 1)" });
+});
+addEventListener("orientationchange", () => setTimeout(() => { if (!kbOpen) kbBase = window.innerHeight; }, 400));
 function setKeyboard(h, phase) {
   const root = document.documentElement;
   if (h > 0) {
+    if (!kbOpen) kbStick = !!document.querySelector("#chatroot") && kbAtEnd();
     kbOpen = true;
     if (phase !== "did") return;
-    const extra = h - Math.max(0, kbBase - window.innerHeight);
-    root.style.setProperty("--kb", (extra > 40 ? extra : 0) + "px");
+    kbH = h; applyKb();
     document.body.classList.add("kb-open");
     const ae = document.activeElement;
     if (ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName) && !ae.closest(".composer, .chbar")) setTimeout(() => ae.scrollIntoView({ block: "center", behavior: "smooth" }), 60);
   } else {
-    kbOpen = false;
+    kbOpen = false; kbH = 0; kbStick = false;
+    if (phase === "did") setTimeout(() => { if (!kbOpen) kbBase = window.innerHeight; }, 250);   // tinggi penuh yang pasti benar
     root.style.setProperty("--kb", "0px");
     document.body.classList.remove("kb-open");
   }
   window.dispatchEvent(new CustomEvent("nk:kb", { detail: { open: h > 0, phase } }));
+}
+
+// Dukungan lewat Trakteer: lembar penjelasan dulu (ke mana dukungan dipakai), lalu dibuka di browser
+const TRAKTEER_URL = "https://trakteer.id/reza-rexxa/gift";
+function openTrakteer() {
+  openSheet(`<div class="tk-sheet">
+    <span class="tk-hero">${icon("gift", 34, 1.8)}</span>
+    <span class="sheet-ttl center">Dukung Ninokuu</span>
+    <span class="mu sm lh center">Ninokuu tetap gratis &amp; tanpa iklan. Hadiahmu membantu:</span>
+    <div class="tk-list">
+      <span>${icon("cloud", 17, 2)}<b>Biaya server</b><i>supaya baca, chat, &amp; notifikasi tetap lancar</i></span>
+      <span>${icon("star", 17, 2)}<b>Fitur baru</b><i>update rutin &amp; perbaikan bug lebih cepat</i></span>
+      <span>${icon("heart", 17, 2)}<b>Semangat developer</b><i>setiap dukungan sangat berarti, terima kasih!</i></span>
+    </div>
+    <span class="mu xs center">Dibuka di Trakteer (trakteer.id) · pembayaran diurus langsung oleh Trakteer</span>
+    <div class="row g8"><button class="sh-cancel grow" data-s="no">Nanti</button><button class="btn primary grow tk-btn" data-s="go">${icon("gift", 17, 2)}Kirim hadiah</button></div>
+  </div>`, (b) => {
+    if (b.dataset.s === "go") window.open(TRAKTEER_URL, "_blank");
+    closeSheet();
+  });
 }
 
 // Pembaruan APK: peringatan saat aplikasi dibuka bila ada build baru, dan cek manual dari Lainnya.
@@ -1654,15 +1738,41 @@ function openDevLog() {
     if (b.dataset.s === "clear") { N.clearDevLog(); closeSheet(); toast("Log dihapus"); if (route.name === "more") vMore(); }
   });
 }
+// Pembaruan dicek saat aplikasi dibuka, saat kembali dari latar belakang, dan tiap 15 menit selama dipakai,
+// jadi pengguna tidak perlu menutup-buka aplikasi. Sedang membaca → spanduk kecil di atas (tidak menutupi halaman);
+// di halaman lain → lembar pembaruan. Tiap versi hanya diumumkan sekali per sesi (dan tidak lagi bila dipilih "Nanti").
+let updLast = 0, updShown = "";
 async function checkUpdate(manual) {
   if (manual) toast("Memeriksa pembaruan…", 1500);
+  updLast = Date.now();
   const r = await N.latestBuild();
   if (!r) { if (manual) toast("Tidak bisa memeriksa pembaruan. Periksa koneksi internet."); return; }
   if (r.newer) {
+    const key = String(r.version || r.build);
     let later = ""; try { later = sessionStorage.getItem("ninokuu:updLater") || ""; } catch {}
-    if (manual || later !== String(r.version || r.build)) showUpdate(r);
+    if (manual) { updBanner(null); showUpdate(r); return; }
+    if (later === key || updShown === key) return;
+    updShown = key;
+    if (route.name === "reader") updBanner(r); else showUpdate(r);
   } else if (manual) toast(`Kamu sudah memakai versi terbaru (v${VERSION}).`);
 }
+function updBanner(r) {
+  document.querySelector(".upd-ban")?.remove();
+  if (!r) return;
+  const el = document.createElement("div");
+  el.className = "upd-ban glass"; el.setAttribute("role", "status");
+  el.innerHTML = `<span class="upd-ban-t"><b>Pembaruan tersedia</b><span class="mu xs">${r.version ? "Versi " + esc(r.version) : "Build " + esc(r.build)}</span></span>
+    <button class="upd-ban-go" data-u="go">Lihat</button><button class="upd-ban-x" data-u="x" aria-label="Tutup">${icon("x", 16, 2.2)}</button>`;
+  el.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-u]"); if (!b) return;
+    el.classList.add("out"); setTimeout(() => el.remove(), 260);
+    if (b.dataset.u === "go") showUpdate(r);
+    else { try { sessionStorage.setItem("ninokuu:updLater", String(r.version || r.build)); } catch {} }
+  });
+  document.body.append(el);
+  setTimeout(() => { if (el.isConnected) { el.classList.add("out"); setTimeout(() => el.remove(), 260); } }, 12000);
+}
+const updTick = () => { if (document.visibilityState === "visible" && Date.now() - updLast > 14 * 60e3) checkUpdate(false); };
 
 let exitArmed = false, exitT = null;
 function startApp() {
@@ -1670,6 +1780,8 @@ function startApp() {
   N.onKeyboard(setKeyboard);
   N.onPushReceived(() => refreshDots());
   setTimeout(() => checkUpdate(false), 2500);
+  setInterval(updTick, 60e3);                                   // tiap menit dicek apakah sudah 15 menit sejak cek terakhir
+  N.onResume(() => { if (Date.now() - updLast > 5 * 60e3) setTimeout(() => checkUpdate(false), 1200); });
   N.onPushOpen((h) => go(h));
   N.onUrlOpen((h, why) => {
     go(h);
@@ -1734,13 +1846,29 @@ async function vPage(name) {
     html = topbar("Backup data offline") + `<div class="px col g14 mt6"><p class="mu sm lh m0">Simpan salinan data Ninokuu ke file di HP. Berguna sebelum ganti HP atau memasang ulang aplikasi.</p>
   <div class="card col g6"><b>Isi backup</b><span class="mu sm">${S.state.lib.size} judul koleksi · ${S.state.hist.size} riwayat baca · pengaturan</span></div>
   <button class="btn primary" data-act="dl">${icon("down", 18, 2)}Simpan file backup</button></div>`;
-    acts2.dl = () => {
+    acts2.dl = async (el) => {
       const data = { app: "ninokuu", v: 1, at: new Date().toISOString(), lib: [...S.state.lib.values()], hist: [...S.state.hist.values()], settings: S.state.settings };
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: "application/json" }));
-      a.download = `ninokuu-backup-${new Date().toISOString().slice(0, 10)}.json`;
-      a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-      toast("File backup disimpan ke folder Download");
+      const d = new Date(), pad = (n) => String(n).padStart(2, "0");
+      const name = `ninokuu-backup-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`, text = JSON.stringify(data);
+      if (!DL.supported()) {   // web: unduh lewat browser
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([text], { type: "application/json" })); a.download = name;
+        a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+        toast("File backup diunduh"); return;
+      }
+      // APK: WebView tidak bisa mengunduh lewat tautan, jadi file ditulis langsung ke penyimpanan HP
+      el.disabled = true;
+      try {
+        const r = await DL.saveText(name, text);
+        el.parentNode.querySelector(".bk-res")?.remove();
+        // file hanya bisa disimpan di dalam aplikasi → langsung buka menu bagikan supaya bisa disimpan ke File/Drive/WhatsApp
+        el.insertAdjacentHTML("afterend", `<div class="card col g6 bk-res"><b class="gold row g6">${icon("check", 16, 2.4)} ${r.where ? "File backup tersimpan" : "File backup siap"}</b>
+          <span class="mu sm" style="word-break:break-all">${r.where ? esc(r.where) : "HP ini tidak mengizinkan menyimpan ke folder umum. Pilih tempat menyimpan lewat tombol di bawah (mis. File, Drive, atau WhatsApp)."}</span>
+          ${r.uri ? `<button class="btn ${r.where ? "" : "primary"}" data-act="bkshare">${icon("send", 17, 2)}${r.where ? "Bagikan / simpan ke tempat lain" : "Simpan ke…"}</button>` : ""}</div>`);
+        acts2.bkshare = () => DL.shareFile(r.uri, "Backup Ninokuu").catch((e) => toast(e.message || "Gagal membagikan"));
+        if (!r.where && r.uri) acts2.bkshare(); else toast("File backup tersimpan");
+      } catch (e) { toast(e?.message || "Gagal menyimpan file backup"); }
+      el.disabled = false;
     };
   } else if (name === "restore") {
     html = topbar("Pulihkan data") + `<div class="px col g14 mt6"><p class="mu sm lh m0">Pilih file backup (.json) dari HP. Data di file digabung dengan data yang sudah ada; judul yang sama tidak terduplikat.</p>
@@ -1809,11 +1937,16 @@ function checkOrientation() {
   const sw = screen.width || 0, sh = screen.height || 0;
   const type = screen.orientation?.type || (Math.abs(window.orientation || 0) === 90 ? "landscape" : sw > sh ? "landscape" : "portrait");
   const phone = Math.min(sw, sh) > 0 && Math.min(sw, sh) < 600;
-  document.body.classList.toggle("landscape-phone", phone && type.startsWith("landscape"));
+  // Jendela mengambang / layar terbagi: aplikasi hanya memakai sebagian layar → tetap tampil (tata letak menyesuaikan),
+  // pesan "putar HP" hanya untuk layar penuh yang miring.
+  const full = window.innerWidth * window.innerHeight >= sw * sh * 0.8;
+  document.body.classList.toggle("landscape-phone", phone && full && type.startsWith("landscape"));
+  document.body.classList.toggle("short", window.innerHeight < 520);
 }
 checkOrientation();
 screen.orientation?.addEventListener?.("change", checkOrientation);
 window.addEventListener("orientationchange", () => setTimeout(checkOrientation, 50));
+let oriT = 0; window.addEventListener("resize", () => { clearTimeout(oriT); oriT = setTimeout(() => { if (!kbOpen) checkOrientation(); }, 120); });
 
 api.onAuth((s) => { if (!s) S.clearUserData(); });
 if (S.loggedIn()) { S.loadProfile().catch(() => {}); S.pull().catch(() => {}); }

@@ -55,6 +55,29 @@ function storeDir() {
 }
 export const where = async () => ((await storeDir()) === "DOCUMENTS" ? "Internal / Documents / Ninokuu" : "Penyimpanan aplikasi / Ninokuu");
 
+// file teks (mis. backup .json): coba folder Documents/Ninokuu/Backup (terlihat di Pengelola File) → bila ditolak,
+// penyimpanan aplikasi. Salinan juga ditaruh di cache, karena hanya file cache yang boleh dibagikan ke aplikasi lain.
+// (Folder Documents/Ninokuu bisa sudah dibuat Ninokuu versi lain → file .nomedia-nya bukan milik aplikasi ini,
+//  jadi untuk backup ditulis langsung tanpa mengandalkan cek folder unduhan.)
+export async function saveText(name, text) {
+  const f = fs(); if (!f) throw new Error("Penyimpanan HP tidak tersedia.");
+  try { await f.requestPermissions?.(); } catch {}
+  let where = "";
+  try { await f.writeFile({ path: "Ninokuu/Backup/" + name, data: text, directory: "DOCUMENTS", encoding: "utf8", recursive: true }); where = "Internal / Documents / Ninokuu / Backup / " + name; }
+  catch {
+    try { await f.writeFile({ path: "Download/" + name, data: text, directory: "EXTERNAL_STORAGE", encoding: "utf8", recursive: true }); where = "Internal / Download / " + name; }
+    catch { await f.writeFile({ path: "Ninokuu/Backup/" + name, data: text, directory: "DATA", encoding: "utf8", recursive: true }); where = ""; }
+  }
+  let uri = ""; try { uri = (await f.writeFile({ path: name, data: text, directory: "CACHE", encoding: "utf8" })).uri || ""; } catch {}
+  return { where, uri };
+}
+export async function shareFile(uri, title) {
+  const C = window.Capacitor, SH = C?.Plugins?.Share || (C?.isPluginAvailable?.("Share") ? C.registerPlugin?.("Share") : null);
+  if (!SH || !uri) throw new Error("Tidak bisa membuka menu bagikan.");
+  try { await SH.share({ title, files: [uri], dialogTitle: title }); }
+  catch (e) { if (!/cancel/i.test(e?.message || "")) throw e; }
+}
+
 const b64 = (u8) => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = no; r.readAsDataURL(new Blob([u8])); });
 async function writeBytes(dir, path, u8) {
   const CH = 3 << 20;                               // potongan 3 MB (kelipatan 3 → base64 bisa disambung)
