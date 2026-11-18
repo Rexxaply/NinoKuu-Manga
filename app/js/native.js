@@ -418,7 +418,16 @@ export async function setFullscreen(on) {
   fsOn = on;
   document.body.classList.toggle("nk-fs", !!on);   // layar penuh: jarak aman atas kembali ke nilai sistem (lubang kamera)
   const sb = plugin("StatusBar");
-  if (sb) { try { await (on ? sb.hide() : sb.show()); if (!on) await sb.setOverlaysWebView?.({ overlay: false }); } catch {} return; }
+  // Layar penuh: halaman digambar sampai ujung atas layar, termasuk area lubang kamera (overlay + shortEdges di tema).
+  // Tanpa overlay, Android tetap menyisakan pita hitam setinggi bilah status walau bilah statusnya disembunyikan.
+  // Keluar layar penuh: bilah status muncul lagi dan isi aplikasi kembali di bawahnya.
+  if (sb) {
+    try {
+      if (on) { await sb.setOverlaysWebView?.({ overlay: true }); await sb.hide(); }
+      else { await sb.show(); await sb.setOverlaysWebView?.({ overlay: false }); }
+    } catch {}
+    return;
+  }
   if (isApp) return;
   try {
     if (on && !document.fullscreenElement && document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen({ navigationUI: "hide" });

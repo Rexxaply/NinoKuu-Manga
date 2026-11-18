@@ -11,6 +11,17 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
+## 1.8.3 — 18 Nov 2026
+
+### Ringkasan
+- Mode baca layar penuh kini sampai ujung atas layar (termasuk sekitar lubang kamera), tanpa pita hitam
+
+### Detail
+- Saat layar penuh: `StatusBar.setOverlaysWebView({ overlay: true })` lalu bilah status disembunyikan; saat keluar: bilah status muncul dan overlay dimatikan lagi. 1.8.2 (shortEdges saja) belum cukup karena jendela masih menyisakan jarak untuk bilah status
+- Tidak ada perubahan server
+
+---
+
 ## 1.8.2 — 18 Nov 2026
 
 ### Ringkasan
