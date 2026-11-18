@@ -727,8 +727,8 @@ async function vReader(src, id, chId) {
   const imgs = p.images.map((im, i) => `<img class="r-img" data-i="${i + 1}" ${im.local ? `src="${esc(im.u)}"` : N.imgAttrs(im.u, { ref: p.ref || "", px: im.p ? api.pageUrl(im.p) : "" })} alt="Halaman ${i + 1}" ${i > 2 ? 'loading="lazy"' : ""} decoding="async" referrerpolicy="no-referrer" draggable="false">`);
 
   view.innerHTML = `<div class="reader ui ${slide ? "slide" : ""}" id="rd">
-  ${slide ? `<div class="r-slides" id="rbox" dir="${rtl ? "rtl" : "ltr"}">${imgs.map((im) => `<div class="r-slide">${im}</div>`).join("")}<div class="r-slide r-endslide"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span>${next ? `<span class="r-next-hint" id="rnext" ${st.autoNext ? "" : "hidden"}>${icon("chev", 15, 2)}<span>Terus geser untuk lanjut ke Chapter ${esc(next.ch)}</span></span>` : ""}${isLocal ? "" : `${chLike(null)}<a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini</a>`}</div></div>`
-    : `<div class="r-scroll" id="rbox"><div class="r-pages" id="rpages">${imgs.join("")}<div class="r-endtxt"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span>${next ? `<span class="r-next-hint" id="rnext" ${st.autoNext ? "" : "hidden"}>${icon("down", 15, 2)}<span>Terus gulir untuk lanjut ke Chapter ${esc(next.ch)}</span></span>` : ""}${isLocal ? "" : `${chLike(null)}<a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini<span class="cm-n" id="rcmn"></span></a>`}</div></div></div>`}
+  ${slide ? `<div class="r-slides" id="rbox" dir="${rtl ? "rtl" : "ltr"}">${imgs.map((im) => `<div class="r-slide">${im}</div>`).join("")}<div class="r-slide r-endslide"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span>${next ? `<button class="r-next-hint" id="rnext" data-act="cancelNext" hidden><span class="r-nbar"></span><span class="r-ntx"></span></button>` : ""}${isLocal ? "" : `${chLike(null)}<a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini</a>`}</div></div>`
+    : `<div class="r-scroll" id="rbox"><div class="r-pages" id="rpages">${imgs.join("")}<div class="r-endtxt"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span>${next ? `<button class="r-next-hint" id="rnext" data-act="cancelNext" hidden><span class="r-nbar"></span><span class="r-ntx"></span></button>` : ""}${isLocal ? "" : `${chLike(null)}<a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini<span class="cm-n" id="rcmn"></span></a>`}</div></div></div>`}
   <div class="r-zoom glass" id="rzoom" hidden>${icon("zoom", 15)}<span id="rzt"></span> · geser untuk melihat, ketuk 2× untuk normal</div>
   <div class="r-top">
     <button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 22, 2)}</button>
@@ -745,7 +745,7 @@ async function vReader(src, id, chId) {
     <button class="r-mode" data-act="chlist"><span class="gold">${icon("list", 20)}</span><span class="col grow"><b>Daftar chapter</b><span class="mu xs">${d.chapters.length} chapter · cari & pindah chapter</span></span></button>
     <button class="r-mode" data-act="reload"><span class="gold">${icon("refresh", 20)}</span><span class="col grow"><b>Muat ulang chapter</b><span class="mu xs" id="rfailn">Untuk gambar yang gagal dimuat</span></span></button>
     <button class="r-mode" data-act="rreport"><span class="redt">${icon("bug", 20)}</span><span class="col grow"><b>Laporkan masalah chapter</b><span class="mu xs">Gambar rusak, halaman hilang, dll.</span></span></button>
-    <span class="cap mt4">Bacaan</span><div class="r-togs">${READ_OPTS.map(([k, t, dsc]) => toggleRow(k, t, dsc, "rtog")).join("")}</div>
+    <span class="cap mt4">Bacaan</span><div class="r-togs">${readPrefs("rtog")}</div>
     ${slide ? `<span class="cap mt4">Arah geser</span><div class="seg s3">${[["rtl", "Kanan ke kiri"], ["ltr", "Kiri ke kanan"]].map(([k, n]) => `<button role="tab" aria-selected="${(rtl ? "rtl" : "ltr") === k}" data-act="rdir" data-v="${k}">${n}</button>`).join("")}</div>` : ""}
   </div>
   <div class="r-bottom">
@@ -781,7 +781,7 @@ async function vReader(src, id, chId) {
     endIo = new IntersectionObserver((es) => {
       const vis = es.some((x) => x.isIntersecting);
       atEnd = vis;
-      if (vis) { finish(); if (!rd.classList.contains("zoomed")) showUi(); }
+      if (vis) { finish(); if (!rd.classList.contains("zoomed")) showUi(); autoNextStart(); } else autoNextStop();
     }, { root: box, threshold: 0.2 });
     endIo.observe(endEl);
   }
@@ -865,7 +865,7 @@ async function vReader(src, id, chId) {
   box.addEventListener("click", (e) => {
     if (e.target.closest("a,button")) return;
     const now = Date.now();
-    if (S.state.settings.fullscreen) N.setFullscreen(true);
+    if (choiceVal("screenMode") === "fullscreen") N.setFullscreen(true);
     if (lastTap && now - lastTap.t < 320 && Math.hypot(lastTap.x - e.clientX, lastTap.y - e.clientY) < 50) {
       clearTimeout(tapT); setUi(lastTap.was); lastTap = null; applyZoom(zoom > 1.05 ? 1 : 2.5, e.clientX, e.clientY);
     } else {
@@ -923,10 +923,16 @@ async function vReader(src, id, chId) {
       const k = el.dataset.k, on = !S.state.settings[k];
       S.setSetting(k, on);
       el.outerHTML = toggleRow(k, ...READ_OPTS.find((o) => o[0] === k).slice(1), "rtog");
-      if (k === "fullscreen") N.setFullscreen(on);
-      if (k === "autoNext" && $("#rnext")) $("#rnext").hidden = !on;
       if (k === "autoHide") anchor = slide ? Math.abs(box.scrollLeft) : box.scrollTop;
     },
+    rch: (el) => {
+      const k = el.dataset.k, v = el.dataset.v;
+      S.setSetting(k, v);
+      el.closest(".ch-opt").outerHTML = choiceRow(k);
+      if (k === "screenMode") N.setFullscreen(v === "fullscreen");
+      if (k === "chapterEnd") { if (v === "auto" && atEnd) autoNextStart(); else autoNextStop(); }
+    },
+    cancelNext: () => { autoNextStop(true); toast("Lanjut otomatis dibatalkan untuk chapter ini"); },
     reimg: (el) => { const im = $(`.r-img[data-i="${el.dataset.i}"]`, rd); if (im) reloadImg(im); },
     reload: () => { menu(false); if (failed.size) { [...failed].forEach(reloadImg); toast(`Memuat ulang ${failed.size || "semua"} gambar…`); } else vReader(src, id, chId); },
     prev: () => prev && goReplace(readHref(src, id, prev.id)),
@@ -956,26 +962,21 @@ async function vReader(src, id, chId) {
   }, true);
   const onOnline = () => { if (failed.size) { [...failed].forEach(reloadImg); toast("Internet tersambung, memuat ulang gambar…"); } };
   addEventListener("online", onOnline);
-  // #16 otomatis lanjut chapter: di akhir chapter, terus gulir/geser ±110 px lewat ujung → chapter berikutnya
-  let pull = null;
+  // Di akhir chapter (pengaturan "Di akhir chapter"): "menu" = menu bacaan muncul (bawaan);
+  // "auto" = hitung mundur 2 detik lalu chapter berikutnya terbuka. Batal bila petunjuk diketuk atau
+  // pembaca menggulir kembali ke atas. Tidak berjalan saat chapter baru dibuka (belum digulir).
   const hint = $("#rnext");
-  const atLimit = () => (slide ? Math.abs(box.scrollLeft) + box.clientWidth >= box.scrollWidth - 4 : box.scrollTop + box.clientHeight >= box.scrollHeight - 4);
-  const pullPaint = (dd) => { if (hint) { hint.classList.toggle("go", dd > 110); hint.querySelector("span").textContent = dd > 110 ? `Lepas untuk lanjut ke Chapter ${next.ch}` : `Terus ${slide ? "geser" : "gulir"} untuk lanjut ke Chapter ${next.ch}`; } };
-  if (next) {
-    box.addEventListener("touchmove", (e) => {
-      if (!S.state.settings.autoNext || e.touches.length !== 1 || zoom > 1.02) { pull = null; return; }
-      const t = e.touches[0], v = slide ? (rtl ? t.clientX : -t.clientX) : -t.clientY;
-      if (!atLimit()) { pull = null; return; }
-      if (!pull) pull = { v };
-      pullPaint(v - pull.v);
-    }, { passive: true });
-    box.addEventListener("touchend", () => { if (pull && hint?.classList.contains("go")) goReplace(readHref(src, id, next.id)); pull = null; pullPaint(0); }, { passive: true });
-    let wheelSum = 0, wheelT = null;
-    box.addEventListener("wheel", (e) => {
-      if (!S.state.settings.autoNext || slide || !atLimit() || e.deltaY <= 0) { wheelSum = 0; return; }
-      wheelSum += e.deltaY; clearTimeout(wheelT); wheelT = setTimeout(() => { wheelSum = 0; }, 600);
-      if (wheelSum > 400) { wheelSum = 0; goReplace(readHref(src, id, next.id)); }
-    }, { passive: true });
+  let nextT = null, nextOff = false;
+  function autoNextStop(cancel = false) {
+    clearTimeout(nextT); nextT = null; if (cancel) nextOff = true;
+    if (hint) { hint.hidden = true; hint.classList.remove("run"); }
+  }
+  function autoNextStart() {
+    if (!next || !hint || nextT || nextOff || choiceVal("chapterEnd") !== "auto" || zoom > 1.02) return;
+    if (!slide && box.scrollTop < 40 && curPage <= 1) return;
+    hint.querySelector(".r-ntx").textContent = `Lanjut ke Chapter ${next.ch}… ketuk untuk batal`;
+    hint.hidden = false; hint.classList.remove("run"); void hint.offsetWidth; hint.classList.add("run");
+    nextT = setTimeout(() => { nextT = null; if (parse().name === "reader" && atEnd) goReplace(readHref(src, id, next.id)); else autoNextStop(); }, 2000);
   }
   // #2 kembali ke halaman terakhir dibaca. Mode gulir: halaman sebelumnya dimuat dulu supaya posisinya tepat;
   // berhenti menyesuaikan begitu pembaca menyentuh layar.
@@ -992,7 +993,7 @@ async function vReader(src, id, chId) {
     if (!slide) before.forEach((im) => { if (!im.complete) im.addEventListener("load", jump, { once: true }); });
     toast(`Lanjut dari halaman ${resumeAt}`, 1800);
   }
-  cleanup = () => { clearTimeout(tapT); cancelAnimationFrame(rafPos); endIo?.disconnect(); removeEventListener("online", onOnline); N.setFullscreen(false); S.flushHistory(); };
+  cleanup = () => { clearTimeout(tapT); clearTimeout(nextT); cancelAnimationFrame(rafPos); endIo?.disconnect(); removeEventListener("online", onOnline); N.setFullscreen(false); S.flushHistory(); };
   // jenis belum diketahui dari tag: periksa bentuk beberapa gambar pertama. Kebanyakan sangat tinggi
   // (tinggi > 1,8× lebar) → strip panjang manhwa/manhua: diingat, dan mode slide dialihkan ke scroll.
   if (!kind && !longStrip) {
@@ -1214,9 +1215,18 @@ const mrow = (ic, label, sub, act, opt = {}) => {
 // pilihan bacaan: dipakai di Pengaturan dan di menu ⋯ pembaca
 const READ_OPTS = [
   ["autoHide", "Sembunyikan menu otomatis", "Menu bacaan hilang setelah digulir sedikit (±40 px)"],
-  ["fullscreen", "Layar penuh", "Bilah status HP disembunyikan saat layar bacaan diketuk"],
-  ["autoNext", "Otomatis lanjut chapter", "Terus gulir lewat akhir chapter untuk membuka chapter berikutnya"],
 ];
+// pilihan dua mode (bawaan = yang pertama)
+const READ_CHOICES = [
+  ["screenMode", "Tampilan layar", [["standard", "Mode standar", "Bilah status HP tetap tampil saat membaca."], ["fullscreen", "Mode fullscreen", "Ketuk layar bacaan, bilah status HP disembunyikan."]]],
+  ["chapterEnd", "Di akhir chapter", [["menu", "Tampilkan menu", "Menu muncul saat sampai di akhir chapter; pilih sendiri lanjut atau tidak."], ["auto", "Otomatis lanjut", "Sampai di akhir chapter, chapter berikutnya terbuka sendiri (bisa dibatalkan)."]]],
+];
+const choiceVal = (k) => { const c = READ_CHOICES.find((x) => x[0] === k); const v = S.state.settings[k]; return c[2].some((o) => o[0] === v) ? v : c[2][0][0]; };
+const choiceRow = (k) => {
+  const [, t, opts] = READ_CHOICES.find((x) => x[0] === k), cur = choiceVal(k);
+  return `<div class="ch-opt" data-ck="${k}"><b>${t}</b><div class="seg s2" role="tablist">${opts.map(([v, n]) => `<button role="tab" aria-selected="${v === cur}" data-act="rch" data-k="${k}" data-v="${v}">${n}</button>`).join("")}</div><span class="mu xs lh">${opts.find((o) => o[0] === cur)[2]}</span></div>`;
+};
+const readPrefs = (act) => READ_OPTS.map(([k, t, dsc]) => toggleRow(k, t, dsc, act)).join("") + READ_CHOICES.map(([k]) => choiceRow(k)).join("");
 const toggleRow = (k, t, dsc, act = "rtog") => { const on = !!S.state.settings[k]; return `<button class="mrow" data-act="${act}" data-k="${k}" role="switch" aria-checked="${on}"><span class="rc-mid"><b>${t}</b><span class="mu sm">${dsc}</span></span><span class="switch ${on ? "on" : ""}"><span></span></span></button>`; };
 const group = (t, inner) => `<section class="sec s20"><h2 class="cap">${t}</h2><div class="group">${inner}</div></section>`;
 // bingkai avatar kosmik dari prototipe (dimuat sekali saat dibutuhkan); cadangan: cincin warna sederhana
@@ -1264,7 +1274,7 @@ ${user ? `<button class="me mx" data-act="level">${avatarHtml(p, lv)}
     </form>
     ${authMode === "in" ? `<button class="btn ghost" data-act="auth" data-v="up">Belum punya akun? Daftar</button><button class="link" data-act="auth" data-v="reset">Lupa password?</button>` : `<button class="btn ghost" data-act="auth" data-v="in">Sudah punya akun? Masuk</button>`}</div>`}
 ${["developer", "moderator"].includes(p?.role) ? group("Developer", mrow("dev", "Panel developer", p.role === "developer" ? "Moderasi, pengumuman, statistik" : "Moderasi chat", "dev")) : ""}
-${group("Bacaanmu", mrow("star", "Level &amp; Rank", user ? `${lv.rank} · Lv ${lv.lv}${X.cachedStatus() ? ` · 🔥 ${X.cachedStatus().streak} hari` : ""}` : "Masuk untuk mulai naik level", "level") + (user ? mrow("share", "Rekap bacaan", "7 & 30 hari · bagikan sebagai gambar", "recap") : "") + mrow("down", "Unduhan", DL.supported() ? `<span id="dlsub">${DL.savedCount()} file tersimpan${DL.progressLine() ? " · " + esc(DL.progressLine()) : ""}</span>` : "Baca offline di aplikasi APK", "dlrow") + mrow("clock", "Riwayat baca", `${S.history().length} judul`, "goHist") + mrow("sliders", "Pengaturan", "Mode efek avatar · menu & layar penuh saat membaca", "settings"))}
+${group("Bacaanmu", mrow("star", "Level &amp; Rank", user ? `${lv.rank} · Lv ${lv.lv}${X.cachedStatus() ? ` · 🔥 ${X.cachedStatus().streak} hari` : ""}` : "Masuk untuk mulai naik level", "level") + (user ? mrow("share", "Rekap bacaan", "7 & 30 hari · bagikan sebagai gambar", "recap") : "") + mrow("down", "Unduhan", DL.supported() ? `<span id="dlsub">${DL.savedCount()} file tersimpan${DL.progressLine() ? " · " + esc(DL.progressLine()) : ""}</span>` : "Baca offline di aplikasi APK", "dlrow") + mrow("clock", "Riwayat baca", `${S.history().length} judul`, "goHist") + mrow("sliders", "Pengaturan", "Mode efek avatar · tampilan layar & akhir chapter saat membaca", "settings"))}
 <section class="sec s20"><h2 class="cap">Pengalaman baca</h2><div class="card col g12"><span class="b145">Mode baca</span>
   ${seg([{ id: "scroll", name: "Scroll (webtoon)" }, { id: "slide", name: "Slide (halaman)" }], st.readMode, "rmode", "s2")}
   ${st.readMode === "slide" ? `<span class="mu sm">Arah geser</span>${seg([{ id: "rtl", name: "Kanan ke kiri" }, { id: "ltr", name: "Kiri ke kanan" }], st.readDir === "ltr" ? "ltr" : "rtl", "dir", "s2")}` : ""}
@@ -1481,10 +1491,10 @@ async function vPage(name) {
   <section class="sec"><h2 class="cap">Tampilan</h2><div class="card col g12"><span class="b145">Mode efek avatar</span>
     ${seg([{ id: "Ringan", name: "Ringan" }, { id: "Normal", name: "Normal" }], S.state.settings.gfx || "Normal", "gfx", "s2")}
     <span class="mu xs lh">${(S.state.settings.gfx || "Normal") === "Ringan" ? "Partikel dikurangi; komet, aurora, dan awan nebula dimatikan. Hemat baterai, cocok untuk HP spek rendah." : "Bingkai avatar kosmik penuh dengan partikel dan animasi."}</span></div></section>
-  <section class="sec"><h2 class="cap">Bacaan</h2><div class="group" id="setRead">${READ_OPTS.map(([k, t, dsc]) => toggleRow(k, t, dsc)).join("")}</div></section></div><div class="pad-nav"></div>`;
+  <section class="sec"><h2 class="cap">Bacaan</h2><div class="group" id="setRead">${readPrefs("rtog")}</div></section></div><div class="pad-nav"></div>`;
     };
     draw();
-    setActs({ back: () => back("#/more"), gfx: (el) => { S.setSetting("gfx", el.dataset.v); applyGfx(); draw(); }, rtog: (el) => { S.setSetting(el.dataset.k, !S.state.settings[el.dataset.k]); draw(); } });
+    setActs({ back: () => back("#/more"), gfx: (el) => { S.setSetting("gfx", el.dataset.v); applyGfx(); draw(); }, rtog: (el) => { S.setSetting(el.dataset.k, !S.state.settings[el.dataset.k]); draw(); }, rch: (el) => { S.setSetting(el.dataset.k, el.dataset.v); draw(); } });
     return;
   } else if (name === "about") {
     html = topbar("Tentang aplikasi") + `<div class="px col g14 mt10"><div class="card col center g10 big-card"><img src="icons/logo.png" alt="Ninokuu" class="about-logo">
@@ -1515,7 +1525,8 @@ async function vPage(name) {
       for (const m of j.lib || []) if (m?.source && m?.comic_id && m?.title && !S.inLib(m.source, m.comic_id)) { await S.toggleLib(m).catch(() => {}); added++; }
       for (const h of j.hist || []) if (h?.source && h?.comic_id && !S.histItem(h.source, h.comic_id)) S.saveHistory(h);
       if (j.settings && typeof j.settings === "object") ["readMode", "readDir", "updView", "searchView", "favView", "gfx", "favSort"].forEach((k) => { if (typeof j.settings[k] === "string") S.setSetting(k, j.settings[k]); });
-        ["autoHide", "fullscreen", "autoNext"].forEach((k) => { if (typeof j.settings[k] === "boolean") S.setSetting(k, j.settings[k]); });
+        ["autoHide"].forEach((k) => { if (typeof j.settings[k] === "boolean") S.setSetting(k, j.settings[k]); });
+        ["screenMode", "chapterEnd"].forEach((k) => { if (typeof j.settings[k] === "string") S.setSetting(k, j.settings[k]); });
       toast(`Data dipulihkan · ${added} judul baru di koleksi`, 3500); go("#/fav");
     } catch (ex) { $("#perr").textContent = ex.message || "File tidak bisa dibaca."; }
   });

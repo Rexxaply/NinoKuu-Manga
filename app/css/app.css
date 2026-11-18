@@ -960,9 +960,14 @@ body.nk-dev::after { content: "DEV"; position: fixed; top: calc(env(safe-area-in
 .r-fail b { color: var(--tx); }
 .r-slide .r-fail { min-height: 60vh; }
 .r-img.fail { display: none; }
-.r-next-hint { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; padding: 7px 12px; border-radius: 999px; background: rgba(255, 255, 255, .06); color: var(--mu); font-size: 12.5px; transition: background .15s, color .15s; }
+.r-next-hint { position: relative; overflow: hidden; display: inline-flex; align-items: center; margin-top: 6px; padding: 9px 14px; border: 0; border-radius: 999px; background: rgba(224, 36, 43, .18); color: #fff; font: inherit; font-size: 12.5px; font-weight: 700; }
 .r-next-hint[hidden] { display: none; }
-.r-next-hint.go { background: var(--red); color: #fff; }
+.r-nbar { position: absolute; inset: 0; width: 0; background: var(--red); }
+.r-next-hint.run .r-nbar { animation: rnext 2s linear forwards; }
+.r-ntx { position: relative; }
+@keyframes rnext { to { width: 100%; } }
+.ch-opt { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
+.r-togs .ch-opt { padding: 10px 12px; } .r-togs .ch-opt b { font-size: 13.5px; }
 .r-togs { display: flex; flex-direction: column; border-radius: 14px; overflow: hidden; background: rgba(255, 255, 255, .04); }
 .r-togs .mrow { background: transparent; }
 .r-menu { max-height: calc(100dvh - 190px - env(safe-area-inset-top)); overflow-y: auto; overscroll-behavior: contain; }

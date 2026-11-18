@@ -14,9 +14,9 @@ export const WHATS_NEW = {
     features: [
       ["Lanjut dari halaman terakhir", "Keluar di halaman 12/48, buka lagi chapter itu → langsung ke halaman 12."],
       ["Urutkan Beranda & Koleksi", "Beranda: Update terbaru, Populer, Judul A-Z/Z-A, Rating (sesuai sumber). Koleksi: Update terbaru, Terakhir ditambah, Judul A-Z/Z-A."],
-      ["Layar penuh saat membaca", "Ketuk layar bacaan, bilah status HP disembunyikan."],
+      ["Mode fullscreen", "Pilih Mode standar atau Mode fullscreen di Pengaturan. Mode fullscreen: ketuk layar bacaan, bilah status HP disembunyikan."],
       ["Muat ulang gambar yang gagal", "Halaman yang gagal dimuat punya tombol muat ulang; dicoba lagi otomatis saat internet kembali."],
-      ["Otomatis lanjut chapter", "Terus gulir lewat akhir chapter untuk membuka chapter berikutnya (nyalakan di Pengaturan)."],
+      ["Pilihan di akhir chapter", "Tampilkan menu (bawaan) atau Otomatis lanjut: sampai di akhir chapter, chapter berikutnya terbuka sendiri."],
       ["Pengaturan baru", "Mode efek avatar dan pilihan bacaan dikumpulkan di Lainnya → Pengaturan, juga di menu ⋯ saat membaca."],
       ["Posisi daftar tersimpan", "Kembali dari halaman komik, Beranda dan Pencarian tetap di posisi terakhir."],
       ["Martial Peak & komik ribuan chapter", "Daftar chapter lengkap sampai chapter 1, sisanya dimuat di belakang layar."],
@@ -32,8 +32,8 @@ export const WHATS_NEW = {
       { hash: "#/home", sel: "#upd", title: "15 judul per muatan", text: "Daftar tampil 3 × 5. Gulir ke bawah, judul berikutnya dimuat otomatis. Posisinya tetap saat kamu kembali." },
       { hash: "#/fav", sel: "[data-act=fsort]", title: "Urutkan koleksi", text: "Update terbaru, Terakhir ditambah, Judul A-Z, atau Judul Z-A." },
       { hash: "#/more", sel: "[data-act=settings]", title: "Pengaturan", text: "Mode efek avatar dan pilihan bacaan sekarang ada di sini." },
-      { hash: "#/p/settings", sel: "#setRead", title: "Pilihan bacaan", text: "Sembunyikan menu otomatis, layar penuh, dan otomatis lanjut chapter. Juga ada di menu ⋯ saat membaca." },
-      { hash: null, sel: null, title: "Saat membaca", text: "Buka lagi chapter yang belum selesai → langsung ke halaman terakhir. Ketuk layar untuk layar penuh. Gambar gagal? Ketuk tombol muat ulang di halaman itu." },
+      { hash: "#/p/settings", sel: "#setRead", title: "Pilihan bacaan", text: "Sembunyikan menu otomatis, Mode standar/fullscreen, dan pilihan di akhir chapter. Juga ada di menu ⋯ saat membaca." },
+      { hash: null, sel: null, title: "Saat membaca", text: "Buka lagi chapter yang belum selesai → langsung ke halaman terakhir. Gambar gagal? Ketuk tombol muat ulang di halaman itu." },
     ],
   },
 };
