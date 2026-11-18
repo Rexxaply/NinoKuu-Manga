@@ -412,8 +412,9 @@ async function vSearch(type) {
 <div class="page-h"><h1>Pencarian</h1></div>
 <div class="px row g8 s-wrap"><label class="search grow"><span class="mu">${icon("search", 20)}</span><span class="sr">Cari judul</span>
   <input id="sq" type="search" enterkeyhint="search" autocomplete="off" placeholder="Cari judul manga, manhwa, manhua…" value="${esc(sState.q)}">
-  <button type="button" class="clr" data-act="clear" aria-label="Hapus pencarian" ${sState.q ? "" : "hidden"}>${icon("x", 16, 2.2)}</button></label>
-  <span id="fltbtn"></span><div class="sh-pop" id="shpop" role="listbox" aria-label="Pencarian terakhir"></div></div>
+  <button type="button" class="clr" data-act="clear" aria-label="Hapus pencarian" ${sState.q ? "" : "hidden"}>${icon("x", 16, 2.2)}</button>
+  <div class="sh-pop" id="shpop" role="listbox" aria-label="Pencarian terakhir"></div></label>
+  <span id="fltbtn"></span></div>
 <div class="sec s14">${seg(SOURCES, sState.src, "src")}</div>
 <div class="px mt10" id="tchips"></div>
 <div class="px" id="factive"></div>

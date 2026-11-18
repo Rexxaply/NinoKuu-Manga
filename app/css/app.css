@@ -1188,7 +1188,8 @@ button.fa-new:active, .hl-go:active { scale: .92; }
 
 /* riwayat pencarian: panel melayang di bawah kolom cari (tidak menggeser isi halaman) */
 .s-wrap { position: relative; z-index: 6; }
-.sh-pop { position: absolute; left: 18px; right: 18px; top: calc(100% + 8px); max-height: min(360px, 50vh); overflow-y: auto; overscroll-behavior: contain; padding: 6px; border-radius: 18px;
+/* panel selebar kolom cari saja: tombol filter di sebelahnya tetap bebas diketuk */
+.sh-pop { position: absolute; left: 0; right: 0; top: calc(100% + 8px); cursor: default; max-height: min(360px, 50vh); overflow-y: auto; overscroll-behavior: contain; padding: 6px; border-radius: 18px;
   background: #121824; border: 1px solid var(--line); box-shadow: 0 16px 40px rgba(0, 0, 0, .5);
   opacity: 0; transform: translateY(-6px) scale(.98); transform-origin: top center; pointer-events: none; visibility: hidden;
   transition: opacity .16s ease-out, transform .22s cubic-bezier(.32, .72, 0, 1), visibility 0s linear .22s; }
