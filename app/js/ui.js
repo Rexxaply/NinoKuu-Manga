@@ -75,3 +75,83 @@ document.addEventListener("error", async (e) => {
   if ((t.dataset.d || t.dataset.px) && await imgFallback(t)) return;
   if (t.hasAttribute("data-rm")) t.remove();
 }, true);
+
+/* ---------- Lembar bawah: geser turun untuk menutup (Apple "fluid interfaces") ----------
+   Berlaku otomatis untuk .sheet (lembar umum & chat), .flt-card (filter) dan .chs (daftar chapter pembaca).
+   - mengikuti jari 1:1 setelah ±10 px ke bawah (isi yang sedang digulir tidak ikut ditarik)
+   - ditarik ke atas: tertahan lembut (rubber band)
+   - dilepas: tutup bila sudah turun 30% tinggi lembar atau dilempar cepat (kecepatan jari diteruskan),
+     selain itu kembali ke tempat dari posisi saat ini
+   Penutupan memakai tombol tutup milik lembar itu sendiri, jadi logika tutup yang lama tetap dipakai. */
+const SHEETS = ".sheet, .flt-card, .chs";
+const CLOSERS = "[data-s=close], [data-f=close], [data-x=close], [data-c=close]";
+const rubber = (x, d = 300) => (x * d * 0.55) / (d + 0.55 * Math.abs(x));
+const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+function scrolledInside(t, card) {
+  for (let el = t; el && el !== card.parentElement; el = el.parentElement) {
+    if (el.scrollTop > 0) { const oy = getComputedStyle(el).overflowY; if (oy === "auto" || oy === "scroll") return true; }
+    if (el === card) break;
+  }
+  return false;
+}
+function closeFor(card) {
+  const host = card.closest(".sheet-host, .flt-host, .chs-host, #host") || card.parentElement;
+  return host?.querySelector(CLOSERS);
+}
+function attachDrag(card) {
+  if (card.dataset.drag) return;
+  card.dataset.drag = "1";
+  let s = null;
+  const bg = () => card.parentElement?.querySelector(".pop-bg, .flt-bg, .chs-bg");
+  card.addEventListener("touchstart", (e) => {
+    if (e.touches.length !== 1 || e.target.closest("input, textarea, select, .r-track")) { s = null; return; }
+    const t = e.touches[0];
+    s = { x: t.clientX, y: t.clientY, on: false, dy: 0, h: card.getBoundingClientRect().height, hist: [[t.clientY, e.timeStamp]], inside: scrolledInside(e.target, card) };
+  }, { passive: true });
+  card.addEventListener("touchmove", (e) => {
+    if (!s || e.touches.length !== 1) return;
+    const t = e.touches[0], dy = t.clientY - s.y, dx = t.clientX - s.x;
+    if (!s.on) {
+      if (s.inside || Math.abs(dx) > Math.abs(dy)) { if (Math.abs(dx) > 10 || Math.abs(dy) > 10) s = null; return; }
+      if (dy < 10) { if (dy < -10) s = null; return; }
+      s.on = true; s.y0 = t.clientY; card.classList.add("dragging");
+    }
+    e.preventDefault();
+    const d = t.clientY - s.y0;
+    s.dy = d > 0 ? d : rubber(d);
+    s.hist.push([t.clientY, e.timeStamp]); if (s.hist.length > 5) s.hist.shift();
+    card.style.transform = `translate3d(0, ${s.dy}px, 0)`;
+    const b = bg(); if (b) b.style.opacity = String(Math.max(0.2, 1 - s.dy / (s.h * 1.2)));
+  }, { passive: false });
+  const end = () => {
+    if (!s) return;
+    const st = s; s = null;
+    if (!st.on) return;
+    card.classList.remove("dragging");
+    const [a, z] = [st.hist[0], st.hist[st.hist.length - 1]];
+    const v = z[1] > a[1] ? (z[0] - a[0]) / (z[1] - a[1]) : 0;          // px/ms, + = ke bawah
+    const b = bg();
+    if (st.dy > st.h * 0.3 || v > 0.5) {
+      // lanjutkan dengan kecepatan jari: makin cepat dilempar, makin singkat animasinya
+      const left = st.h + 40 - st.dy, ms = reduced() ? 0 : Math.max(120, Math.min(260, left / Math.max(v, 1.2)));
+      card.style.transition = `transform ${ms}ms cubic-bezier(.2, .8, .2, 1)`;
+      card.style.transform = `translate3d(0, ${st.h + 40}px, 0)`;
+      if (b) { b.style.transition = `opacity ${ms}ms`; b.style.opacity = "0"; }
+      setTimeout(() => closeFor(card)?.click(), ms);
+    } else {
+      card.style.transition = "transform 320ms cubic-bezier(.23, 1, .32, 1)";
+      card.style.transform = "";
+      if (b) { b.style.transition = "opacity 320ms"; b.style.opacity = ""; }
+      setTimeout(() => { card.style.transition = ""; if (b) b.style.transition = ""; }, 340);
+    }
+  };
+  card.addEventListener("touchend", end, { passive: true });
+  card.addEventListener("touchcancel", end, { passive: true });
+}
+new MutationObserver((ms) => {
+  for (const m of ms) for (const n of m.addedNodes) {
+    if (!(n instanceof HTMLElement)) continue;
+    if (n.matches(SHEETS)) attachDrag(n);
+    n.querySelectorAll?.(SHEETS).forEach(attachDrag);
+  }
+}).observe(document.body, { childList: true, subtree: true });

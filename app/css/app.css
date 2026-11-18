@@ -1038,3 +1038,40 @@ body.tw-lock { overflow: hidden; touch-action: none; }
 .favg .new-up { left: 5px; top: 5px; bottom: auto; padding: 2px 5px; font-size: 9px; }
 .fg-t { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 12.5px; line-height: 1.3; font-weight: 700; overflow-wrap: anywhere; }
 .favg .grid-card { gap: 5px; }
+
+/* =====================================================================
+   Rasa sentuh seperti aplikasi asli (skill mobile-native & Apple motion, Emil Kowalski / Apple HIG)
+   - umpan balik saat jari MENYENTUH (:active), bukan saat dilepas: 100 ms ease-out
+   - touch-action: manipulation → tanpa jeda ketuk 300 ms; teks tombol tidak terpilih saat ditekan lama
+   - area sentuh minimal ±44 px tanpa mengubah tampilan (pseudo-elemen tak terlihat)
+   ===================================================================== */
+:root { --ease-out: cubic-bezier(.23, 1, .32, 1); }
+button, a, [data-act], [role="button"], label { touch-action: manipulation; }
+button, [role="button"], .seg, .chips, #nav { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+/* tombol & kartu: sedikit mengecil saat ditekan */
+.btn, .sq-btn, .icon-btn, .round-btn, .r-round, .pill-btn, .r-sq, .r-main, .chsort, .tw-b, .flt-btn, .gl-btn, .x-btn,
+.seg button, .chips button, .grid-card, .top10, .resume, .cat, .rfab, .quote, .more-auto, .r-fail {
+  transition-property: transform, background-color, color, border-color, opacity; transition-duration: 100ms, .25s, .25s, .25s, .2s; transition-timing-function: var(--ease-out);
+}
+.btn:active, .sq-btn:active, .icon-btn:active, .round-btn:active, .r-round:active, .pill-btn:active, .r-sq:active, .r-main:active,
+.chsort:active, .tw-b:active, .flt-btn:active, .gl-btn:active, .x-btn:active, .seg button:active, .chips button:active,
+.rfab:active, .quote:active, .r-fail:active { transform: scale(.96); }
+.grid-card:active, .top10:active, .resume:active, .cat:active { transform: scale(.97); }
+/* baris daftar: latar menyala saat ditekan (mengecilkan baris lebar terasa aneh) */
+.lrow, .mrow, .ch, .sh-row, .r-mode, .dl-file, .notif-it { transition: background-color 120ms var(--ease-out); }
+.lrow:active, .mrow:active, .ch:active, .sh-row:active, .r-mode:active:not(:disabled), .dl-file:active { background-color: rgba(255, 255, 255, .06); }
+#nav a:active { transform: scale(.94); transition: transform 100ms var(--ease-out); }
+/* area sentuh minimal ±44 px untuk tombol kecil (38 px ikon, chip 34 px, tab 40 px) */
+.sq-btn, .chips button, .seg button, .link, .link-red { position: relative; }
+.sq-btn::after { content: ""; position: absolute; inset: -4px; }
+.chips button::after { content: ""; position: absolute; inset: -5px -2px; }
+.seg button::after { content: ""; position: absolute; inset: -4px 0; }
+.link::after, .link-red::after { content: ""; position: absolute; inset: -12px -6px; }
+@media (prefers-reduced-motion: reduce) {
+  .btn:active, .sq-btn:active, .icon-btn:active, .round-btn:active, .r-round:active, .pill-btn:active, .r-sq:active, .r-main:active,
+  .chsort:active, .tw-b:active, .flt-btn:active, .gl-btn:active, .x-btn:active, .seg button:active, .chips button:active, .rfab:active, .quote:active,
+  .grid-card:active, .top10:active, .resume:active, .cat:active, #nav a:active, .r-fail:active { transform: none; opacity: .75; }
+}
+/* lembar bawah: pegangan untuk digeser turun */
+.sheet::before, .flt-card::before { content: ""; display: block; width: 38px; height: 4px; margin: 2px auto 6px; border-radius: 2px; background: rgba(255, 255, 255, .22); flex: none; }
+.sheet.dragging, .flt-card.dragging, .chs.dragging { transition: none !important; animation: none !important; }
