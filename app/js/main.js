@@ -1150,6 +1150,33 @@ async function vComments(src, id, chId) {
 }
 
 /* ---------- Favorit ---------- */
+// Label "Terbaru" & urutan "Update terbaru" di Koleksi butuh chapter terbaru tiap komik. Sebelumnya baru diketahui
+// setelah komik dibuka (HP / pemasangan baru: kosong semua). Sekarang dicek di belakang layar saat Koleksi dibuka:
+// maks. 12 komik per kunjungan, 2 sekaligus, tiap komik paling sering 3 jam sekali. Shinigami/WestManga di APK
+// diambil lewat jaringan HP (detail), sumber lain lewat action "latest" yang hanya mengirim chapter terbaru.
+let latestRun = false;
+async function refreshLatest(items) {
+  if (latestRun) return;
+  const chk = api.lsGet("latestChk", {}) || {}, now = Date.now();
+  const due = items.filter((m) => now - (chk[m.source + "|" + m.comic_id] || 0) > 3 * 3600e3)
+    .sort((a, b) => (a.latest == null ? 0 : 1) - (b.latest == null ? 0 : 1)).slice(0, 12);
+  if (!due.length) return;
+  latestRun = true;
+  const one = async (m) => {
+    const k = m.source + "|" + m.comic_id;
+    try {
+      let ch = null, at = null;
+      if (N.DIRECT[m.source]) { const d = await api.call("detail", { source: m.source, comic_id: m.comic_id }); const t = (d.chapters || []).reduce((b, c) => (!b || (parseFloat(c.ch) || -1) > (parseFloat(b.ch) || -1) ? c : b), null); ch = t?.ch ?? null; at = t?.at ?? null; }
+      else ({ ch, at } = await api.call("latest", { source: m.source, comic_id: m.comic_id }));
+      if (ch != null) S.updateLibMeta(m.source, m.comic_id, { latest: ch, latestAt: at });
+    } catch { /* sumber sedang tidak bisa dijangkau: coba lagi lain kali */ }
+    const c2 = api.lsGet("latestChk", {}) || {}; c2[k] = Date.now();
+    const ks = Object.keys(c2); while (ks.length > 600) delete c2[ks.shift()];
+    api.lsSet("latestChk", c2);
+  };
+  try { for (let i = 0; i < due.length; i += 2) await Promise.all(due.slice(i, i + 2).map(one)); }
+  finally { latestRun = false; }
+}
 const FAV_SORTS = [["update", "Update terbaru"], ["added", "Terakhir ditambah"], ["az", "Judul A-Z"], ["za", "Judul Z-A"]];
 let fav = { tab: "lib", q: "", filter: "all" };
 // perilaku tab Unduhan dilepas setiap kali Favorit digambar ulang (tidak menumpuk)
@@ -1205,6 +1232,7 @@ ${!S.loggedIn() && fav.tab !== "dl" ? `<div class="note mx">${icon("cloud", 18)}
     fsort: () => sortSheet("Urutkan koleksi", FAV_SORTS, fs, (v) => S.setSetting("favSort", v)),
     clearHist: async () => { if (!confirm("Hapus semua riwayat baca?")) return; try { await S.clearHistory(); toast("Riwayat dibersihkan"); } catch (e) { toast(e.message); } },
   });
+  if (fav.tab === "lib" && libAll.length) refreshLatest(libAll);
   if (fav.tab === "dl") {
     favDlOff = DL.mountFav(view, { openSheet, closeSheet, redraw: () => { if (parse().name === "fav" && fav.tab === "dl") { const y = scrollY; vFav(); scrollTo(0, y); } } });
     cleanup = () => { favDlOff?.(); favDlOff = null; };

@@ -915,7 +915,7 @@ Deno.serve(async (req) => {
     }
 
     // Jelajah & baca: terbuka untuk tamu
-    if (action === "browse" || action === "detail" || action === "pages" || action === "filters" || action === "more_chapters") {
+    if (action === "browse" || action === "detail" || action === "pages" || action === "filters" || action === "more_chapters" || action === "latest") {
       const src = body.source;
       if (!isSource(src)) return json({ error: "sumber tidak dikenal" }, 400);
       try {
@@ -932,6 +932,11 @@ Deno.serve(async (req) => {
         }
         if (action === "filters") return json({ ok: true, source: src, ...(await filters(src)) });
         if (action === "detail") return json({ ok: true, source: src, ...(await detail(src, clip(body.comic_id, 2000))) });
+        // chapter terbaru saja (untuk label "Terbaru" di Koleksi): jauh lebih kecil dari detail lengkap
+        if (action === "latest") {
+          const top = newestChapter(await chaptersOf(src, clip(body.comic_id, 2000)));
+          return json({ ok: true, source: src, ch: top?.ch ?? null, at: top?.at ?? null });
+        }
         if (action === "more_chapters") {
           const off = Number(body.offset);
           if (src !== "komiku") return json({ ok: true, source: src, chapters: [], more: null });
