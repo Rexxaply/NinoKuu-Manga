@@ -219,7 +219,8 @@ export async function vChat(view, ctx, opt = {}) {
         image_path = `${me}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${c.ext}`;
         await api.upload("chat-images", image_path, new File([c.blob], "x." + c.ext, { type: c.blob.type || att.file.type }));
       }
-      await api.rest("chat_messages", { method: "POST", body: { body: text, image_path, image_spoiler: !!att?.sp, room }, prefer: "return=minimal" });
+      try { await api.rest("chat_messages", { method: "POST", body: { body: text, image_path, image_spoiler: !!att?.sp, room }, prefer: "return=minimal" }); }
+      catch (e) { if (image_path) api.removeFiles("chat-images", [image_path]).catch(() => {}); throw e; }   // pesan gagal terkirim: gambarnya tidak dibiarkan tertinggal di server
       lastSent = Date.now(); inp.value = ""; att = null;
       await load(false); drawComposer(); draw(); toBottom(); toast("Terkirim", 1200);
     } catch (e) { toast(e.message, 4000); }
@@ -304,7 +305,8 @@ const CLEAN = [
   ["chat_public", "Chat publik lama", [30, 14, 7], (s) => `${s.chat_public} pesan${s.oldest_chat ? " · tertua " + ago(s.oldest_chat) : ""}`],
   ["comments", "Komentar komik & chapter lama", [365, 180, 90], (s) => `${s.comments} komentar`],
   ["chat_images", "Gambar chat lama (teksnya tetap)", [60, 30, 14, 7], (s) => `${s.img_count} gambar · ${fmtB(s.img_bytes)}`],
-  ["img_orphans", "Gambar tanpa pesan", null, (s) => `${s.img_orphans} file (pesannya sudah dihapus)`],
+  ["img_orphans", "Gambar tanpa pesan", null, (s) => `${s.img_orphans} file (pesannya dihapus atau gagal terkirim)`],
+  ["avatar_orphans", "Foto profil lama", null, (s) => `${s.avatar_orphans ?? 0} file tidak dipakai siapa pun`],
   ["notifications", "Notifikasi lama", [7, 3], (s) => `${s.notifications} notifikasi`],
   ["read_log", "Log baca lama", [365, 180, 90], (s) => `${s.read_log} baris · EXP tetap, tapi chapter lama bisa memberi EXP lagi`],
   ["bugs_done", "Laporan komik yang sudah selesai", null, (s) => `${s.bugs_done} laporan`],
@@ -455,7 +457,7 @@ export async function vDev(view, ctx) {
       return run(async () => {
         const r = await api.rpc("dev_cleanup", { p_kind: kind, p_days: days });
         const imgs = r?.images || [];
-        if (imgs.length) await api.removeFiles("chat-images", imgs);
+        if (imgs.length) await api.removeFiles(kind === "avatar_orphans" ? "avatars" : "chat-images", imgs);
         toast(`${nf(r?.deleted)} data dibersihkan${imgs.length ? ` · ${nf(imgs.length)} file gambar dihapus` : ""}`, 3500);
       });
     }

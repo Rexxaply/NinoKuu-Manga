@@ -752,6 +752,10 @@ drop policy if exists "chat-images hapus milik sendiri" on storage.objects;
 create policy "chat-images hapus milik sendiri" on storage.objects for delete to authenticated
   using (bucket_id = 'chat-images' and (storage.foldername(name))[1] = (select auth.uid())::text);
 -- developer boleh menghapus gambar siapa pun (dipakai pembersih penyimpanan di Panel developer)
+-- Hapus lewat Storage API butuh izin SELECT juga (DELETE ... RETURNING); tanpa ini file tidak ikut terhapus.
+drop policy if exists "chat-images dibaca pemilik/developer" on storage.objects;
+create policy "chat-images dibaca pemilik/developer" on storage.objects for select to authenticated
+  using (bucket_id = 'chat-images' and ((storage.foldername(name))[1] = (select auth.uid())::text or (select public.is_dev())));
 drop policy if exists "chat-images dihapus developer" on storage.objects;
 create policy "chat-images dihapus developer" on storage.objects for delete to authenticated
   using (bucket_id = 'chat-images' and (select public.is_dev()));
@@ -892,6 +896,9 @@ on conflict (id) do update set public = excluded.public, file_size_limit = exclu
 drop policy if exists "avatars unggah ke folder sendiri" on storage.objects;
 create policy "avatars unggah ke folder sendiri" on storage.objects for insert to authenticated
   with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text);
+drop policy if exists "avatars dibaca pemilik" on storage.objects;
+create policy "avatars dibaca pemilik" on storage.objects for select to authenticated
+  using (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text);
 drop policy if exists "avatars hapus milik sendiri" on storage.objects;
 create policy "avatars hapus milik sendiri" on storage.objects for delete to authenticated
   using (bucket_id = 'avatars' and ((storage.foldername(name))[1] = (select auth.uid())::text or (select public.is_dev())));
