@@ -48,7 +48,32 @@ function trackNav() {
   navStack[i] = h; navIdx = i; replacing = false;
   try { sessionStorage.setItem(NAVK, JSON.stringify(navStack.slice(0, i + 1))); } catch {}
 }
-let renderSeq = 0;
+let renderSeq = 0, movingT = 0;
+// hiasan beranimasi yang di luar layar juga dijeda (tidak menggambar ulang tanpa terlihat)
+// Bintang & partikel bingkai avatar ada di SVG sprite tersembunyi (#nk-sprite) dan berjalan terus walau tidak ada
+// avatar di layar. Sprite hanya boleh beranimasi (class "run") bila ada avatar terlihat dan layar tidak sedang
+// berpindah. Penanda dipasang langsung di elemen hiasan, bukan di <body>, supaya tidak menghitung ulang gaya
+// seluruh halaman (lihat avatars.css).
+const fxVis = new Set();
+let fxHold = false;
+// hanya grup sprite milik rank yang avatarnya sedang terlihat yang dijalankan (bukan seluruh 9 rank);
+// class dipasang di grup itu saja, jadi hitung ulang gayanya kecil
+let fxGroups = null, fxOn = new Set();
+const fxSprite = () => {
+  const sp = document.getElementById("nk-sprite"); if (!sp) return;
+  const want = new Set(fxHold ? [] : [...fxVis].map((el) => el.dataset.t));
+  if (want.size === fxOn.size && [...want].every((t) => fxOn.has(t))) return;
+  fxGroups ??= [...sp.querySelectorAll('g[id^="rk"]')].map((g) => [g, g.id[2]]);
+  fxGroups.forEach(([g, t]) => { const on = want.has(t); if (fxOn.has(t) !== on || want.size === 0) g.classList.toggle("run", on); });
+  fxOn = want;
+};
+const fxIo = "IntersectionObserver" in window ? new IntersectionObserver((es) => {
+  es.forEach((e) => { e.target.classList.toggle("fx-off", !e.isIntersecting); if (e.isIntersecting && e.target.matches(".av-wrap")) fxVis.add(e.target); else fxVis.delete(e.target); });
+  fxSprite();
+}) : null;
+const FX_SEL = "#view .av-wrap, #view .rk-b, .sheet .av-wrap";
+const watchFx = () => { if (fxIo) $$(FX_SEL).forEach((el) => { if (el.dataset.fx) return; el.dataset.fx = "1"; fxIo.observe(el); }); };
+const holdFx = (on) => { fxHold = on; $$(FX_SEL).forEach((el) => el.classList.toggle("fx-hold", on)); fxSprite(); };
 async function render() {
   trackNav();
   if (cleanup) { try { cleanup(); } catch {} cleanup = null; }
@@ -73,13 +98,21 @@ async function render() {
   // animasi masuk dimulai setelah layar baru terisi, supaya layar lama tidak ikut "meluncur lagi"
   const my = ++renderSeq;
   view.classList.remove("in", "in-f", "in-b");
-  view.innerHTML = "";
+  view.innerHTML = ""; fxIo?.disconnect(); fxVis.clear(); fxSprite();
   let animated = false;
-  const animate = () => { if (animated || my !== renderSeq) return; animated = true; void view.offsetWidth; view.classList.add("in", fwd ? "in-f" : "in-b"); };
+  // Selama layar baru meluncur masuk, animasi hiasan (bingkai avatar kosmik, kilau rank) dijeda: SVG beranimasi
+  // menggambar ulang dirinya tiap frame dan bersaing dengan animasi pindah layar (terasa tersendat di Lainnya).
+  const animate = () => {
+    if (animated || my !== renderSeq) return; animated = true;
+    holdFx(true); clearTimeout(movingT);
+    movingT = setTimeout(() => { holdFx(false); watchFx(); }, 420);
+    void view.offsetWidth; view.classList.add("in", fwd ? "in-f" : "in-b");
+  };
   const job = (VIEWS[route.name] || VIEWS.home)(...route.params);
   if (view.childElementCount) animate();
   await job;
   animate();
+  if (my === renderSeq && !fxHold) watchFx();
   // chat & komentar mengatur gulirnya sendiri (langsung ke pesan terbaru)
   if (["chat", "comments", "chcomments"].includes(route.name)) return;
   const y = scrollMem.get(route.key);
@@ -90,6 +123,9 @@ window.addEventListener("hashchange", render);
 // Bar bawah ringkas (gaya iOS): gulir ke bawah ±48 px → bar mengecil jadi 1 tombol (tab aktif) di tengah.
 // Ketuk tombol itu → bar terbuka lagi. Kembali ke paling atas halaman juga membukanya.
 // Lompatan gulir buatan aplikasi (pulihkan posisi, ganti halaman) diabaikan supaya bar tidak mengecil sendiri.
+// lebar bar untuk animasi berbasis transform (CSS tidak bisa memakai % induk di dalam transform)
+const navW = () => { const w = nav.offsetWidth; if (w) { nav.style.setProperty("--nw", w + "px"); nav.style.setProperty("--nwn", String(w)); } };
+navW(); if ("ResizeObserver" in window) new ResizeObserver(navW).observe(nav); else addEventListener("resize", navW);
 let navLastY = null, navAcc = 0;
 const setNavMin = (on) => {
   if (document.body.classList.contains("nav-min") === on) return;
@@ -1189,6 +1225,7 @@ function openPhoto() {
     try { await setAvatar(null); closeSheet(); toast("Foto profil dihapus"); if (route.name === "more") vMore(); }
     catch (e) { b.disabled = false; toast(e.message, 4500); }
   });
+  watchFx();
   $("#pfile", el).addEventListener("change", async (e) => {
     const f = e.target.files?.[0]; e.target.value = "";
     if (!f) return;
@@ -1369,7 +1406,7 @@ const avatarHtml = (p, lv, size = 56, opt = {}) => {
   const photo = p?.avatar_path ? `<img class="av-img" src="${esc(api.publicUrl("avatars", p.avatar_path))}" alt="" decoding="async" data-rm>` : "";
   let tpl = AVM?.AV[size][tier];
   if (tpl && photo) tpl = tpl.replace("position:relative;font-family", "position:static;font-family");
-  if (tpl) return `<span class="av-wrap s${size}">${tpl.replaceAll("%I%", ini + photo).replaceAll("%L%", opt.noMedal ? "" : String(opt.lv ?? lv.lv))}</span>`;
+  if (tpl) return `<span class="av-wrap s${size}" data-t="${tier}">${tpl.replaceAll("%I%", ini + photo).replaceAll("%L%", opt.noMedal ? "" : String(opt.lv ?? lv.lv))}</span>`;
   return `<span class="avatar ${SIZE_CLS[size] || ""} t${tier}"><span>${ini}${photo}</span></span>`;
 };
 const rankPill = (lv, big = false) => rankBadge(lv, big ? "big" : "");

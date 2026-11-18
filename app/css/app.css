@@ -317,28 +317,33 @@ body[data-screen="reader"] { background: #0A0A0A; overflow: hidden; }
 @keyframes sk { to { background-position: -200% 0; } }
 
 /* ---------- navigasi bawah (sama seperti prototipe) ---------- */
-#nav { position: fixed; z-index: 20; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom)); width: min(100% - 28px, 520px); height: 68px; display: flex; padding: 6px; border-radius: 30px;
-  transform: translateX(-50%); transition: transform .35s cubic-bezier(.2, .8, .2, 1), opacity .3s;
-  background: var(--glass-bg); backdrop-filter: var(--glass); -webkit-backdrop-filter: var(--glass); border: 1px solid rgba(255, 255, 255, .13); box-shadow: 0 12px 32px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .16); }
+/* Bar ringkas gaya iOS: ikon, indikator, dan tab memakai transform/opacity (dikerjakan GPU), tata letak tab tidak berubah.
+   Saat ringkas, latar kaca menyempit jadi 1 tombol bulat; ikon tab aktif bergeser ke tengah, tab lain memudar.
+   --nw / --nwn = lebar bar (px / angka), diisi main.js. */
+#nav { position: fixed; z-index: 20; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom)); width: min(100% - 28px, 520px); height: 68px; display: flex; padding: 6px;
+  --nw: 362px; --nwn: 362; --tw: calc((var(--nw) - 12px) / 4);
+  transform: translateX(-50%); transition: transform .35s cubic-bezier(.2, .8, .2, 1), opacity .3s; }
 body.nav-off #nav { transform: translate(-50%, 120px); opacity: 0; pointer-events: none; }
-.nav-ind { position: absolute; top: 6px; bottom: 6px; left: 6px; width: calc((100% - 12px) / 4); transform: translate3d(calc(var(--ti, 0) * 100%), 0, 0); border-radius: 24px;
-  background: rgba(224, 36, 43, .16); border: 1px solid rgba(255, 255, 255, .10); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14); }
-#nav a { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: #C2C9D6; font-size: 11px; font-weight: 500; transition: color .3s; }
+/* latar kaca: 1 elemen kosong di tengah; hanya lebarnya yang berubah (tanpa isi → hitungannya ringan, tanpa sambungan) */
+.nav-bg { position: absolute; top: 0; bottom: 0; left: 50%; width: 100%; transform: translateX(-50%); border-radius: 34px; pointer-events: none;
+  background: var(--glass-bg); backdrop-filter: var(--glass); -webkit-backdrop-filter: var(--glass); border: 1px solid rgba(255, 255, 255, .13);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .16); transition: width .5s cubic-bezier(.32, .72, 0, 1); }
+.nav-ind { position: absolute; top: 6px; bottom: 6px; left: 6px; width: var(--tw); transform: translate3d(calc(var(--ti, 0) * var(--tw)), 0, 0); border-radius: 24px;
+  background: rgba(224, 36, 43, .16); border: 1px solid rgba(255, 255, 255, .10); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14);
+  will-change: transform; transition: transform .42s cubic-bezier(.34, 1.45, .5, 1), opacity .25s ease-out .1s; }
+#nav a { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: #C2C9D6; font-size: 11px; font-weight: 500;
+  transition: color .3s, opacity .28s ease-out .08s, transform .5s cubic-bezier(.32, .72, 0, 1), scale 100ms var(--ease-out, ease-out); }
 #nav a[aria-current="true"] { color: var(--redt); font-weight: 700; }
-/* bar ringkas (gaya iOS): lebar menyusut seperti pegas ke 1 tombol di tengah, tab lain memudar & mengecil */
-#nav { transition: transform .35s cubic-bezier(.2, .8, .2, 1), opacity .3s, width .55s cubic-bezier(.32, 1.25, .5, 1); }
-#nav a { min-width: 0; overflow: hidden; transition: color .3s, flex-grow .5s cubic-bezier(.32, 1.15, .5, 1), opacity .22s ease-out, transform .45s cubic-bezier(.32, 1.25, .5, 1); }
-#nav a span { transition: opacity .18s ease-out, max-height .4s cubic-bezier(.32, 1.15, .5, 1); max-height: 16px; white-space: nowrap; }
-.nav-ind { will-change: transform; transition: transform .42s cubic-bezier(.34, 1.45, .5, 1), width .5s cubic-bezier(.32, 1.25, .5, 1); }
-#nav { contain: layout style; }
-body.nav-min #nav { width: 68px; }
-body.nav-min #nav a:not([aria-current="true"]) { flex-grow: 0; opacity: 0; transform: scale(.5); pointer-events: none; }
-body.nav-min #nav a { gap: 0; }
-body.nav-min #nav a span { opacity: 0; max-height: 0; }
-body.nav-min .nav-ind { width: calc(100% - 12px); transform: none; }
-body.nav-min #nav a[aria-current="true"] svg { transform: scale(1.08); }
-#nav a svg { transition: transform .45s cubic-bezier(.32, 1.25, .5, 1); }
-@media (prefers-reduced-motion: reduce) { .nav-ind, #nav, #nav a, #nav a span, #nav a svg { transition: none; } }
+#nav a span { white-space: nowrap; transition: opacity .22s ease-out .1s; }
+#nav a svg { transition: transform .5s cubic-bezier(.32, .72, 0, 1); }
+body.nav-min #nav { pointer-events: none; }
+body.nav-min .nav-bg { width: 68px; }
+body.nav-min .nav-ind { transform: translate3d(calc(var(--nw) / 2 - 6px - var(--tw) / 2), 0, 0) scaleX(calc(56 / ((var(--nwn) - 12) / 4))); opacity: 0; transition: transform .5s cubic-bezier(.32, .72, 0, 1), opacity .18s ease-out; }
+body.nav-min #nav a { opacity: 0; transform: scale(.6); transition: color .3s, opacity .16s ease-out, transform .5s cubic-bezier(.32, .72, 0, 1), scale 100ms var(--ease-out, ease-out); }
+body.nav-min #nav a[aria-current="true"] { opacity: 1; pointer-events: auto; transform: translate3d(calc(var(--nw) / 2 - 6px - (var(--ti, 0) + .5) * var(--tw)), 0, 0); }
+body.nav-min #nav a[aria-current="true"] span { opacity: 0; transition-delay: 0s; transition-duration: .12s; }
+body.nav-min #nav a[aria-current="true"] svg { transform: translateY(8px) scale(1.08); }
+@media (prefers-reduced-motion: reduce) { .nav-ind, #nav, #nav a, #nav a span, #nav a svg, .nav-bg { transition: none !important; } }
 
 #toast { position: fixed; z-index: 40; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom)); transform: translate(-50%, 20px); max-width: min(92vw, 440px); padding: 12px 18px; border-radius: 18px;
   background: rgba(28, 37, 51, .96); border: 1px solid rgba(255, 255, 255, .12); font-size: 13.5px; opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s; text-align: center; }
@@ -1085,7 +1090,7 @@ button, [role="button"], .seg, .chips, #nav { -webkit-user-select: none; user-se
 /* baris daftar: latar menyala saat ditekan (mengecilkan baris lebar terasa aneh) */
 .lrow, .mrow, .ch, .sh-row, .r-mode, .dl-file, .notif-it { transition: background-color 120ms var(--ease-out); }
 .lrow:active, .mrow:active, .ch:active, .sh-row:active, .r-mode:active:not(:disabled), .dl-file:active { background-color: rgba(255, 255, 255, .06); }
-#nav a:active { transform: scale(.94); transition: transform 100ms var(--ease-out); }
+#nav a:active { scale: .94; }
 /* area sentuh minimal ±44 px untuk tombol kecil (38 px ikon, chip 34 px, tab 40 px) */
 .sq-btn, .chips button, .seg button, .link, .link-red { position: relative; }
 .sq-btn::after { content: ""; position: absolute; inset: -4px; }
@@ -1095,7 +1100,8 @@ button, [role="button"], .seg, .chips, #nav { -webkit-user-select: none; user-se
 @media (prefers-reduced-motion: reduce) {
   .btn:active, .sq-btn:active, .icon-btn:active, .round-btn:active, .r-round:active, .pill-btn:active, .r-sq:active, .r-main:active,
   .chsort:active, .tw-b:active, .flt-btn:active, .gl-btn:active, .x-btn:active, .seg button:active, .chips button:active, .rfab:active, .quote:active,
-  .grid-card:active, .top10:active, .resume:active, .cat:active, #nav a:active, .r-fail:active { transform: none; opacity: .75; }
+  .grid-card:active, .top10:active, .resume:active, .cat:active, .r-fail:active { transform: none; opacity: .75; }
+  #nav a:active { scale: 1; }
 }
 /* lembar bawah: pegangan untuk digeser turun */
 .sheet::before, .flt-card::before { content: ""; display: block; width: 38px; height: 4px; margin: 2px auto 6px; border-radius: 2px; background: rgba(255, 255, 255, .22); flex: none; }
