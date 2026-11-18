@@ -951,3 +951,6 @@ body.nk-lite .rk-b.t6::before, body.nk-lite .rk-b.t7::before { display: none; }
 .syn-h { margin: 16px 0 0; font-size: 13.5px; line-height: 1.65; color: var(--soft); word-break: break-word; }
 .syn-h + .desc { margin-top: 6px; }
 .syn-h b { color: var(--tx); font-weight: 700; }
+
+/* Ninokuu Dev: penanda build uji */
+body.nk-dev::after { content: "DEV"; position: fixed; top: calc(env(safe-area-inset-top) + 6px); left: 50%; transform: translateX(-50%); z-index: 120; padding: 2px 7px; border-radius: 6px; background: #f5b400; color: #111; font: 800 10px/1.4 system-ui, sans-serif; letter-spacing: .08em; pointer-events: none; }

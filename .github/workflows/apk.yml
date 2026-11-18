@@ -14,11 +14,17 @@ on:
     # Perubahan web biasa langsung tayang di versi web tanpa menunggu rilis APK.
     paths: ["VERSION", "apk/**", ".github/workflows/apk.yml"]
   workflow_dispatch:
+  # Ninokuu Dev: dipanggil oleh apk-dev.yml (branch dev) dengan channel "dev"
+  workflow_call:
+    inputs:
+      channel:
+        type: string
+        default: global
 
 permissions: {}
 
 concurrency:
-  group: apk
+  group: apk-${{ inputs.channel || 'global' }}
   cancel-in-progress: true
 
 jobs:
@@ -33,6 +39,8 @@ jobs:
     # supaya skrip paket npm (npm install) tidak bisa membaca kata sandi kunci APK.
     env:
       APP_ID_VAR: ${{ vars.APP_ID }}
+      # global = aplikasi untuk semua pengguna (branch main); dev = Ninokuu Dev untuk uji (branch dev)
+      CHANNEL: ${{ inputs.channel || 'global' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -76,9 +84,13 @@ jobs:
             const id = process.env.APP_ID_VAR || pk[0];
             if (!id || !pk.includes(id)) { console.error(`::error::Paket ${id || "(kosong)"} tidak ada di google-services.json (${pk.join(", ")}).`); process.exit(1); }
             if (!/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(id)) { console.error("::error::Nama paket tidak valid: " + id); process.exit(1); }
-            console.log("Firebase:", j.project_info?.project_id, "· paket:", id);
-            fs.appendFileSync(process.env.GITHUB_ENV, "APP_ID=" + id + "\n");
-            const c = JSON.parse(fs.readFileSync("capacitor.config.json", "utf8")); c.appId = id;
+            // Ninokuu Dev: paket terpisah (<paket>.dev) supaya bisa dipasang berdampingan dengan versi global.
+            // Notifikasi HP hanya aktif bila paket .dev sudah didaftarkan di Firebase (ada di google-services.json).
+            const dev = process.env.CHANNEL === "dev", appId = dev ? id + ".dev" : id, fcm = !dev || pk.includes(appId);
+            console.log("Firebase:", j.project_info?.project_id, "· paket:", appId, dev ? (fcm ? "· notifikasi aktif" : "· notifikasi mati (paket .dev belum ada di Firebase)") : "");
+            fs.appendFileSync(process.env.GITHUB_ENV, "APP_ID=" + appId + "\nFCM=" + (fcm ? "1" : "0") + "\n");
+            const c = JSON.parse(fs.readFileSync("capacitor.config.json", "utf8")); c.appId = appId;
+            if (dev) c.appName = "Ninokuu Dev";
             fs.writeFileSync("capacitor.config.json", JSON.stringify(c, null, 2));'
 
       - name: Berkas web + config.js
@@ -104,6 +116,8 @@ jobs:
           owner, name = os.environ["REPO"].split("/")
           cfg = {"SUPABASE_URL": url, "SUPABASE_ANON_KEY": key, "VERSION": ver, "BUILD": int(os.environ["BUILD"]), "REPO": os.environ["REPO"],
                  "WEB_URL": f"https://{owner.lower()}.github.io/{name}/"}
+          if os.environ["CHANNEL"] == "dev":
+              cfg.update({"DEV": True, "FN": "ninokuu-api-dev", "RELEASE_TAG": "apk-dev", "PUSH": os.environ.get("FCM") == "1"})
           open("www/config.js", "w").write("window.NINOKUU_CONFIG = " + json.dumps(cfg) + ";\n")
           print("config.js:", {k: v for k, v in cfg.items() if k != "SUPABASE_ANON_KEY"})
           PY
@@ -133,7 +147,8 @@ jobs:
           find $R -name "ic_launcher_foreground.png" -delete
           find $R -name "splash.png" -delete
           cp -r res/. $R/
-          cp google-services.json android/app/google-services.json
+          # tanpa google-services.json, Gradle Capacitor melewati plugin Firebase (Ninokuu Dev tanpa notifikasi)
+          if [ "$FCM" = "1" ]; then cp google-services.json android/app/google-services.json; fi
           node -e '
             const fs = require("fs");
             // warna bilah status / navigasi & latar jendela mengikuti tema gelap Ninokuu
@@ -157,7 +172,8 @@ jobs:
             if (!m.includes("READ_EXTERNAL_STORAGE")) m = m.replace("</manifest>", `    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />\n</manifest>`);
             if (!m.includes("requestLegacyExternalStorage")) m = m.replace(/<application\b/, `<application\n        android:requestLegacyExternalStorage="true"`);
             // tautan ninokuu://… (tombol "Kembali ke aplikasi" di halaman verifikasi email) membuka aplikasi
-            if (!m.includes(`android:scheme="ninokuu"`)) m = m.replace(/(<activity\b[\s\S]*?MainActivity[\s\S]*?>)/, `$1\n            <intent-filter>\n                <action android:name="android.intent.action.VIEW" />\n                <category android:name="android.intent.category.DEFAULT" />\n                <category android:name="android.intent.category.BROWSABLE" />\n                <data android:scheme="ninokuu" />\n            </intent-filter>`);
+            // (tidak untuk Ninokuu Dev, supaya tautan tetap dibuka aplikasi global tanpa pilihan ganda)
+            if (process.env.CHANNEL !== "dev" && !m.includes(`android:scheme="ninokuu"`)) m = m.replace(/(<activity\b[\s\S]*?MainActivity[\s\S]*?>)/, `$1\n            <intent-filter>\n                <action android:name="android.intent.action.VIEW" />\n                <category android:name="android.intent.category.DEFAULT" />\n                <category android:name="android.intent.category.BROWSABLE" />\n                <data android:scheme="ninokuu" />\n            </intent-filter>`);
             fs.writeFileSync(mf, m);'
           grep -q 'android:allowBackup="false"' android/app/src/main/AndroidManifest.xml || { echo "::error::allowBackup belum false"; exit 1; }
           grep -n "ninokuu_bg" android/app/src/main/res/values/styles.xml | head -3
@@ -190,6 +206,8 @@ jobs:
           V=$(tr -d ' \n\r' < ../VERSION)
           IFS=. read -r MA MI PA <<< "$V"
           CODE=$((MA * 1000000 + MI * 1000 + PA))
+          # Ninokuu Dev: setiap build bisa dipasang menimpa build sebelumnya walau VERSION sama
+          if [ "$CHANNEL" = "dev" ]; then CODE=$((500000000 + ${{ github.run_number }})); V="$V-dev.${{ github.run_number }}"; fi
           echo "APP_VERSION=$V" >> "$GITHUB_ENV"
           sed -i -E "s/versionCode [0-9]+/versionCode $CODE/; s/versionName \"[^\"]*\"/versionName \"$V\"/" android/app/build.gradle
           grep -n "versionCode\|versionName" android/app/build.gradle
@@ -213,10 +231,27 @@ jobs:
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: ninokuu-apk
+          name: ninokuu-apk-${{ env.CHANNEL }}
           path: apk/ninokuu.apk
 
+      - name: Terbitkan Ninokuu Dev ke Release "apk-dev"
+        if: env.CHANNEL == 'dev'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp ninokuu.apk ninokuu-dev.apk
+          { git log -1 --pretty=%B | grep -vE '^(Co-Authored-By|Claude-Session):' | sed '/^[[:space:]]*$/d'
+            echo ""
+            echo "Build UJI dari branch dev, commit ${{ github.sha }} · paket $APP_ID. Bukan untuk pengguna umum."
+            echo "Bisa dipasang berdampingan dengan Ninokuu biasa."; } > "$RUNNER_TEMP/notes.md"
+          gh release delete apk-dev --repo "${{ github.repository }}" --yes --cleanup-tag || true
+          gh release create apk-dev ninokuu-dev.apk --repo "${{ github.repository }}" --target "${{ github.sha }}" \
+            --title "Ninokuu Dev v$APP_VERSION (build ${{ github.run_number }})" --prerelease --latest=false --notes-file "$RUNNER_TEMP/notes.md"
+          echo "### Ninokuu Dev siap" >> "$GITHUB_STEP_SUMMARY"
+          echo "https://github.com/${{ github.repository }}/releases/download/apk-dev/ninokuu-dev.apk" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Terbitkan ke Release "apk-terbaru"
+        if: env.CHANNEL != 'dev'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

@@ -18,6 +18,8 @@ let route = { name: "home", params: [], key: "" };
 let cleanup = null;
 const scrollMem = new Map();
 const detailCache = new Map();
+// Ninokuu Dev: penanda kecil "DEV" di pojok layar supaya tidak tertukar dengan aplikasi global
+if (N.DEV) document.body.classList.add("nk-dev");
 
 /* ---------- router ---------- */
 function parse() {
@@ -1128,7 +1130,8 @@ ${group("Bacaanmu", mrow("star", "Level &amp; Rank", user ? `${lv.rank} · Lv ${
   ${seg([{ id: "scroll", name: "Scroll (webtoon)" }, { id: "slide", name: "Slide (halaman)" }], st.readMode, "rmode", "s2")}
   ${st.readMode === "slide" ? `<span class="mu sm">Arah geser</span>${seg([{ id: "rtl", name: "Kanan ke kiri" }, { id: "ltr", name: "Kiri ke kanan" }], st.readDir === "ltr" ? "ltr" : "rtl", "dir", "s2")}` : ""}
   <span class="mu xs lh">${st.readMode === "slide" ? "Geser per halaman. Kanan ke kiri cocok untuk manga Jepang." : "Gulir ke bawah, halaman tersambung. Cocok untuk manhwa dan manhua."}</span></div></section>
-${N.isApp ? group("Aplikasi", `<span id="updrow"></span>` + mrow("bell", "Notifikasi HP", `<span id="pushst">Memeriksa…</span>`, "pushset") + mrow("info", "Versi aplikasi", `v${esc(VERSION)} · ketuk untuk cek pembaruan`, "checkupd"))
+${N.DEV ? group("Ninokuu Dev", mrow("bug", "Log error", `${N.devLog().length} catatan · salin & kirim ke developer`, "devlog") + mrow("info", "Build uji", `v${esc(VERSION)} · build ${esc(N.BUILD)} · function ${esc(api.FN.split("/").pop())}`, "")) : ""}
+${N.isApp ? group("Aplikasi", `<span id="updrow"></span>` + (N.pushSupported() || !N.DEV ? mrow("bell", "Notifikasi HP", `<span id="pushst">Memeriksa…</span>`, "pushset") : mrow("bell", "Notifikasi HP", "Belum aktif di Ninokuu Dev (paket .dev belum didaftarkan di Firebase)", "")) + mrow("info", "Versi aplikasi", `v${esc(VERSION)}${N.DEV ? " Dev" : ""} · ketuk untuk cek pembaruan`, "checkupd"))
   : group("Aplikasi Android", mrow("down", "Pasang aplikasi Android (APK)", "Baca Shinigami &amp; WestManga, notifikasi chapter baru di HP", "getapk"))}
 ${group("Data &amp; penyimpanan", mrow("cloud", "Backup data offline", "Simpan koleksi, riwayat, dan pengaturan ke file", "backup") + mrow("restore", "Pulihkan data", "Dari file backup", "restore") + mrow("trash", "Bersihkan cache", "Gambar sampul &amp; halaman yang tersimpan", "cache"))}
 ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord Ninokuu", "discord") + mrow("info", "Tentang aplikasi", "Versi " + esc(VERSION), "about") + mrow("shield", "Kebijakan privasi", "", "privacy") + mrow("doc", "Ketentuan pengguna", "", "terms") + mrow("heart", "Dukung di Trakteer", "Traktir pengembang", "trakteer"))}
@@ -1163,6 +1166,7 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
     getapk: () => window.open(N.SITE_URL, "_blank"),
     update: () => checkUpdate(true),
     checkupd: () => checkUpdate(true),
+    devlog: () => openDevLog(),
     pushset: async () => {
       if (!user) { toast("Masuk dulu supaya notifikasi bisa dikirim ke HP ini."); return; }
       try {
@@ -1227,6 +1231,17 @@ function showUpdate(r) {
     <div class="row g8"><button class="sh-cancel grow" data-s="later">Nanti</button><button class="btn primary grow" data-s="get">${icon("down", 17, 2)}Perbarui sekarang</button></div>`, (b) => {
     if (b.dataset.s === "later") { try { sessionStorage.setItem("ninokuu:updLater", String(r.version || r.build)); } catch {} closeSheet(); }
     if (b.dataset.s === "get") { window.open(r.url, "_blank"); closeSheet(); }
+  });
+}
+// Ninokuu Dev: daftar error yang tercatat, bisa disalin lalu ditempel ke chat developer
+function openDevLog() {
+  const l = N.devLog().slice().reverse();
+  const text = () => [`Ninokuu Dev v${VERSION} build ${N.BUILD} · ${navigator.userAgent}`, ...N.devLog().map((x) => `[${x.t}] ${x.k} ${x.r}\n${x.m}${x.x ? "\n" + x.x : ""}`)].join("\n\n");
+  openSheet(`<span class="sheet-ttl">Log error · ${l.length}</span>
+    <div class="col g8" style="max-height:52vh;overflow:auto">${l.length ? l.map((x) => `<div class="mu xs" style="white-space:pre-wrap;word-break:break-word"><b class="redt">${esc(x.k)}</b> · ${esc(new Date(x.t).toLocaleString("id-ID"))} · ${esc(x.r)}<br>${esc(x.m)}${x.x ? `<br><span style="opacity:.7">${esc(x.x.slice(0, 400))}</span>` : ""}</div>`).join("") : `<span class="mu sm">Belum ada error tercatat.</span>`}</div>
+    <div class="row g8"><button class="sh-cancel grow" data-s="clear">Hapus log</button><button class="btn primary grow" data-s="copy">Salin semua</button></div>`, async (b) => {
+    if (b.dataset.s === "copy") { try { await navigator.clipboard.writeText(text()); toast("Log disalin. Tempel di chat developer."); } catch { toast("Tidak bisa menyalin otomatis."); } }
+    if (b.dataset.s === "clear") { N.clearDevLog(); closeSheet(); toast("Log dihapus"); if (route.name === "more") vMore(); }
   });
 }
 async function checkUpdate(manual) {

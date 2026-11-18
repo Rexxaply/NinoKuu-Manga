@@ -13,9 +13,12 @@ const vp = (v) => String(v).split(".").map((n) => parseInt(n, 10) || 0);
 export function cmpVersion(a, b) { const x = vp(a), y = vp(b); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0) ? 1 : -1; return 0; }
 // jenis pembaruan: mayor (perubahan besar), minor (fitur baru), patch (perbaikan)
 export function updateKind(from, to) { const x = vp(from), y = vp(to); return y[0] !== x[0] ? "mayor" : y[1] !== x[1] ? "minor" : "patch"; }
+// Ninokuu Dev: APK terpisah (paket .dev) dari branch dev, memakai Edge Function ninokuu-api-dev
+export const DEV = !!CFG.DEV;
+const RELEASE_TAG = CFG.RELEASE_TAG || "apk-terbaru";
 export const REPO = CFG.REPO || "Rexxaply/NinoKuu-Manga";
 export const WEB_URL = CFG.WEB_URL || `https://${REPO.split("/")[0].toLowerCase()}.github.io/${REPO.split("/")[1]}/`;
-export const APK_URL = `https://github.com/${REPO}/releases/download/apk-terbaru/ninokuu.apk`;
+export const APK_URL = DEV ? `https://github.com/${REPO}/releases/download/${RELEASE_TAG}/ninokuu-dev.apk` : `https://github.com/${REPO}/releases/download/apk-terbaru/ninokuu.apk`;
 // halaman unduh (landing page, repo Rexxaply/ninokuu-site)
 export const SITE_URL = "https://ninokuu.site/";
 
@@ -70,11 +73,10 @@ export async function nget(url, { headers = {}, type = "json" } = {}) {
   return { bytes: typeof r.data === "string" ? b64bytes(r.data) : new Uint8Array(r.data || []), type: h["content-type"] || "image/jpeg" };
 }
 // Hemat kuota (egress) Supabase: gambar sampul & halaman selalu dicoba langsung dari situs aslinya.
-// Alamat proxy ninokuu-api (…/functions/v1/ninokuu-api?img=…&ref=…&sig=…) hanya dipakai sebagai cadangan terakhir.
+// Alamat proxy ninokuu-api / ninokuu-api-dev (…?img=…&ref=…&sig=…) hanya dipakai sebagai cadangan terakhir.
 export function imgParts(url) {
   const s = String(url || "");
-  const i = s.indexOf("/functions/v1/ninokuu-api?");
-  if (i < 0) return { src: s, d: "", ref: "", px: "" };
+  if (!/\/functions\/v1\/ninokuu-api(-dev)?\?/.test(s)) return { src: s, d: "", ref: "", px: "" };
   const q = new URLSearchParams(s.slice(s.indexOf("?") + 1)), d = q.get("img") || "";
   return /^https:\/\//i.test(d) ? { src: d, d, ref: q.get("ref") || "", px: s } : { src: s, d: "", ref: "", px: "" };
 }
@@ -234,7 +236,8 @@ export async function direct(action, body) {
 }
 
 /* ---------- Notifikasi (Firebase Cloud Messaging) ---------- */
-const PN = () => plugin("PushNotifications");
+// Ninokuu Dev tanpa Firebase (paket .dev belum didaftarkan) → plugin notifikasi tidak dipanggil sama sekali
+const PN = () => (CFG.PUSH === false ? null : plugin("PushNotifications"));
 export const pushSupported = () => !!PN();
 export async function pushStatus() {
   if (!PN()) return "unsupported";
@@ -329,7 +332,7 @@ export async function checkBlockedSources(lib, call) {
 export async function latestBuild() {
   if (!isApp) return null;
   try {
-    const j = await nget(`https://api.github.com/repos/${REPO}/releases/tags/apk-terbaru`, { headers: { Accept: "application/vnd.github+json" } });
+    const j = await nget(`https://api.github.com/repos/${REPO}/releases/tags/${RELEASE_TAG}`, { headers: { Accept: "application/vnd.github+json" } });
     const name = String(j?.name || "");
     const n = Number(name.match(/build (\d+)/i)?.[1] || 0);
     const version = name.match(/v(\d+\.\d+\.\d+)/i)?.[1] || null;
@@ -338,7 +341,23 @@ export async function latestBuild() {
       .filter((x) => x && !/^(Co-Authored-By|Claude-Session|Dibangun otomatis|Unduh |Pembaruan bisa)/i.test(x)).slice(0, 12);
     if (!version && !n) return null;
     // rilis lama tanpa nomor versi dibandingkan lewat nomor build
-    const newer = version ? cmpVersion(version, VERSION) > 0 : n > BUILD;
-    return { version, build: n, newer, kind: version ? updateKind(VERSION, version) : "patch", url: `${SITE_URL}update/`, notes, at: j?.published_at || null };
+    // Dev: setiap build baru dihitung pembaruan (nomor versi bisa sama selama belum rilis global)
+    const newer = DEV ? n > BUILD : version ? cmpVersion(version, VERSION) > 0 : n > BUILD;
+    return { version, build: n, newer, kind: version ? updateKind(VERSION, version) : "patch", url: DEV ? `https://github.com/${REPO}/releases/tag/${RELEASE_TAG}` : `${SITE_URL}update/`, notes, at: j?.published_at || null };
   } catch { return null; }
+}
+
+/* ---------- Ninokuu Dev: catatan error untuk dikirim ke developer ---------- */
+const LOGK = "ninokuu:devlog";
+export const devLog = () => { try { return JSON.parse(localStorage.getItem(LOGK)) || []; } catch { return []; } };
+export const clearDevLog = () => { try { localStorage.removeItem(LOGK); } catch {} };
+export function logDev(kind, msg, extra = "") {
+  if (!DEV) return;
+  const l = devLog();
+  l.push({ t: new Date().toISOString(), k: kind, m: String(msg || "").slice(0, 500), x: String(extra || "").slice(0, 1500), r: location.hash });
+  try { localStorage.setItem(LOGK, JSON.stringify(l.slice(-80))); } catch {}
+}
+if (DEV) {
+  addEventListener("error", (e) => { if (e.target === window || e.error) logDev("error", e.message || e.error?.message, e.error?.stack || `${e.filename}:${e.lineno}`); });
+  addEventListener("unhandledrejection", (e) => logDev("promise", e.reason?.message || e.reason, e.reason?.stack || ""));
 }

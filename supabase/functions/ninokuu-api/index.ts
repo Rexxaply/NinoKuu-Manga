@@ -44,7 +44,11 @@ function serviceKey() {
 }
 const SERVICE_KEY = serviceKey();
 const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
-const SELF = `${SUPABASE_URL}/functions/v1/${NAME}`;
+// Nama function diambil dari alamat permintaan: kode yang sama dipasang sebagai ninokuu-api (global)
+// dan ninokuu-api-dev (Ninokuu Dev). Alamat proxy gambar menunjuk ke function yang sedang dipakai.
+let FN_NAME = NAME;
+let SELF = `${SUPABASE_URL}/functions/v1/${FN_NAME}`;
+const IS_DEV = () => FN_NAME.endsWith("-dev");
 
 /* ---------- fetch aman ---------- */
 const WEB_UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36";
@@ -748,7 +752,7 @@ async function tokensOf(userIds: string[]) {
 
 /* ---------- chapter baru → notifikasi ---------- */
 // gambar notifikasi diunduh oleh setiap HP penerima: pakai alamat asli sampul, bukan proxy (hemat Egress)
-const rawImg = (u: string) => { try { const x = new URL(u); return x.href.startsWith(SELF + "?") && x.searchParams.get("img") || u; } catch { return u; } };
+const rawImg = (u: string) => { try { const x = new URL(u); return /\/functions\/v1\/ninokuu-api(-dev)?$/.test(x.pathname) && x.searchParams.get("img") || u; } catch { return u; } };
 const deepLink = (src: string, id: string) => `ninokuu://comic/${src}/${encodeURIComponent(id)}`;
 async function notifyChapter(src: string, id: string, title: string, cover: string, ch: string) {
   const { data: fol } = await admin.from("library").select("user_id").eq("source", src).eq("comic_id", id).eq("notify", true);
@@ -884,19 +888,23 @@ async function userOf(req: Request) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   const url = new URL(req.url);
+  const seg = url.pathname.split("/").filter(Boolean).find((x) => /^ninokuu-api(-dev)?$/.test(x));
+  if (seg && seg !== FN_NAME) { FN_NAME = seg; SELF = `${SUPABASE_URL}/functions/v1/${FN_NAME}`; }
   try {
     if (req.method === "GET") {
       const img = url.searchParams.get("img");
       if (img) return await proxyImage(img, url.searchParams.get("ref") || "", url.searchParams.get("sig") || "", url.searchParams.get("c") === "1");
       let fcmProject: string | null = null;
       try { fcmProject = JSON.parse(Deno.env.get("FCM_SERVICE_ACCOUNT") || "null")?.project_id || null; } catch { fcmProject = "json-tidak-valid"; }
-      return json({ ok: true, name: NAME, version: VERSION, sources: SOURCES, serverKey: !!SERVICE_KEY, fcm: !!Deno.env.get("FCM_SERVICE_ACCOUNT"), fcmProject });
+      return json({ ok: true, name: FN_NAME, dev: IS_DEV(), version: VERSION, sources: SOURCES, serverKey: !!SERVICE_KEY, fcm: !!Deno.env.get("FCM_SERVICE_ACCOUNT"), fcmProject });
     }
     if (!SERVICE_KEY) return json({ error: "Edge Function tidak menemukan kunci server Supabase (SUPABASE_SERVICE_ROLE_KEY)." }, 500);
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || "");
 
     // Dipanggil Supabase Cron tiap 15 menit. Dengan kunci server: selalu jalan; tanpa kunci: paling cepat tiap 10 menit.
+    // Ninokuu Dev tidak menjalankan cron (notifikasi & pembersihan cukup dari function global, supaya tidak dobel)
+    if ((action === "cron" || action === "run_cron") && IS_DEV()) return json({ ok: true, skipped: "dev" });
     if (action === "cron") {
       const bearer = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
       return json({ ok: true, ...(await runCron(!!bearer && bearer === SERVICE_KEY)) });
