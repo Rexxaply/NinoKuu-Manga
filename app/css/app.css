@@ -30,9 +30,11 @@ html, body { overflow-x: clip; }
 /* Animasi pindah halaman dipasang di isi #view, bukan #view sendiri: transform pada #view membuat elemen "fixed" di
    dalamnya (bar Mulai baca, bar bawah daftar chapter) ikut terbawa ke dasar halaman selama animasi lalu muncul
    tiba-tiba. Elemen fixed (.vfix, ditandai main.js) meluncur naik sendiri dari bawah. */
-#view.in-f > :not(.vfix) { animation: slideF .36s cubic-bezier(.2, .8, .2, 1); }
-#view.in-b > :not(.vfix) { animation: slideB .36s cubic-bezier(.2, .8, .2, 1); }
-#view.in > .vfix.rfab-wrap, #view.in > .vfix.chbar { animation: fixUp .42s cubic-bezier(.32, .72, 0, 1); }
+#view.in-f > :not(.vfix):not(.rfab-wrap):not(.chbar) { animation: slideF .36s cubic-bezier(.2, .8, .2, 1); }
+#view.in-b > :not(.vfix):not(.rfab-wrap):not(.chbar) { animation: slideB .36s cubic-bezier(.2, .8, .2, 1); }
+/* bar bawah halaman: naik dari bawah saat pertama muncul (juga bila datanya datang belakangan), sekali per kunjungan */
+#view .rfab-wrap, #view .chbar { animation: fixUp .5s cubic-bezier(.32, .72, 0, 1) both; }
+#view[data-up-done] .rfab-wrap, #view[data-up-done] .chbar { animation: none; }
 @keyframes fixUp { from { transform: translateY(calc(100% + 40px)); } }
 /* tanpa opacity: opacity < 1 pada #view mematikan efek kaca (backdrop-filter) semua tombol/menu di dalamnya selama
    animasi → isi di belakangnya sempat tembus tajam. Cukup geser seperti "push" iOS. */
@@ -1248,3 +1250,4 @@ button.fa-new:active, .hl-go:active { scale: .92; }
 .r-menu .cap, .r-menu .rm-note { color: rgba(235, 240, 250, .62); }
 .r-menu-bg { background: rgba(0, 0, 0, .18); }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .r-menu, .r-menu.glass { background: rgba(18, 24, 36, .97); } }
+body.chfoc #view .chbar { animation: chdrop .22s cubic-bezier(.2, .8, .2, 1); }

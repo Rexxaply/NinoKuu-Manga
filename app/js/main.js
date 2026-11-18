@@ -100,7 +100,7 @@ async function render() {
   prevName = route.name; if (tab) prevTab = tab;
   // animasi masuk dimulai setelah layar baru terisi, supaya layar lama tidak ikut "meluncur lagi"
   const my = ++renderSeq;
-  view.classList.remove("in", "in-f", "in-b");
+  view.classList.remove("in", "in-f", "in-b"); delete view.dataset.upDone;
   view.innerHTML = ""; fxIo?.disconnect(); fxVis.clear(); fxSprite();
   let animated = false;
   // Selama layar baru meluncur masuk, animasi hiasan (bingkai avatar kosmik, kilau rank) dijeda: SVG beranimasi
@@ -108,7 +108,8 @@ async function render() {
   const animate = () => {
     if (animated || my !== renderSeq) return; animated = true;
     holdFx(true); clearTimeout(movingT);
-    movingT = setTimeout(() => { holdFx(false); watchFx(); }, 420);
+    // kelas animasi dilepas setelah selesai: halaman yang digambar ulang (data datang) tidak ikut meluncur lagi
+    movingT = setTimeout(() => { holdFx(false); watchFx(); if (my === renderSeq) view.classList.remove("in", "in-f", "in-b"); }, 420);
     for (const c of view.children) c.classList.toggle("vfix", getComputedStyle(c).position === "fixed");
     void view.offsetWidth; view.classList.add("in", fwd ? "in-f" : "in-b");
   };
@@ -123,6 +124,8 @@ async function render() {
   requestAnimationFrame(() => window.scrollTo(0, y || 0));
 }
 window.addEventListener("hashchange", render);
+// bar "Mulai baca" / bar bawah daftar chapter: meluncur naik sekali per kunjungan halaman (lihat app.css .rfab-wrap)
+view.addEventListener("animationend", (e) => { if (e.animationName === "fixUp") view.dataset.upDone = "1"; });
 
 // Bar bawah ringkas (gaya iOS): gulir ke bawah ±48 px → bar mengecil jadi 1 tombol (tab aktif) di tengah.
 // Ketuk tombol itu → bar terbuka lagi. Kembali ke paling atas halaman juga membukanya.
@@ -1616,15 +1619,27 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
 // setinggi bagian keyboard yang belum "dimakan" oleh penyusutan layar.
 // Dihitung ulang setiap kali layar berubah ukuran: di sebagian HP, keyboard dilaporkan "sudah muncul" sebelum
 // WebView menyusut. Dulu tingginya dihitung sekali saja → kolom chat terangkat 2× (melompat ke atas layar).
-// Tinggi layar penuh (kbBase) hanya diambil saat keyboard pasti tertutup: waktu mulai & setelah keyboard hilang,
-// dan dijaga = tinggi terbesar yang pernah terlihat. Di sebagian HP layar sudah menyusut SEBELUM laporan
-// "keyboard muncul" datang; dulu tinggi yang sudah menyusut itu dianggap layar penuh → kolom terangkat 2×.
+// Keyboard: kolom bawah (chat, lembar, dll.) diangkat setinggi bagian keyboard yang MENUTUPI layar.
+// - Bila layar aplikasi sudah menyusut karena keyboard (Android adjustResize), tidak perlu diangkat lagi (--kb 0).
+//   Dulu tinggi keyboard tetap ditambahkan → kolom terangkat 2× dan seluruh isi chat terdorong keluar layar.
+// - Bila layar tidak menyusut (keyboard melayang di atas aplikasi), angkat setinggi keyboard. Tinggi dari Android
+//   kadang dalam piksel fisik (mis. 900 di HP 2,75×): dinormalkan ke piksel tampilan.
+// - Tinggi layar penuh (kbBase) hanya diambil saat keyboard pasti tertutup (dan = tinggi terbesar yang terlihat),
+//   karena di sebagian HP layar menyusut SEBELUM laporan "keyboard muncul" datang.
+// - Dihitung ulang setiap layar berubah ukuran; nilai terakhir dicatat di Log error (Ninokuu Dev) untuk diagnosa.
 let kbBase = window.innerHeight, kbOpen = false, kbH = 0;
+const kbCss = (h) => { const dpr = window.devicePixelRatio || 1; return h > kbBase * 0.62 && dpr > 1.2 ? h / dpr : h; };
 const applyKb = () => {
-  const extra = kbH - Math.max(0, kbBase - window.innerHeight);
-  document.documentElement.style.setProperty("--kb", (extra > 40 ? Math.round(extra) : 0) + "px");
+  const shrink = Math.max(0, kbBase - window.innerHeight), vv = window.visualViewport;
+  const vvCover = vv ? Math.max(0, window.innerHeight - (vv.height + vv.offsetTop)) : 0;
+  const h = kbCss(kbH);
+  const lift = shrink > 80 ? 0 : Math.max(vvCover, h - shrink);
+  const v = lift > 40 ? Math.round(Math.min(lift, window.innerHeight * 0.7)) : 0;
+  document.documentElement.style.setProperty("--kb", v + "px");
+  if (N.DEV) N.logDev("kb", `keyboard ${Math.round(kbH)} → ${Math.round(h)} px, layar ${kbBase}→${window.innerHeight} (susut ${shrink}), vv tutup ${Math.round(vvCover)}, angkat ${v}px`);
 };
 window.addEventListener("resize", () => { if (kbOpen) { if (kbH) applyKb(); } else if (window.innerHeight > kbBase) kbBase = window.innerHeight; });
+window.visualViewport?.addEventListener("resize", () => { if (kbOpen && kbH) applyKb(); });
 addEventListener("orientationchange", () => setTimeout(() => { if (!kbOpen) kbBase = window.innerHeight; }, 400));
 function setKeyboard(h, phase) {
   const root = document.documentElement;
