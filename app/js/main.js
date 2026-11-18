@@ -843,14 +843,14 @@ const pagesMem = new Map();
 let readerSeq = 0;
 async function vReader(src, id, chId) {
   const shell = (inner) => `<div class="reader ui enter" id="rd" data-shell="1">${inner}<div class="r-top"><button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 22, 2)}</button><div class="r-pill glass"><b class="t1">Memuat…</b></div><span class="r-sp"></span></div></div>`;
-  // Halaman sebelumnya tetap terlihat selama data chapter dimuat; layar "Memuat…" baru dipasang bila butuh > 0,3 dtk
+  // Halaman sebelumnya tetap terlihat selama data chapter dimuat; layar "Memuat…" baru dipasang bila butuh > 0,65 dtk
   // (sebelumnya langsung tampil layar gelap kosong sekejap sebelum halaman komik → terlihat seperti kedipan)
   const myR = ++readerSeq;
   setTimeout(() => {
     if (myR !== readerSeq || parse().name !== "reader" || $("#rd")) return;
     view.innerHTML = shell(`<div class="r-pages">${loading(3, "sk-page")}</div>`);
     requestAnimationFrame(() => requestAnimationFrame(() => $("#rd")?.classList.remove("enter")));
-  }, 300);
+  }, 650);
   const fail = (e) => {
     if (myR !== readerSeq || parse().name !== "reader") return;
     if (!$("#rd")) view.innerHTML = shell(`<div class="r-pages"></div>`);
@@ -859,7 +859,9 @@ async function vReader(src, id, chId) {
   // file impor dari HP (src "local") tidak punya halaman info komik, kembali ke Favorit → Unduhan
   const isLocal = src === "local";
   const toComic = () => (isLocal ? backTo("#/fav/dl") : backTo(comicHref(src, id), [chaptersHref(src, id)]));
-  setActs({ back: toComic, retry: () => vReader(src, id, chId) });
+  // tombol kembali: bar atas & bawah meluncur keluar dulu (±0,18 dtk), lalu pindah ke info komik yang meluncur masuk
+  const leave = () => { const r = $("#rd"); if (r && r.classList.contains("ui") && !r.dataset.shell && !matchMedia("(prefers-reduced-motion: reduce)").matches) { r.classList.remove("ui"); setTimeout(toComic, 180); } else toComic(); };
+  setActs({ back: leave, retry: () => vReader(src, id, chId) });
   let d = isLocal ? DL.offlineDetail(src, id) : cachedDetail(src, id);
   try { if (!d) d = await getDetail(src, id); }
   catch (e) { d = DL.offlineDetail(src, id); if (!d) { fail(e); return; } }   // offline: info dari unduhan
@@ -898,8 +900,8 @@ async function vReader(src, id, chId) {
   const pk0 = `${src}|${id}|${chId}`, pm0 = api.lsGet("readPos", {}) || {}, ph0 = S.histItem(src, id);
   let at0 = Number(pm0[pk0]) || (ph0?.chapter_id === chId ? Number(ph0.page) || 1 : 1);
   if (!(at0 > 1 && at0 < p.images.length)) at0 = 1;
-  const near = (i) => i >= at0 - 2 && i <= at0;   // indeks 0-based: halaman tujuan & sebelumnya
-  const pre = p.images.filter((_, i) => i < 2 || near(i)).slice(0, 4).map((im) => im.local ? im.u : N.imgParts(im.u).src).filter(Boolean);
+  const near = (i) => i >= at0 - 5 && i <= at0;   // indeks 0-based: halaman tujuan & 4 sebelumnya (yang ikut termuat di dekat layar)
+  const pre = p.images.filter((_, i) => i < 2 || near(i)).slice(0, 8).map((im) => im.local ? im.u : N.imgParts(im.u).src).filter(Boolean);
   if (pre.length) await Promise.race([Promise.all(pre.map((u) => { const im = new Image(); im.referrerPolicy = "no-referrer"; im.src = u; return im.decode().catch(() => {}); })), new Promise((r) => setTimeout(r, 600))]);
   if (parse().name !== "reader" || myR !== readerSeq) return;
   const imgs = p.images.map((im, i) => { const a = im.local ? `src="${esc(im.u)}"` : N.imgAttrs(im.u, { ref: p.ref || "", px: im.p ? api.pageUrl(im.p) : "" }); return `<img class="r-img wait" data-i="${i + 1}" ${i > 1 && !near(i) ? a.replace(/^src=/, "data-src=") : a} alt="" aria-label="Halaman ${i + 1}" decoding="async" referrerpolicy="no-referrer" draggable="false">`; });
@@ -1113,7 +1115,7 @@ async function vReader(src, id, chId) {
   track.addEventListener("keydown", (e) => { if (e.key === "ArrowRight") goPage(curPage + 1); if (e.key === "ArrowLeft") goPage(curPage - 1); });
   const menu = (open) => { $(".r-menu").hidden = !open; $(".r-menu-bg").hidden = !open; $("[data-act=menu]").setAttribute("aria-expanded", String(open)); };
   setActs({
-    back: toComic,
+    back: leave,
     retry: () => vReader(src, id, chId),
     like: async () => {
       if (!S.loggedIn()) { toast("Masuk dulu untuk memberi like."); return; }
@@ -1235,7 +1237,7 @@ async function vReader(src, id, chId) {
     // selama 2 frame pertama halaman disembunyikan sampai posisinya pasti
     rd.classList.add("resuming"); jump();
     requestAnimationFrame(() => { jump(); requestAnimationFrame(() => rd.classList.remove("resuming")); });
-    if (!slide) $$(".r-img", rd).slice(Math.max(0, resumeAt - 3), resumeAt).forEach((im) => im.addEventListener("load", jump, { once: true }));
+    if (!slide) $$(".r-img", rd).slice(0, resumeAt).forEach((im) => im.addEventListener("load", jump, { once: true }));   // semua halaman di atas tujuan: tingginya berubah saat termuat
     toast(`Lanjut dari halaman ${resumeAt}`, 1800);
   }
   cleanup = () => { lazyIo.disconnect(); fsObs.disconnect(); clearTimeout(tapT); clearTimeout(nextT); cancelAnimationFrame(rafPos); endIo?.disconnect(); removeEventListener("online", onOnline); (parse().name === "reader" ? N.leaveFullscreen() : N.setFullscreen(false, false)); S.flushHistory(); };   // ke halaman lain: bilah status dikembalikan SEBELUM halaman baru digambar (tidak melompat setelahnya); pindah chapter: overlay tetap
@@ -1840,6 +1842,7 @@ function startApp() {
     const chs = $(".chs-host [data-x=close]"); if (chs) { chs.click(); return; }
     const ip = $(".img-prev"); if (ip) { ip.click(); return; }
     if (X.closeDaily()) return;
+    if (route.name === "reader" && acts.back) { acts.back(); return; }   // pembaca: bar meluncur keluar dulu
     // sama seperti prototipe: halaman dalam → mundur; tab lain → Beranda; Beranda → tekan sekali lagi untuk keluar
     if (!["home", "search", "fav", "more"].includes(route.name)) { if (navIdx > 0) history.back(); else goReplace("#/home"); return; }
     if (route.name !== "home") { goReplace("#/home"); return; }

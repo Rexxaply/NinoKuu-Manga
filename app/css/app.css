@@ -38,6 +38,10 @@ html, body { overflow-x: clip; }
    tiba-tiba. Elemen fixed (.vfix, ditandai main.js) meluncur naik sendiri dari bawah. */
 #view.in-f > :not(.vfix):not(.rfab-wrap):not(.chbar):not(.reader) { animation: slideF .36s cubic-bezier(.2, .8, .2, 1); }
 #view.in-b > :not(.vfix):not(.rfab-wrap):not(.chbar):not(.reader) { animation: slideB .36s cubic-bezier(.2, .8, .2, 1); }
+/* pembaca: yang meluncur dari samping hanya isi halamannya (seperti Beranda → info komik); bar atas & bawah
+   (fixed) meluncur sendiri dari tepi layar, jadi tidak ikut tergeser */
+#view.in-f > .reader > .r-scroll, #view.in-f > .reader > .r-slides { animation: slideF .36s cubic-bezier(.2, .8, .2, 1); }
+#view.in-b > .reader > .r-scroll, #view.in-b > .reader > .r-slides { animation: slideB .36s cubic-bezier(.2, .8, .2, 1); }
 /* bar bawah halaman: naik dari bawah saat pertama muncul (juga bila datanya datang belakangan), sekali per kunjungan */
 /* mulai sedikit setelah halaman digambar: saat halaman baru sedang disusun, beberapa frame pertama terlewat dan
    bar tampak "meloncat" ke tempatnya; dengan jeda singkat seluruh gerakannya terlihat */
