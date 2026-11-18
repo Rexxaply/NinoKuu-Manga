@@ -17,7 +17,7 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 - Mode baca layar penuh kini sampai ujung atas layar (termasuk sekitar lubang kamera), tanpa pita hitam
 
 ### Detail
-- Saat layar penuh: `StatusBar.setOverlaysWebView({ overlay: true })` lalu bilah status disembunyikan; saat keluar: bilah status muncul dan overlay dimatikan lagi. 1.8.2 (shortEdges saja) belum cukup karena jendela masih menyisakan jarak untuk bilah status
+- Selama di pembaca mode layar penuh, `StatusBar.setOverlaysWebView({ overlay: true })` tetap menyala; ketukan hanya menyembunyikan/memunculkan bilah status (halaman tidak melompat). Overlay dimatikan sesaat setelah keluar dari pembaca (pindah chapter tidak memicu lompatan). 1.8.2 (shortEdges saja) belum cukup karena jendela masih menyisakan jarak untuk bilah status
 - Tidak ada perubahan server
 
 ---

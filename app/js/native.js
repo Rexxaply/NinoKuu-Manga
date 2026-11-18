@@ -412,19 +412,25 @@ try { plugin("StatusBar")?.setOverlaysWebView?.({ overlay: false })?.catch?.(() 
 
 /* ---------- layar penuh saat membaca ---------- */
 // APK: bilah status Android disembunyikan (plugin StatusBar). Web: Fullscreen API (butuh ketukan pengguna).
-let fsOn = false;
-export async function setFullscreen(on) {
-  if (on === fsOn) return;
-  fsOn = on;
-  document.body.classList.toggle("nk-fs", !!on);   // layar penuh: jarak aman atas kembali ke nilai sistem (lubang kamera)
+let fsOn = false, ovOn = false, fsSeq = 0;
+// on = bilah status disembunyikan; overlay = halaman digambar di bawah bilah status sampai ujung atas (termasuk
+// area lubang kamera). Di pembaca mode layar penuh overlay tetap menyala selama di pembaca, walau menu bacaan
+// (dan bilah status) muncul: kalau ikut dimatikan setiap ketukan, seluruh halaman melompat setinggi bilah status.
+// keluar dari pembaca: ditunda sebentar, supaya pindah chapter (pembaca lama ditutup lalu langsung dibuka lagi)
+// tidak mematikan-menyalakan overlay (halaman tidak melompat)
+export function leaveFullscreen() { const t = ++fsSeq; setTimeout(() => { if (t === fsSeq) setFullscreen(false, false); }, 300); }
+export async function setFullscreen(on, overlay = on) {
+  on = !!on; overlay = !!overlay || on; fsSeq++;
+  if (on === fsOn && overlay === ovOn) return;
+  const wasOn = fsOn, wasOv = ovOn;
+  fsOn = on; ovOn = overlay;
+  document.body.classList.toggle("nk-fs", overlay);   // di bawah bilah status: jarak aman atas = nilai sistem
   const sb = plugin("StatusBar");
-  // Layar penuh: halaman digambar sampai ujung atas layar, termasuk area lubang kamera (overlay + shortEdges di tema).
-  // Tanpa overlay, Android tetap menyisakan pita hitam setinggi bilah status walau bilah statusnya disembunyikan.
-  // Keluar layar penuh: bilah status muncul lagi dan isi aplikasi kembali di bawahnya.
   if (sb) {
     try {
-      if (on) { await sb.setOverlaysWebView?.({ overlay: true }); await sb.hide(); }
-      else { await sb.show(); await sb.setOverlaysWebView?.({ overlay: false }); }
+      if (overlay && !wasOv) await sb.setOverlaysWebView?.({ overlay: true });
+      if (on !== wasOn) await (on ? sb.hide() : sb.show());
+      if (!overlay && wasOv) await sb.setOverlaysWebView?.({ overlay: false });
     } catch {}
     return;
   }
