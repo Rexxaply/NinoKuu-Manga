@@ -4,8 +4,9 @@
   --red: #E0242B; --redt: #FF6B70; --gold: #F2B33D; --ok: #5DD39E; --soft: #C9D0DC;
   --font: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --serif: "Instrument Serif", Georgia, serif;
-  --glass-bg: rgba(20, 27, 40, .52);
-  --glass: blur(22px) saturate(170%);
+  /* kaca gaya iOS: buram kuat + warna di belakang sedikit lebih hidup */
+  --glass-bg: rgba(22, 28, 42, .55);
+  --glass: blur(28px) saturate(180%);
   color-scheme: dark;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -28,8 +29,10 @@ html, body { overflow-x: clip; }
 /* pindah layar: meluncur dari kanan (maju) atau kiri (kembali), seperti prototipe */
 #view.in-f { animation: slideF .36s cubic-bezier(.2, .8, .2, 1); }
 #view.in-b { animation: slideB .36s cubic-bezier(.2, .8, .2, 1); }
-@keyframes slideF { from { opacity: 0; transform: translateX(60px); } }
-@keyframes slideB { from { opacity: 0; transform: translateX(-40px); } }
+/* tanpa opacity: opacity < 1 pada #view mematikan efek kaca (backdrop-filter) semua tombol/menu di dalamnya selama
+   animasi → isi di belakangnya sempat tembus tajam. Cukup geser seperti "push" iOS. */
+@keyframes slideF { from { transform: translateX(44px); } }
+@keyframes slideB { from { transform: translateX(-32px); } }
 @media (prefers-reduced-motion: reduce) { #view.in-f, #view.in-b { animation: none; } }
 
 /* ---------- utilitas ---------- */
@@ -999,7 +1002,8 @@ body.nk-dev::after { content: "DEV"; position: fixed; top: calc(env(safe-area-in
 
 /* pop-up "Yang baru" & tur sorotan fitur */
 .tw-host { position: fixed; inset: 0; z-index: 200; }
-.tw-pop { display: grid; place-items: center; padding: 20px; background: rgba(5, 8, 14, .72); animation: fadeIn .2s ease-out; }
+.tw-pop { display: grid; place-items: center; padding: 20px; background: rgba(5, 8, 14, .72); animation: bgIn .2s ease-out; }
+@keyframes bgIn { from { background-color: transparent; } }
 .tw-card { width: 100%; max-width: 380px; padding: 22px 18px 14px; border-radius: 26px; display: flex; flex-direction: column; gap: 10px; text-align: center; }
 .tw-ic { width: 48px; height: 48px; margin: 0 auto 4px; border-radius: 16px; display: grid; place-items: center; background: rgba(224, 36, 43, .16); color: var(--red); }
 .tw-t { font-size: 18px; }
@@ -1030,7 +1034,8 @@ body.nk-dev::after { content: "DEV"; position: fixed; top: calc(env(safe-area-in
 /* lapisan gelap tetap; kartu berganti dengan animasi singkat; tutup memudar */
 .tw-card { animation: twCard .34s cubic-bezier(.32, .72, 0, 1); }
 @keyframes twCard { from { opacity: 0; transform: translateY(10px) scale(.97); } }
-.tw-host.out { opacity: 0; transition: opacity .2s ease-out; pointer-events: none; }
+.tw-host.out { background-color: transparent; transition: background-color .2s ease-out; pointer-events: none; }
+.tw-host.out .tw-card { opacity: 0; transform: scale(.97); transition: opacity .18s ease-out, transform .2s ease-out; }
 @media (prefers-reduced-motion: reduce) { .tw-track, .tw-tx, .tw-dots span, .tw-shot img { transition: none; } .tw-card { animation: none; } }
 /* menu ⋯ pembaca: isi tidak boleh menyusut (sebelumnya baris terpotong/bertumpuk saat menu dibatasi tingginya) */
 .r-menu { width: min(300px, calc(100vw - 24px)); }
