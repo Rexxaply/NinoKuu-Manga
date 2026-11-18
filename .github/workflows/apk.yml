@@ -53,6 +53,24 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      # Rilis global wajib punya pop-up "Yang baru" untuk versinya (app/js/tour.js), lengkap dengan gambar slide-nya,
+      # supaya pengguna yang memperbarui melihat semua fitur baru. Ninokuu Dev hanya diberi peringatan.
+      - name: Periksa changelog "Yang baru"
+        run: |
+          V=$(tr -d ' \n\r' < VERSION)
+          node -e '
+            const fs = require("fs"), v = process.argv[1], t = fs.readFileSync("app/js/tour.js", "utf8");
+            const i = t.indexOf(`"${v}": {`), bad = [];
+            if (i < 0) bad.push(`tidak ada entri "${v}" di WHATS_NEW (app/js/tour.js)`);
+            else {
+              const part = t.slice(i, (t.indexOf("\n  },\n", i) + 1) || undefined);
+              for (const [, n] of part.matchAll(/img: "([\w-]+)"/g)) if (!fs.existsSync(`app/img/new/${n}.webp`)) bad.push(`gambar slide app/img/new/${n}.webp tidak ada`);
+              if (!/features: \[/.test(part)) bad.push("daftar fitur kosong");
+            }
+            if (bad.length) { const lvl = process.env.CHANNEL === "dev" ? "warning" : "error"; bad.forEach((b) => console.log(`::${lvl}::Yang baru ${v}: ${b}`)); if (lvl === "error") process.exit(1); }
+            else console.log(`Yang baru ${v}: lengkap`);
+          ' "$V"
+
       - name: Periksa kunci dan secret
         env:
           GSJ: ${{ secrets.GOOGLE_SERVICES_JSON }}
