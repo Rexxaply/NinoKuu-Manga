@@ -7,8 +7,8 @@ import { esc, icon } from "./ui.js";
 
 // Isi per versi. Slide: img = nama file di img/new/ (tanpa .webp).
 export const WHATS_NEW = {
-  "1.6.3": {
-    title: "Yang baru di Ninokuu 1.6.3",
+  "1.7.0": {
+    title: "Yang baru di Ninokuu 1.7.0",
     intro: "Tampilan baru yang lebih rapi, lanjut baca cukup 1 ketukan, lebih hemat kuota, dan animasi lebih mulus di semua halaman.",
     features: [
       ["Lanjut baca 1 ketukan", "Di Koleksi, ketuk lencana +N untuk langsung membuka chapter berikutnya. Di Riwayat ada tombol Lanjut (ke halaman terakhir) dan Berikutnya."],
@@ -56,10 +56,14 @@ const markSeen = (v) => { try { localStorage.setItem(SEEN, v); } catch {} };
 // Dev: sekali setiap isi changelog berubah, termasuk pemasangan baru, supaya bisa diuji.
 // Dev: muncul lagi hanya bila ISI changelog berubah (bukan setiap build), supaya isinya bisa dicek tanpa berulang.
 const hashOf = (o) => { let h = 0; const t = JSON.stringify(o || ""); for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
+// Versi yang isinya sama dengan versi lain (hanya nomornya diganti): tidak menampilkan pop-up yang sama 2 kali.
+// 1.6.3 dirilis 18 Nov 2026 lalu dinomori ulang jadi 1.7.0 (fitur baru = naik minor) tanpa perubahan isi.
+const SAME_AS = { "1.7.0": ["1.6.3"] };
 export function maybeShow(ctx) {
   const { version, dev } = ctx;
   const info = WHATS_NEW[version];
   const key = dev ? `${version}-dev-${hashOf(info)}` : version;
+  if (!dev && (SAME_AS[version] || []).includes(seen())) { markSeen(key); return; }
   const before = seen();
   if (before === key) return;
   markSeen(key);

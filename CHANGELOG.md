@@ -1,11 +1,19 @@
 # Changelog Ninokuu
 
 Catatan perubahan per versi. Versi terbaru di atas.
+
+**Aturan nomor versi** (`MAYOR.MINOR.PATCH`, berkas `VERSION`):
+- **PATCH** (1.7.0 → 1.7.1): hanya perbaikan bug, ganti alamat situs sumber, dan perubahan kecil tanpa fitur baru.
+- **MINOR** (1.7.x → 1.8.0): ada fitur baru atau perubahan tampilan yang terasa, dan masih cocok dengan data/server lama.
+- **MAYOR** (1.x → 2.0.0): perubahan besar yang tidak cocok dengan versi lama, misalnya format data atau server baru, atau desain ulang total.
+- Setiap naik versi, tambahkan entri `WHATS_NEW` di `app/js/tour.js` dengan nomor yang sama, beserta gambar slidenya. Build global gagal bila entri itu tidak ada.
 Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambarnya di `app/img/new/`.
 
 ---
 
-## 1.6.3 — 18 Nov 2026
+## 1.7.0 — 18 Nov 2026
+
+> Sempat dirilis dengan nomor 1.6.3. Karena berisi fitur baru, nomornya diganti ke 1.7.0 tanpa perubahan isi.
 
 ### Ringkasan
 <!-- 12 baris pertama ini tampil di peringatan pembaruan aplikasi; jangan lebih dari 12 -->
@@ -61,7 +69,7 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 - Build global gagal otomatis bila changelog "Yang baru" atau gambar slidenya untuk versi itu tidak ada (`.github/workflows/apk.yml`).
 
 ### Langkah rilis global (saat "update")
-1. Gabungkan `dev` → `main`. Ubah `VERSION` bila nomor versinya naik, dan pindahkan entri `WHATS_NEW` ke versi baru itu.
+1. Gabungkan `dev` → `main` dengan `VERSION` yang sudah dinaikkan sesuai aturan di atas, dan entri `WHATS_NEW` bernomor sama.
 2. Deploy `ninokuu-api` 1.5.0 ke fungsi global.
 3. Pastikan Redirect URL Auth Supabase berisi `https://ninokuu.site/resetpassword/`.
 4. Tunggu APK `apk-terbaru` selesai dibangun, lalu umumkan pembaruan ke pengguna.
