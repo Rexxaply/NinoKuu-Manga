@@ -99,10 +99,12 @@ export function saveHistory(h) {
   saveLocal(); emit();
   if (!loggedIn()) return;
   histDirty.add(k);
-  clearTimeout(histTimer);
-  histTimer = setTimeout(flushHistory, 1500);
+  // posisi halaman berubah terus saat membaca: dikirim paling sering 1× per 20 detik (bukan setiap ganti halaman).
+  // Tetap aman: tersimpan di HP seketika, dan dikirim langsung saat keluar dari pembaca / aplikasi ke latar belakang.
+  if (!histTimer) histTimer = setTimeout(() => { histTimer = null; flushHistory(); }, 20000);
 }
 export async function flushHistory() {
+  clearTimeout(histTimer); histTimer = null;
   const rows = [...histDirty].map((k) => state.hist.get(k)).filter(Boolean).map(histRow);
   histDirty.clear();
   if (rows.length && loggedIn()) await api.rest("history?on_conflict=user_id,source,comic_id", { method: "POST", body: rows, prefer: "resolution=merge-duplicates,return=minimal" }).catch(() => {});
