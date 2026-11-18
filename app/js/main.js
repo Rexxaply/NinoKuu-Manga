@@ -210,6 +210,12 @@ const chips = (list, cur, act) => `<div class="chips" role="group">${list.map((x
 // baris minimalis untuk daftar Beranda & Pencarian: sampul kecil, judul 1 baris, titik warna sumber · jenis;
 // hati kecil bila komik sudah ada di koleksi
 const minRow = (src, it) => `<a class="mn-row" href="${comicHref(src, it.id)}">${cover(it.cover, it.title, "sm")}<span class="mn-mid"><b class="mn-t">${esc(it.title)}</b><span class="fa-meta"><i class="fa-dot s-${esc(src)}"></i>${esc(srcName(src))}${it.type ? ` · ${esc(typeName(it.type))}` : ""}</span></span>${S.inLib(src, it.id) ? `<span class="redt mn-fav" title="Ada di koleksi">${icon("heartF", 14)}</span>` : ""}</a>`;
+// mahkota Top 1: tersangkut miring di pojok kiri atas sampul
+const CROWN = `<svg class="t10-crown" viewBox="0 0 64 52" aria-hidden="true"><defs><linearGradient id="crG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE9A3"/><stop offset=".55" stop-color="#F2B33D"/><stop offset="1" stop-color="#B9771A"/></linearGradient></defs>
+<path d="M6 40 2 12l16 12L32 4l14 20 16-12-4 28Z" fill="url(#crG)" stroke="#7A4A0E" stroke-width="2.4" stroke-linejoin="round"/>
+<rect x="5" y="39" width="54" height="9" rx="3" fill="url(#crG)" stroke="#7A4A0E" stroke-width="2.4"/>
+<circle cx="32" cy="27" r="4.2" fill="#E0242B" stroke="#7A0E12" stroke-width="1.4"/><circle cx="17" cy="31" r="3" fill="#5AA9FF" stroke="#13406E" stroke-width="1.2"/><circle cx="47" cy="31" r="3" fill="#5DD39E" stroke="#12603E" stroke-width="1.2"/>
+<circle cx="2" cy="12" r="3" fill="#FFE9A3" stroke="#7A4A0E" stroke-width="1.6"/><circle cx="32" cy="4" r="3.4" fill="#FFE9A3" stroke="#7A4A0E" stroke-width="1.6"/><circle cx="62" cy="12" r="3" fill="#FFE9A3" stroke="#7A4A0E" stroke-width="1.6"/></svg>`;
 const lrow = (href, cv, title, sub, right = "") => `<a class="lrow" href="${href}">${cv}<span class="rc-mid"><span class="lr-t">${title}</span><span class="mu sm">${sub}</span></span>${right}</a>`;
 const gcard = (href, it, src, badge = "") => `<a class="grid-card" href="${href}"><span class="gc-cv">${cover(it.cover, it.title)}${badge}</span><b class="t2">${esc(it.title)}</b><span class="mu xs">${esc(typeName(it.type) || srcName(src))}</span></a>`;
 const viewBtn = (grid, act, cls = "") => `<button class="sq-btn ${cls}" data-act="${act}" aria-label="${grid ? "Tampilan daftar" : "Tampilan grid"}">${icon(grid ? "list" : "grid", 18, 2)}</button>`;
@@ -300,8 +306,8 @@ ${last ? `<section class="sec s16"><h2 class="cap">Lanjut baca</h2>
     try {
       const r = await browse(src, { sort: "popular", page: 1, limit: 10 });
       if (src !== homeSrc || !$("#pop")) return;
-      $("#pop").innerHTML = r.items.slice(0, 10).map((it, i) => `<a class="top10 ${i === 9 ? "w10" : ""}" href="${comicHref(src, it.id)}">
-        <span class="t10-cv">${cover(it.cover, it.title, "top")}<span class="t10-n ${i < 3 ? "hot" : ""}" aria-hidden="true">${i + 1}</span></span>
+      $("#pop").innerHTML = r.items.slice(0, 10).map((it, i) => `<a class="top10 ${i === 9 ? "w10" : ""} ${i < 3 ? "t10-" + (i + 1) : ""}" href="${comicHref(src, it.id)}">
+        <span class="t10-cv">${cover(it.cover, it.title, "top")}<span class="t10-n" aria-hidden="true">${i + 1}</span>${i === 0 ? CROWN : ""}</span>
         <span class="t10-t"><span class="t2 b13">${esc(it.title)}</span><span class="mu xs">${esc(typeName(it.type) || srcName(src))}</span></span></a>`).join("") || `<span class="mu sm px">Belum ada data</span>`;
     } catch (e) { if (src === homeSrc && $("#pop")) $("#pop").innerHTML = `<span class="mu sm px">${esc(e.blocked ? "Sumber ini menolak server. Pilih sumber lain di bawah." : e.message)}</span>`; }
   };
