@@ -1878,11 +1878,16 @@ function checkOrientation() {
   const sw = screen.width || 0, sh = screen.height || 0;
   const type = screen.orientation?.type || (Math.abs(window.orientation || 0) === 90 ? "landscape" : sw > sh ? "landscape" : "portrait");
   const phone = Math.min(sw, sh) > 0 && Math.min(sw, sh) < 600;
-  document.body.classList.toggle("landscape-phone", phone && type.startsWith("landscape"));
+  // Jendela mengambang / layar terbagi: aplikasi hanya memakai sebagian layar → tetap tampil (tata letak menyesuaikan),
+  // pesan "putar HP" hanya untuk layar penuh yang miring.
+  const full = window.innerWidth * window.innerHeight >= sw * sh * 0.8;
+  document.body.classList.toggle("landscape-phone", phone && full && type.startsWith("landscape"));
+  document.body.classList.toggle("short", window.innerHeight < 520);
 }
 checkOrientation();
 screen.orientation?.addEventListener?.("change", checkOrientation);
 window.addEventListener("orientationchange", () => setTimeout(checkOrientation, 50));
+let oriT = 0; window.addEventListener("resize", () => { clearTimeout(oriT); oriT = setTimeout(() => { if (!kbOpen) checkOrientation(); }, 120); });
 
 api.onAuth((s) => { if (!s) S.clearUserData(); });
 if (S.loggedIn()) { S.loadProfile().catch(() => {}); S.pull().catch(() => {}); }
