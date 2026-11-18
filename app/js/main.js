@@ -306,8 +306,8 @@ ${last ? `<section class="sec s16"><h2 class="cap">Lanjut baca</h2>
     try {
       const r = await browse(src, { sort: "popular", page: 1, limit: 10 });
       if (src !== homeSrc || !$("#pop")) return;
-      $("#pop").innerHTML = r.items.slice(0, 10).map((it, i) => `<a class="top10 ${i === 9 ? "w10" : ""} ${i < 3 ? "t10-" + (i + 1) : ""}" href="${comicHref(src, it.id)}">
-        <span class="t10-cv">${cover(it.cover, it.title, "top")}<span class="t10-n" aria-hidden="true">${i + 1}</span>${i === 0 ? CROWN : ""}</span>
+      $("#pop").innerHTML = r.items.slice(0, 10).map((it, i) => `<a class="top10 ${i < 3 ? "t10-" + (i + 1) : ""}" aria-label="Peringkat ${i + 1}: ${esc(it.title)}" href="${comicHref(src, it.id)}">
+        <span class="t10-cv">${cover(it.cover, it.title, "top")}<span class="t10-b" aria-hidden="true">${i + 1}</span>${i === 0 ? CROWN : ""}</span>
         <span class="t10-t"><span class="t2 b13">${esc(it.title)}</span><span class="mu xs">${esc(typeName(it.type) || srcName(src))}</span></span></a>`).join("") || `<span class="mu sm px">Belum ada data</span>`;
     } catch (e) { if (src === homeSrc && $("#pop")) $("#pop").innerHTML = `<span class="mu sm px">${esc(e.blocked ? "Sumber ini menolak server. Pilih sumber lain di bawah." : e.message)}</span>`; }
   };
