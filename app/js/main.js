@@ -1558,7 +1558,11 @@ ${N.DEV ? group("Ninokuu Dev", mrow("bug", "Log error", `${N.devLog().length} ca
 ${N.isApp ? group("Aplikasi", `<span id="updrow"></span>` + (N.pushSupported() || !N.DEV ? mrow("bell", "Notifikasi HP", `<span id="pushst">Memeriksa…</span>`, "pushset") : mrow("bell", "Notifikasi HP", "Belum aktif di Ninokuu Dev (paket .dev belum didaftarkan di Firebase)", "")) + mrow("info", "Versi aplikasi", `v${esc(VERSION)}${N.DEV ? " Dev" : ""} · ketuk untuk cek pembaruan`, "checkupd"))
   : group("Aplikasi Android", mrow("down", "Pasang aplikasi Android (APK)", "Baca Shinigami &amp; WestManga, notifikasi chapter baru di HP", "getapk"))}
 ${group("Data &amp; penyimpanan", mrow("cloud", "Backup data offline", "Simpan koleksi, riwayat, dan pengaturan ke file", "backup") + mrow("restore", "Pulihkan data", "Dari file backup", "restore") + mrow("trash", "Bersihkan cache", "Gambar sampul &amp; halaman yang tersimpan", "cache"))}
-${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord Ninokuu", "discord") + mrow("star", "Yang baru di versi ini", `Fitur baru &amp; panduan bergambar v${esc(VERSION)}`, "whatsnew") + mrow("info", "Tentang aplikasi", "Versi " + esc(VERSION), "about") + mrow("shield", "Kebijakan privasi", "", "privacy") + mrow("doc", "Ketentuan pengguna", "", "terms") + mrow("heart", "Dukung di Trakteer", "Traktir pengembang", "trakteer"))}
+<section class="sec s20"><button class="tk-card" data-act="trakteer" aria-label="Dukung Ninokuu di Trakteer">
+  <span class="tk-ic">${icon("gift", 26, 2)}</span>
+  <span class="tk-t"><b>Traktir Ninokuu</b><span>Gratis &amp; tanpa iklan berkat dukunganmu. Kirim hadiah kecil lewat Trakteer.</span></span>
+  <span class="tk-go">${icon("chev", 18, 2.4)}</span></button></section>
+${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord Ninokuu", "discord") + mrow("star", "Yang baru di versi ini", `Fitur baru &amp; panduan bergambar v${esc(VERSION)}`, "whatsnew") + mrow("info", "Tentang aplikasi", "Versi " + esc(VERSION), "about") + mrow("shield", "Kebijakan privasi", "", "privacy") + mrow("doc", "Ketentuan pengguna", "", "terms") + mrow("heart", "Dukung di Trakteer", "trakteer.id/reza-rexxa", "trakteer"))}
 <p class="mu xs center mt18">Ninokuu versi ${esc(VERSION)}</p><div class="pad-nav"></div>`;
   if (N.isApp) {
     refreshPushStatus();
@@ -1611,7 +1615,7 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
         toast(r.ok ? "Tes notifikasi dikirim. Cek bilah notifikasi HP." : "Tes gagal: " + (err || "server tidak bisa mengirim notifikasi"), 7000);
       } catch (e) { showPush("error"); toast("Pendaftaran notifikasi gagal: " + e.message, 5000); }
     },
-    discord: () => soon("Server Discord Ninokuu sedang disiapkan."), trakteer: () => soon("Halaman Trakteer sedang disiapkan. Terima kasih!"),
+    discord: () => soon("Server Discord Ninokuu sedang disiapkan."), trakteer: () => openTrakteer(),
     rmode: (el) => { S.setSetting("readMode", el.dataset.v); vMore(); },
     dir: (el) => { S.setSetting("readDir", el.dataset.v); vMore(); },
     logout: async () => { if (!confirm("Keluar dari akun? Koleksi dan riwayatmu tetap aman di server.")) return; await S.flushHistory(); await api.signOut(); S.clearUserData(); toast("Kamu sudah keluar"); vMore(); },
@@ -1690,6 +1694,26 @@ function setKeyboard(h, phase) {
     document.body.classList.remove("kb-open");
   }
   window.dispatchEvent(new CustomEvent("nk:kb", { detail: { open: h > 0, phase } }));
+}
+
+// Dukungan lewat Trakteer: lembar penjelasan dulu (ke mana dukungan dipakai), lalu dibuka di browser
+const TRAKTEER_URL = "https://trakteer.id/reza-rexxa/gift";
+function openTrakteer() {
+  openSheet(`<div class="tk-sheet">
+    <span class="tk-hero">${icon("gift", 34, 1.8)}</span>
+    <span class="sheet-ttl center">Dukung Ninokuu</span>
+    <span class="mu sm lh center">Ninokuu tetap gratis &amp; tanpa iklan. Hadiahmu membantu:</span>
+    <div class="tk-list">
+      <span>${icon("cloud", 17, 2)}<b>Biaya server</b><i>supaya baca, chat, &amp; notifikasi tetap lancar</i></span>
+      <span>${icon("star", 17, 2)}<b>Fitur baru</b><i>update rutin &amp; perbaikan bug lebih cepat</i></span>
+      <span>${icon("heart", 17, 2)}<b>Semangat developer</b><i>setiap dukungan sangat berarti, terima kasih!</i></span>
+    </div>
+    <span class="mu xs center">Dibuka di Trakteer (trakteer.id) · pembayaran diurus langsung oleh Trakteer</span>
+    <div class="row g8"><button class="sh-cancel grow" data-s="no">Nanti</button><button class="btn primary grow tk-btn" data-s="go">${icon("gift", 17, 2)}Kirim hadiah</button></div>
+  </div>`, (b) => {
+    if (b.dataset.s === "go") window.open(TRAKTEER_URL, "_blank");
+    closeSheet();
+  });
 }
 
 // Pembaruan APK: peringatan saat aplikasi dibuka bila ada build baru, dan cek manual dari Lainnya.

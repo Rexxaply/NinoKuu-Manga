@@ -1307,3 +1307,25 @@ body.is-app.nk-fs { --sat: env(safe-area-inset-top, 0px); }
 .t-row > .sq-btn { margin-top: 6px; }   /* chip punya jarak atas 12px & bawah 6px → tengah tombol sejajar tengah chip */
 .t-row + #factive:empty + .sec-h { margin-top: 4px; }
 .t-row .chips button { flex: 1 0 auto; padding: 0 11px; }   /* 4 chip tipe muat penuh di samping tombol */
+
+/* ---------- Trakteer: kartu dukungan di Lainnya + lembar penjelasan ---------- */
+.tk-card { width: 100%; display: flex; align-items: center; gap: 14px; padding: 16px; border-radius: 22px; text-align: left; color: var(--tx); position: relative; overflow: hidden;
+  background: linear-gradient(135deg, rgba(224, 36, 43, .30), rgba(242, 179, 61, .16) 70%), var(--s1); border: 1px solid rgba(242, 179, 61, .28);
+  box-shadow: 0 10px 28px rgba(224, 36, 43, .16), inset 0 1px 0 rgba(255, 255, 255, .08); }
+.tk-card::after { content: ""; position: absolute; right: -30px; top: -40px; width: 140px; height: 140px; border-radius: 50%; background: radial-gradient(circle, rgba(242, 179, 61, .22), transparent 70%); pointer-events: none; }
+.tk-card:active { scale: .98; }
+.tk-ic { width: 52px; height: 52px; flex: none; border-radius: 16px; display: grid; place-items: center; color: #fff;
+  background: linear-gradient(145deg, #F2B33D, #E0242B); box-shadow: 0 8px 18px rgba(224, 36, 43, .35), inset 0 1px 0 rgba(255, 255, 255, .3); }
+.tk-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.tk-t b { font-size: 16px; }
+.tk-t span { font-size: 12.5px; line-height: 1.4; color: var(--soft); }
+.tk-go { color: var(--gold); flex: none; display: flex; }
+.tk-sheet { display: flex; flex-direction: column; gap: 10px; padding: 6px 6px 2px; }
+.tk-hero { align-self: center; width: 68px; height: 68px; border-radius: 22px; display: grid; place-items: center; color: #fff; margin-top: 6px;
+  background: linear-gradient(145deg, #F2B33D, #E0242B); box-shadow: 0 12px 26px rgba(224, 36, 43, .38), inset 0 1px 0 rgba(255, 255, 255, .3); }
+.tk-list { display: flex; flex-direction: column; gap: 2px; padding: 4px; border-radius: 18px; background: rgba(255, 255, 255, .04); border: 1px solid var(--line); }
+.tk-list > span { display: grid; grid-template-columns: 22px 1fr; column-gap: 10px; padding: 9px 10px; align-items: center; }
+.tk-list svg { color: var(--gold); grid-row: span 2; }
+.tk-list b { font-size: 14px; }
+.tk-list i { font-style: normal; font-size: 12px; color: var(--mu); grid-column: 2; }
+.tk-btn { background: linear-gradient(135deg, #E0242B, #F05A2A); }
