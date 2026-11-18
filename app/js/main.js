@@ -1105,7 +1105,7 @@ async function vReader(src, id, chId) {
       S.setSetting(k, v);
       flipChoice(el);
       if (k === "screenMode") syncFs();
-      if (k === "chapterEnd") { if (v === "auto" && atEnd) autoNextStart(); else autoNextStop(); }
+      if (k === "nextDelay") { autoNextStop(); if (v !== "off" && atEnd) autoNextStart(); }
     },
     cancelNext: () => { autoNextStop(true); toast("Lanjut otomatis dibatalkan untuk chapter ini"); },
     reimg: (el) => { const im = $(`.r-img[data-i="${el.dataset.i}"]`, rd); if (im) reloadImg(im); },
@@ -1178,11 +1178,13 @@ async function vReader(src, id, chId) {
     if (hint) { hint.hidden = true; hint.classList.remove("run"); }
   }
   function autoNextStart() {
-    if (!next || !hint || nextT || nextOff || choiceVal("chapterEnd") !== "auto" || zoom > 1.02) return;
+    const sec = Number(choiceVal("nextDelay")) || 0;
+    if (!next || !hint || nextT || nextOff || !sec || zoom > 1.02) return;
     if (!slide && box.scrollTop < 40 && curPage <= 1) return;
     hint.querySelector(".r-ntx").textContent = `Lanjut ke Chapter ${next.ch}… ketuk untuk batal`;
+    hint.style.setProperty("--nd", sec + "s");   // panjang bilah hitung mundur = jeda yang dipilih
     hint.hidden = false; hint.classList.remove("run"); void hint.offsetWidth; hint.classList.add("run");
-    nextT = setTimeout(() => { nextT = null; if (parse().name === "reader" && atEnd) goReplace(readHref(src, id, next.id)); else autoNextStop(); }, 2000);
+    nextT = setTimeout(() => { nextT = null; if (parse().name === "reader" && atEnd) goReplace(readHref(src, id, next.id)); else autoNextStop(); }, sec * 1000);
   }
   // #2 kembali ke halaman terakhir dibaca. Mode gulir: halaman sebelumnya dimuat dulu supaya posisinya tepat;
   // berhenti menyesuaikan begitu pembaca menyentuh layar.
@@ -1484,9 +1486,9 @@ const READ_OPTS = [
 // pilihan dua mode (bawaan = yang pertama)
 const READ_CHOICES = [
   ["screenMode", "Tampilan layar", [["standard", "Mode standar", "Bilah status HP tetap tampil saat membaca."], ["fullscreen", "Mode fullscreen", "Bilah status HP ikut menu bacaan: menu tampil → bilah tampil, menu hilang → bilah disembunyikan."]]],
-  ["chapterEnd", "Di akhir chapter", [["menu", "Tampilkan menu", "Menu muncul saat sampai di akhir chapter; pilih sendiri lanjut atau tidak."], ["auto", "Otomatis lanjut", "Sampai di akhir chapter, chapter berikutnya terbuka sendiri (bisa dibatalkan)."]]],
+  ["nextDelay", "Lanjut otomatis ke chapter berikutnya", [["off", "OFF", "Menu muncul di akhir chapter; pilih sendiri lanjut atau tidak."], ["1", "1 dtk", "Sampai di akhir chapter, chapter berikutnya terbuka setelah 1 detik (ketuk untuk batal)."], ["2", "2 dtk", "Sampai di akhir chapter, chapter berikutnya terbuka setelah 2 detik (ketuk untuk batal)."], ["3", "3 dtk", "Sampai di akhir chapter, chapter berikutnya terbuka setelah 3 detik (ketuk untuk batal)."], ["5", "5 dtk", "Sampai di akhir chapter, chapter berikutnya terbuka setelah 5 detik (ketuk untuk batal)."]], "3"],
 ];
-const choiceVal = (k) => { const c = READ_CHOICES.find((x) => x[0] === k); const v = S.state.settings[k]; return c[2].some((o) => o[0] === v) ? v : c[2][0][0]; };
+const choiceVal = (k) => { const c = READ_CHOICES.find((x) => x[0] === k); const v = S.state.settings[k]; return c[2].some((o) => o[0] === v) ? v : (c[3] ?? c[2][0][0]); };
 // ubah tampilan sakelar/pilihan di tempat (tanpa menggambar ulang) supaya animasinya terlihat
 const flipToggle = (el, on) => { el.setAttribute("aria-checked", String(on)); el.querySelector(".switch")?.classList.toggle("on", on); };
 const flipChoice = (el) => {
@@ -1495,7 +1497,7 @@ const flipChoice = (el) => {
   const o = READ_CHOICES.find((x) => x[0] === k)[2].find((x) => x[0] === v); const d = box.querySelector(".lh"); if (o && d) d.textContent = o[2];
 };
 // versi ringkas untuk menu ⋯ pembaca: 1 baris per pilihan, tanpa keterangan panjang
-const SHORT = { autoHide: "Sembunyikan menu otomatis", screenMode: "Layar", chapterEnd: "Akhir chapter", standard: "Standar", fullscreen: "Fullscreen", menu: "Menu", auto: "Lanjut" };
+const SHORT = { autoHide: "Sembunyikan menu otomatis", screenMode: "Layar", nextDelay: "Lanjut otomatis", standard: "Standar", fullscreen: "Fullscreen" };
 const readPrefsCompact = () => READ_OPTS.map(([k, t]) => { const on = !!S.state.settings[k]; return `<button class="mrow rq-tog" data-act="rtog" data-k="${k}" role="switch" aria-checked="${on}"><b>${SHORT[k] || t}</b><span class="switch ${on ? "on" : ""}"><span></span></span></button>`; }).join("")
   + READ_CHOICES.map(([k, t, opts]) => { const cur = choiceVal(k); return `<div class="ch-opt rq-row" data-ck="${k}"><b>${SHORT[k] || t}</b><div class="seg s2" role="tablist">${opts.map(([v, n]) => `<button role="tab" aria-selected="${v === cur}" data-act="rch" data-k="${k}" data-v="${v}" aria-label="${n}">${SHORT[v] || n}</button>`).join("")}</div></div>`; }).join("");
 const choiceRow = (k) => {
@@ -1916,7 +1918,7 @@ async function vPage(name) {
       for (const h of j.hist || []) if (h?.source && h?.comic_id && !S.histItem(h.source, h.comic_id)) S.saveHistory(h);
       if (j.settings && typeof j.settings === "object") ["readMode", "readDir", "updView", "searchView", "favView", "gfx", "favSort"].forEach((k) => { if (typeof j.settings[k] === "string") S.setSetting(k, j.settings[k]); });
         ["autoHide"].forEach((k) => { if (typeof j.settings[k] === "boolean") S.setSetting(k, j.settings[k]); });
-        ["screenMode", "chapterEnd"].forEach((k) => { if (typeof j.settings[k] === "string") S.setSetting(k, j.settings[k]); });
+        ["screenMode", "nextDelay"].forEach((k) => { if (typeof j.settings[k] === "string") S.setSetting(k, j.settings[k]); });
       toast(`Data dipulihkan · ${added} judul baru di koleksi`, 3500); go("#/fav");
     } catch (ex) { $("#perr").textContent = ex.message || "File tidak bisa dibaca."; }
   });

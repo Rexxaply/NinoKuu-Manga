@@ -229,20 +229,22 @@ body[data-screen="reader"] { background: #0A0A0A; overflow: hidden; }
 .r-mode:disabled { opacity: .45; cursor: default; }
 .r-top { top: calc(12px + var(--sat)); display: flex; gap: 8px; align-items: center; }
 .r-bottom { bottom: calc(14px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px; }
-.r-top > *, .r-bottom > *, .r-btns > * { transition: opacity .3s ease, transform .38s cubic-bezier(.32, .72, 0, 1); }
+/* sembunyi/muncul: meluncur keluar/masuk layar tanpa memudar (gaya iOS); opacity hanya dimatikan setelah
+   bar sudah di luar layar, supaya tidak tampak "pudar" */
+.r-top > *, .r-bottom > *, .r-btns > * { transition: transform .4s cubic-bezier(.32, .72, 0, 1), opacity 0s linear 0s; }
 /* gradasi hitam di belakang bilah status & bar atas (ikon jam/baterai tetap terbaca di atas halaman terang);
    ikut meluncur ke atas bersama bar saat menu bacaan disembunyikan */
 .reader::before { content: ""; position: absolute; left: 0; right: 0; top: 0; z-index: 5; height: calc(var(--sat) + 120px); pointer-events: none;
   background: linear-gradient(180deg, rgba(0, 0, 0, .78), rgba(0, 0, 0, .45) 45%, rgba(0, 0, 0, .12) 80%, transparent);
-  transition: transform .38s cubic-bezier(.32, .72, 0, 1), opacity .3s ease; }
-.reader:not(.ui)::before { transform: translateY(-100%); opacity: 0; }
+  transition: transform .4s cubic-bezier(.32, .72, 0, 1); }
+.reader:not(.ui)::before { transform: translateY(-100%); }
 /* gradasi bawah: di belakang bar halaman & tombol bawah (dan bilah navigasi HP), turun bersama bar saat disembunyikan */
 .reader::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; height: calc(env(safe-area-inset-bottom) + 170px); pointer-events: none;
   background: linear-gradient(0deg, rgba(0, 0, 0, .8), rgba(0, 0, 0, .5) 40%, rgba(0, 0, 0, .14) 78%, transparent);
-  transition: transform .38s cubic-bezier(.32, .72, 0, 1), opacity .3s ease; }
-.reader:not(.ui)::after { transform: translateY(100%); opacity: 0; }
-.reader:not(.ui) .r-top > * { opacity: 0; transform: translateY(-90px); pointer-events: none; }
-.reader:not(.ui) .r-seek, .reader:not(.ui) .r-btns > * { opacity: 0; transform: translateY(90px); pointer-events: none; }
+  transition: transform .4s cubic-bezier(.32, .72, 0, 1); }
+.reader:not(.ui)::after { transform: translateY(100%); }
+.reader:not(.ui) .r-top > * { opacity: 0; transform: translateY(calc(-100% - 20px - var(--sat))); pointer-events: none; transition: transform .4s cubic-bezier(.32, .72, 0, 1), opacity 0s linear .4s; }
+.reader:not(.ui) .r-seek, .reader:not(.ui) .r-btns > * { opacity: 0; transform: translateY(calc(140px + env(safe-area-inset-bottom))); pointer-events: none; transition: transform .4s cubic-bezier(.32, .72, 0, 1), opacity 0s linear .4s; }
 .r-round { width: 52px; height: 52px; flex: none; border-radius: 50%; display: grid; place-items: center; color: var(--tx); }
 .r-sp { width: 52px; flex: none; }
 .r-pill { flex: 1; min-width: 0; min-height: 52px; padding: 6px 18px; border-radius: 26px; display: flex; flex-direction: column; justify-content: center; }
@@ -1008,7 +1010,7 @@ body.nk-dev::after { content: "DEV"; position: fixed; top: calc(var(--sat) + 6px
 .r-next-hint { position: relative; overflow: hidden; display: inline-flex; align-items: center; margin-top: 6px; padding: 9px 14px; border: 0; border-radius: 999px; background: rgba(224, 36, 43, .18); color: #fff; font: inherit; font-size: 12.5px; font-weight: 700; }
 .r-next-hint[hidden] { display: none; }
 .r-nbar { position: absolute; inset: 0; background: var(--red); transform: scaleX(0); transform-origin: left; }
-.r-next-hint.run .r-nbar { animation: rnext 2s linear forwards; }
+.r-next-hint.run .r-nbar { animation: rnext var(--nd, 3s) linear forwards; }
 .r-ntx { position: relative; }
 @keyframes rnext { to { transform: scaleX(1); } }
 .ch-opt { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
@@ -1340,3 +1342,7 @@ body.is-app.nk-fs { --sat: env(safe-area-inset-top, 0px); }
 .tk-list b { font-size: 14px; }
 .tk-list i { font-style: normal; font-size: 12px; color: var(--mu); grid-column: 2; }
 .tk-btn { background: linear-gradient(135deg, #E0242B, #F05A2A); }
+/* pilihan jeda lanjut otomatis (5 pilihan): judul di atas, pilihan selebar panel */
+.rq-row[data-ck="nextDelay"] { flex-direction: column; align-items: stretch; gap: 7px; }
+.rq-row[data-ck="nextDelay"] > .seg { flex: none; }
+.ch-opt[data-ck="nextDelay"] .seg button, .rq-row[data-ck="nextDelay"] .seg button { flex: 1; min-width: 0; padding-left: 4px; padding-right: 4px; }

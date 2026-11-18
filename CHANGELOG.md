@@ -15,8 +15,9 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ### Ringkasan
 - Mode baca layar penuh kini sampai ujung atas layar (termasuk sekitar lubang kamera), tanpa pita hitam
-- Gradasi hitam di atas (di belakang bilah status & bar atas) dan di bawah (di belakang bar halaman & tombol) pembaca; bar dan gradasi meluncur mulus keluar layar saat disembunyikan
+- Gradasi hitam di atas (di belakang bilah status & bar atas) dan di bawah (di belakang bar halaman & tombol) pembaca; bar dan gradasi meluncur mulus keluar layar saat disembunyikan (tanpa memudar)
 - Pembaruan langsung terdeteksi saat aplikasi dibuka ulang (simpanan 10 menit hanya untuk cek berkala & halaman Lainnya)
+- Pengaturan baru "Lanjut otomatis ke chapter berikutnya": OFF · 1 · 2 · 3 · 5 detik (bawaan 3 detik), di Lainnya → Pengaturan dan menu ⋯ pembaca; menggantikan pilihan "Di akhir chapter"
 - Posisi baca dikirim ke server paling sering 1× per 20 detik (sebelumnya setiap ganti halaman); tetap tersimpan di HP seketika
 
 ### Detail
