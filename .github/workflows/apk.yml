@@ -174,9 +174,11 @@ jobs:
           if [ "$FCM" = "1" ]; then cp google-services.json android/app/google-services.json; fi
           node -e '
             const fs = require("fs");
-            // warna bilah status / navigasi & latar jendela mengikuti tema gelap Ninokuu
+            // warna bilah status / navigasi & latar jendela mengikuti tema gelap Ninokuu;
+            // shortEdges: saat layar penuh (bilah status disembunyikan) halaman boleh memakai area lubang kamera
+            // (tanpa ini tersisa pita hitam setinggi bilah status di atas)
             const sf = "android/app/src/main/res/values/styles.xml"; let s = fs.readFileSync(sf, "utf8");
-            const items = `<item name="android:statusBarColor">@color/ninokuu_bg</item>\n        <item name="android:navigationBarColor">@color/ninokuu_bg</item>\n        <item name="android:windowBackground">@color/ninokuu_bg</item>\n        <item name="android:windowLightStatusBar">false</item>\n        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>`;
+            const items = `<item name="android:statusBarColor">@color/ninokuu_bg</item>\n        <item name="android:navigationBarColor">@color/ninokuu_bg</item>\n        <item name="android:windowBackground">@color/ninokuu_bg</item>\n        <item name="android:windowLightStatusBar">false</item>\n        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>\n        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>`;
             s = s.replace(/(<style name="AppTheme.NoActionBar"[^>]*>)/, `$1\n        ${items}`);
             s = s.replace(/(<style name="AppTheme.NoActionBarLaunch"[^>]*>)/, `$1\n        <item name="windowSplashScreenBackground">@color/ninokuu_bg</item>\n        ${items}`);
             fs.writeFileSync(sf, s);
