@@ -246,7 +246,11 @@ function newestChapter(list: any[]) {
 }
 
 type Status = "" | "ongoing" | "completed" | "hiatus";
-type Opt = { sort: "update" | "popular"; type: "" | "manga" | "manhwa" | "manhua"; limit: number; genres: string[]; status: Status };
+// Urutan yang didukung tiap sumber (dari ekstensi Mihon/Keiyoushi; yang tidak didukung → "update"):
+// komiku: update, popular · kiryuu: update, popular, az, za, rating · shinigami: update, popular, rating · westmanga: update, popular, az, za
+type Sort = "update" | "popular" | "az" | "za" | "rating";
+const SORTS: Record<string, Sort[]> = { komiku: ["update", "popular"], kiryuu: ["update", "popular", "az", "za", "rating"], shinigami: ["update", "popular", "rating"], westmanga: ["update", "popular", "az", "za"] };
+type Opt = { sort: Sort; type: "" | "manga" | "manhwa" | "manhua"; limit: number; genres: string[]; status: Status };
 type Chapter = { id: string; ch: string | null; title: string; at: string | null; url: string };
 type Detail = { manga: { id: string; title: string; cover: string; desc: string; status: string; tags: string[]; author: string; url: string; views?: number | null; publisher?: string }; chapters: Chapter[]; more?: { offset: number } | null };
 // info tambahan (tiap sumber menamai field-nya berbeda; yang tidak ada dibiarkan kosong)
@@ -287,7 +291,7 @@ const shngCover = (o: any) => String(o?.cover_portrait_url || o?.cover_image_url
 const SHNG_STATUS: Record<number, string> = { 1: "ongoing", 2: "completed", 3: "hiatus" };
 const shngId = (id: string) => { if (!/^[\w-]{6,64}$/.test(id)) throw webErr("ID Shinigami tidak valid", 400); return id; };
 async function shngBrowse(page: number, q: string, o: Opt) {
-  const p = new URLSearchParams({ page: String(page), page_size: String(o.limit), sort: o.sort === "popular" ? "popularity" : "latest", sort_order: "desc" });
+  const p = new URLSearchParams({ page: String(page), page_size: String(o.limit), sort: o.sort === "popular" ? "popularity" : o.sort === "rating" ? "rating" : "latest", sort_order: "desc" });
   if (q) p.set("q", q);
   if (o.type) p.set("format", o.type);
   if (o.genres.length) { p.set("genre_include", o.genres.join(",")); p.set("genre_include_mode", "and"); }
@@ -470,7 +474,7 @@ async function kiryuuSearchPage(srcPage: number, q: string, o: Opt, retry = true
   fd.set("inclusion", o.genres.length > 1 ? "AND" : "OR"); fd.set("exclusion", "OR"); fd.set("page", String(srcPage));
   fd.set("genre", JSON.stringify(o.genres)); fd.set("genre_exclude", "[]"); fd.set("author", "[]"); fd.set("artist", "[]"); fd.set("project", "0");
   fd.set("type", JSON.stringify(o.type ? [o.type] : [])); fd.set("status", JSON.stringify(o.status ? [o.status === "hiatus" ? "on-hiatus" : o.status] : []));
-  fd.set("order", "desc"); fd.set("orderby", o.sort === "popular" ? "popular" : "updated"); fd.set("query", q);
+  fd.set("order", o.sort === "az" ? "asc" : "desc"); fd.set("orderby", o.sort === "popular" ? "popular" : o.sort === "rating" ? "rating" : o.sort === "az" || o.sort === "za" ? "title" : "updated"); fd.set("query", q);
   const html = (await webFetch(`${KIRYUU_SITE}/wp-admin/admin-ajax.php?action=advanced_search`, { method: "POST", body: fd, referer: KIRYUU_SITE + "/", headers: { "X-Requested-With": "XMLHttpRequest" } })).text;
   if (/nonce|invalid|forbidden/i.test(html) && !/\/manga\//.test(html) && retry) return await kiryuuSearchPage(srcPage, q, o, false);
   const slugs: string[] = [];
@@ -565,7 +569,7 @@ async function westApi(path: string): Promise<any> {
 }
 const westSlug = (s: string) => { if (!/^[\w.%-]{1,200}$/.test(s)) throw webErr("ID WestManga tidak valid", 400); return s; };
 async function westBrowse(page: number, q: string, o: Opt) {
-  const p = new URLSearchParams({ page: String(page), per_page: String(o.limit), type: "Comic", orderBy: o.sort === "popular" ? "Popular" : "Update" });
+  const p = new URLSearchParams({ page: String(page), per_page: String(o.limit), type: "Comic", orderBy: o.sort === "popular" ? "Popular" : o.sort === "az" ? "Az" : o.sort === "za" ? "Za" : "Update" });
   if (q) p.set("q", q);
   if (o.type) p.set("country", WEST_COUNTRY[o.type]);
   if (o.status) p.set("status", o.status[0].toUpperCase() + o.status.slice(1));
@@ -917,7 +921,7 @@ Deno.serve(async (req) => {
       try {
         if (action === "browse") {
           const opt: Opt = {
-            sort: body.sort === "popular" ? "popular" : "update",
+            sort: (SORTS[src] || []).includes(body.sort) ? body.sort : "update",
             type: ["manga", "manhwa", "manhua"].includes(body.type) ? body.type : "",
             limit: Math.min(Math.max(5, Number(body.limit) || 20), 30),
             genres: (Array.isArray(body.genres) ? body.genres : []).map(String).filter((g: string) => /^[\w.-]{1,60}$/.test(g)).slice(0, src === "komiku" ? 2 : 10),

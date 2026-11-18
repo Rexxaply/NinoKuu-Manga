@@ -132,9 +132,10 @@ jobs:
           cp node_modules/@capacitor/push-notifications/dist/plugin.js www/cap-push.js
           cp node_modules/@capacitor/app/dist/plugin.js www/cap-app.js
           cp node_modules/@capacitor/keyboard/dist/plugin.js www/cap-kb.js
-          grep -q "registerPlugin" www/cap-push.js && grep -q "registerPlugin" www/cap-app.js && grep -q "registerPlugin" www/cap-kb.js && grep -q "capacitorExports" www/capacitor.js
-          sed -i 's#<script src="config.js"></script>#<script src="capacitor.js"></script>\n<script src="cap-push.js"></script>\n<script src="cap-app.js"></script>\n<script src="cap-kb.js"></script>\n<script src="config.js"></script>#' www/index.html
-          [ "$(grep -c 'src="cap' www/index.html)" = "4" ] || { echo "::error::Gagal menyisipkan skrip Capacitor ke index.html"; exit 1; }
+          cp node_modules/@capacitor/status-bar/dist/plugin.js www/cap-sb.js
+          grep -q "registerPlugin" www/cap-push.js && grep -q "registerPlugin" www/cap-app.js && grep -q "registerPlugin" www/cap-kb.js && grep -q "registerPlugin" www/cap-sb.js && grep -q "capacitorExports" www/capacitor.js
+          sed -i 's#<script src="config.js"></script>#<script src="capacitor.js"></script>\n<script src="cap-push.js"></script>\n<script src="cap-app.js"></script>\n<script src="cap-kb.js"></script>\n<script src="cap-sb.js"></script>\n<script src="config.js"></script>#' www/index.html
+          [ "$(grep -c 'src="cap' www/index.html)" = "5" ] || { echo "::error::Gagal menyisipkan skrip Capacitor ke index.html"; exit 1; }
 
       - name: Proyek Android
         run: |

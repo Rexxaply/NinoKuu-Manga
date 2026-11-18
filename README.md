@@ -58,7 +58,7 @@ baru (FCM), pengumuman developer, dan pembersihan chat/notifikasi lama. Deploy l
 
 | action | login | isi |
 |---|---|---|
-| `browse` | tidak | `source`, `page`, `q`, `sort` (`update`/`popular`), `type`, `limit`, `status` (`ongoing`/`completed`/`hiatus`), `genres` (id genre dari `filters`; Komiku maks 2) |
+| `browse` | tidak | `source`, `page`, `q`, `sort` (`update`/`popular`, plus `az`/`za`/`rating` bila sumbernya mendukung: Kiryuu semua, Shinigami `rating`, WestManga `az`/`za`), `type`, `limit`, `status` (`ongoing`/`completed`/`hiatus`), `genres` (id genre dari `filters`; Komiku maks 2) |
 | `filters` | tidak | `source` → daftar genre asli penyedia, status yang didukung, batas genre |
 | `detail` | tidak | `source`, `comic_id` |
 | `more_chapters` | tidak | `source`, `comic_id`, `offset` → sisa chapter (Komiku: halaman >8 MB, mis. Martial Peak). `detail` mengirim `more.offset` bila ada sisa |

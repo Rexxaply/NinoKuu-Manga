@@ -1,6 +1,6 @@
 // Koneksi ke Supabase (Auth, database REST, Storage) dan Edge Function ninokuu-api.
 // Tanpa library: semua lewat fetch, supaya ringan dan sama di PWA maupun APK.
-import { direct, isApp, WEB_URL, logDev } from "./native.js";
+import { direct, logDev } from "./native.js";
 const C = window.NINOKUU_CONFIG || {};
 const BASE = String(C.SUPABASE_URL || "").replace(/\/+$/, "");
 const KEY = String(C.SUPABASE_ANON_KEY || "");
@@ -81,10 +81,11 @@ export async function signUp(email, password, name) {
   if (r?.access_token) { setSession(r); return { session }; }
   return { confirm: true }; // Confirm email aktif: tunggu konfirmasi
 }
-export async function recover(email) { await authCall("/recover?redirect_to=" + encodeURIComponent(appUrl()), { email: email.trim() }); }
+// link "lupa password" membuka halaman ninokuu.site/resetpassword (form password baru + tombol kembali ke aplikasi)
+const RESET_URL = "https://ninokuu.site/resetpassword/";
+export async function recover(email) { await authCall("/recover?redirect_to=" + encodeURIComponent(RESET_URL), { email: email.trim() }); }
 // link di email (konfirmasi akun, reset password) selalu ke versi web; di APK alamatnya https://localhost
 const VERIFY_URL = "https://ninokuu.site/verified/";
-const appUrl = () => (isApp ? WEB_URL : location.origin + location.pathname);
 // link dari email (konfirmasi daftar / reset password) kembali ke aplikasi dengan token di #
 export async function sessionFromUrl() {
   const h = location.hash.replace(/^#/, "");

@@ -126,7 +126,7 @@ const SHNG = (() => {
     chapters,
     async browse(b) {
       const page = Math.max(1, Number(b.page) || 1), limit = Math.min(30, Number(b.limit) || 20);
-      const p = new URLSearchParams({ page: String(page), page_size: String(limit), sort: b.sort === "popular" ? "popularity" : "latest", sort_order: "desc" });
+      const p = new URLSearchParams({ page: String(page), page_size: String(limit), sort: b.sort === "popular" ? "popularity" : b.sort === "rating" ? "rating" : "latest", sort_order: "desc" });
       if (b.q) p.set("q", b.q);
       if (b.type) p.set("format", b.type);
       if (b.genres?.length) { p.set("genre_include", b.genres.join(",")); p.set("genre_include_mode", "and"); }
@@ -193,7 +193,7 @@ const WEST = (() => {
     chapters: async (id) => ((await detailRaw(id)).chapters || []).filter((c) => c?.slug).map(mapCh),
     async browse(b) {
       const page = Math.max(1, Number(b.page) || 1), limit = Math.min(30, Number(b.limit) || 20);
-      const p = new URLSearchParams({ page: String(page), per_page: String(limit), type: "Comic", orderBy: b.sort === "popular" ? "Popular" : "Update" });
+      const p = new URLSearchParams({ page: String(page), per_page: String(limit), type: "Comic", orderBy: b.sort === "popular" ? "Popular" : b.sort === "az" ? "Az" : b.sort === "za" ? "Za" : "Update" });
       if (b.q) p.set("q", b.q);
       if (b.type) p.set("country", COUNTRY[b.type]);
       if (b.status) p.set("status", b.status[0].toUpperCase() + b.status.slice(1));
@@ -283,6 +283,8 @@ function openLink(u, go) {
   if (m) go(`#/c/${m[1]}/${m[2]}`);
   else if (/^ninokuu:\/\/chat/i.test(u)) go("#/chat");
   else if (/^ninokuu:\/\/verified/i.test(u)) go("#/more", "verified");
+  else if (/^ninokuu:\/\/reset/i.test(u)) go("#/more", "reset");          // ninokuu.site/resetpassword setelah password diganti
+  else if (/^ninokuu:\/\/more/i.test(u)) go("#/more");
   else if (/^https?:/i.test(u)) window.open(u, "_blank");
   else go("#/home");
 }
@@ -360,4 +362,19 @@ export function logDev(kind, msg, extra = "") {
 if (DEV) {
   addEventListener("error", (e) => { if (e.target === window || e.error) logDev("error", e.message || e.error?.message, e.error?.stack || `${e.filename}:${e.lineno}`); });
   addEventListener("unhandledrejection", (e) => logDev("promise", e.reason?.message || e.reason, e.reason?.stack || ""));
+}
+
+/* ---------- layar penuh saat membaca ---------- */
+// APK: bilah status Android disembunyikan (plugin StatusBar). Web: Fullscreen API (butuh ketukan pengguna).
+let fsOn = false;
+export async function setFullscreen(on) {
+  if (on === fsOn) return;
+  fsOn = on;
+  const sb = plugin("StatusBar");
+  if (sb) { try { await (on ? sb.hide() : sb.show()); } catch {} return; }
+  if (isApp) return;
+  try {
+    if (on && !document.fullscreenElement && document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen({ navigationUI: "hide" });
+    if (!on && document.fullscreenElement) await document.exitFullscreen();
+  } catch { fsOn = false; }
 }

@@ -71,7 +71,7 @@ export const rankText = (name, tier) => `<b class="rk-t t${tier}"><span class="r
 // Gambar dari situs asli yang gagal dimuat dicoba ulang dulu (jaringan HP di APK, lalu proxy Supabase sebagai cadangan).
 document.addEventListener("error", async (e) => {
   const t = e.target;
-  if (!(t instanceof HTMLImageElement)) return;
+  if (!(t instanceof HTMLImageElement) || t.classList.contains("r-img")) return;   // halaman bacaan: diurus pembaca (main.js)
   if ((t.dataset.d || t.dataset.px) && await imgFallback(t)) return;
   if (t.hasAttribute("data-rm")) t.remove();
 }, true);
