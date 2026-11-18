@@ -101,7 +101,10 @@ async function render() {
   // animasi masuk dimulai setelah layar baru terisi, supaya layar lama tidak ikut "meluncur lagi"
   const my = ++renderSeq;
   view.classList.remove("in", "in-f", "in-b"); delete view.dataset.upDone;
-  view.innerHTML = ""; fxIo?.disconnect(); fxVis.clear(); fxSprite();
+  // pembaca: halaman sebelumnya dibiarkan terlihat sampai pembaca siap (tanpa layar gelap kosong sekejap)
+  const keepOld = route.name === "reader" && !!view.childElementCount;
+  if (!keepOld) view.innerHTML = "";
+  fxIo?.disconnect(); fxVis.clear(); fxSprite();
   let animated = false;
   // Selama layar baru meluncur masuk, animasi hiasan (bingkai avatar kosmik, kilau rank) dijeda: SVG beranimasi
   // menggambar ulang dirinya tiap frame dan bersaing dengan animasi pindah layar (terasa tersendat di Lainnya).
@@ -114,7 +117,7 @@ async function render() {
     void view.offsetWidth; view.classList.add("in", fwd ? "in-f" : "in-b");
   };
   const job = (VIEWS[route.name] || VIEWS.home)(...route.params);
-  if (view.childElementCount) animate();
+  if (view.childElementCount && !keepOld) animate();
   await job;
   animate();
   if (my === renderSeq && !fxHold) watchFx();
@@ -837,37 +840,48 @@ async function vChapters(src, id) {
 
 /* ---------- Pembaca (gulir atau slide), tampilan sama seperti prototipe ---------- */
 const pagesMem = new Map();
+let readerSeq = 0;
 async function vReader(src, id, chId) {
   const shell = (inner) => `<div class="reader ui enter" id="rd" data-shell="1">${inner}<div class="r-top"><button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 22, 2)}</button><div class="r-pill glass"><b class="t1">Memuat…</b></div><span class="r-sp"></span></div></div>`;
-  view.innerHTML = shell(`<div class="r-pages">${loading(3, "sk-page")}</div>`);
-  // masih memuat setelah sebentar: tombol kembali meluncur masuk (bila daftar halaman tersimpan, tidak sempat terlihat)
-  setTimeout(() => { const r = $("#rd"); if (r?.dataset.shell) r.classList.remove("enter"); }, 350);
+  // Halaman sebelumnya tetap terlihat selama data chapter dimuat; layar "Memuat…" baru dipasang bila butuh > 0,3 dtk
+  // (sebelumnya langsung tampil layar gelap kosong sekejap sebelum halaman komik → terlihat seperti kedipan)
+  const myR = ++readerSeq;
+  setTimeout(() => {
+    if (myR !== readerSeq || parse().name !== "reader" || $("#rd")) return;
+    view.innerHTML = shell(`<div class="r-pages">${loading(3, "sk-page")}</div>`);
+    requestAnimationFrame(() => requestAnimationFrame(() => $("#rd")?.classList.remove("enter")));
+  }, 300);
+  const fail = (e) => {
+    if (myR !== readerSeq || parse().name !== "reader") return;
+    if (!$("#rd")) view.innerHTML = shell(`<div class="r-pages"></div>`);
+    $("#rd").classList.remove("enter"); $(".r-pages").innerHTML = errBox(e);
+  };
   // file impor dari HP (src "local") tidak punya halaman info komik, kembali ke Favorit → Unduhan
   const isLocal = src === "local";
   const toComic = () => (isLocal ? backTo("#/fav/dl") : backTo(comicHref(src, id), [chaptersHref(src, id)]));
   setActs({ back: toComic, retry: () => vReader(src, id, chId) });
   let d = isLocal ? DL.offlineDetail(src, id) : cachedDetail(src, id);
   try { if (!d) d = await getDetail(src, id); }
-  catch (e) { d = DL.offlineDetail(src, id); if (!d) { $(".r-pages").innerHTML = errBox(e); return; } }   // offline: info dari unduhan
-  if (!d) { $(".r-pages").innerHTML = errBox(new Error("File unduhan tidak ditemukan di HP.")); return; }
+  catch (e) { d = DL.offlineDetail(src, id); if (!d) { fail(e); return; } }   // offline: info dari unduhan
+  if (!d) { fail(new Error("File unduhan tidak ditemukan di HP.")); return; }
   const idx = d.chapters.findIndex((c) => c.id === chId);
   const ch = d.chapters[idx] || { id: chId, ch: "?" };
   const prev = d.chapters[idx - 1], next = d.chapters[idx + 1];
   // chapter yang sudah diunduh dibaca dari file di HP (tanpa kuota, bisa offline)
   let p;
   try { p = await DL.localPages(src, id, chId); }
-  catch (e) { if (e?.localRead) { $(".r-pages").innerHTML = errBox(e); return; } p = null; }
+  catch (e) { if (e?.localRead) { fail(e); return; } p = null; }
   if (!p) {
-    if (isLocal) { $(".r-pages").innerHTML = errBox(new Error("File unduhan tidak ditemukan di HP.")); return; }
+    if (isLocal) { fail(new Error("File unduhan tidak ditemukan di HP.")); return; }
     // daftar halaman disimpan sebentar di memori: kembali ke chapter yang sama (mis. dari info komik) langsung tampil
     const pk = src + "|" + chId, pc = pagesMem.get(pk);
     if (pc && Date.now() - pc.t < 30 * 60e3) p = pc.p;
     else {
-      try { p = await api.call("pages", { source: src, chapter_id: chId }); } catch (e) { $(".r-pages").innerHTML = errBox(e); return; }
+      try { p = await api.call("pages", { source: src, chapter_id: chId }); } catch (e) { fail(e); return; }
       pagesMem.set(pk, { p, t: Date.now() }); if (pagesMem.size > 12) pagesMem.delete(pagesMem.keys().next().value);
     }
   }
-  if (parse().name !== "reader") return;
+  if (parse().name !== "reader" || myR !== readerSeq) return;
   const st = S.state.settings, total = p.images.length;
   // manga: boleh scroll & slide. manhwa/manhua (strip panjang): hanya scroll. Jenis dari tag sumber;
   // bila tag tidak menyebut jenisnya, dari bentuk gambar (lihat cekStrip di bawah), diingat per komik.
@@ -879,7 +893,16 @@ async function vReader(src, id, chId) {
   // Hemat kuota: hanya 2 halaman pertama yang langsung diunduh. Halaman lain memakai data-src dan baru diunduh
   // saat mendekati layar (lihat lazyIo). Sebelumnya semua gambar belum bertinggi (0 px) sehingga "lazy" bawaan
   // browser menganggap semuanya dekat layar dan seluruh chapter langsung diunduh.
-  const imgs = p.images.map((im, i) => { const a = im.local ? `src="${esc(im.u)}"` : N.imgAttrs(im.u, { ref: p.ref || "", px: im.p ? api.pageUrl(im.p) : "" }); return `<img class="r-img wait" data-i="${i + 1}" ${i > 1 ? a.replace(/^src=/, "data-src=") : a} alt="" aria-label="Halaman ${i + 1}" decoding="async" referrerpolicy="no-referrer" draggable="false">`; });
+  // halaman tujuan (lanjut baca) dimuat & di-decode dulu selagi halaman sebelumnya masih tampil (maks 0,6 dtk),
+  // supaya pembaca langsung muncul berisi gambar, bukan layar hitam kosong sekejap
+  const pk0 = `${src}|${id}|${chId}`, pm0 = api.lsGet("readPos", {}) || {}, ph0 = S.histItem(src, id);
+  let at0 = Number(pm0[pk0]) || (ph0?.chapter_id === chId ? Number(ph0.page) || 1 : 1);
+  if (!(at0 > 1 && at0 < p.images.length)) at0 = 1;
+  const near = (i) => i >= at0 - 2 && i <= at0;   // indeks 0-based: halaman tujuan & sebelumnya
+  const pre = p.images.filter((_, i) => i < 2 || near(i)).slice(0, 4).map((im) => im.local ? im.u : N.imgParts(im.u).src).filter(Boolean);
+  if (pre.length) await Promise.race([Promise.all(pre.map((u) => { const im = new Image(); im.referrerPolicy = "no-referrer"; im.src = u; return im.decode().catch(() => {}); })), new Promise((r) => setTimeout(r, 600))]);
+  if (parse().name !== "reader" || myR !== readerSeq) return;
+  const imgs = p.images.map((im, i) => { const a = im.local ? `src="${esc(im.u)}"` : N.imgAttrs(im.u, { ref: p.ref || "", px: im.p ? api.pageUrl(im.p) : "" }); return `<img class="r-img wait" data-i="${i + 1}" ${i > 1 && !near(i) ? a.replace(/^src=/, "data-src=") : a} alt="" aria-label="Halaman ${i + 1}" decoding="async" referrerpolicy="no-referrer" draggable="false">`; });
 
   view.innerHTML = `<div class="reader ui enter ${slide ? "slide" : ""}" id="rd">
   ${slide ? `<div class="r-slides" id="rbox" dir="${rtl ? "rtl" : "ltr"}">${imgs.map((im) => `<div class="r-slide">${im}</div>`).join("")}<div class="r-slide r-endslide"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span>${next ? `<button class="r-next-hint" id="rnext" data-act="cancelNext" hidden><span class="r-nbar"></span><span class="r-ntx"></span></button>` : ""}${isLocal ? "" : `${chLike(null)}<a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini</a>`}</div></div>`
