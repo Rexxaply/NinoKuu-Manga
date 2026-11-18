@@ -203,6 +203,8 @@ body[data-screen="reader"] { background: #0A0A0A; overflow: hidden; }
 .r-pages { max-width: 720px; margin: 0 auto; }
 .r-img { display: block; width: 100%; height: auto; min-height: 200px; background: #141414; -webkit-user-drag: none; }
 .r-img[src] { min-height: 0; }
+/* halaman yang belum dimuat: tinggi sementara 1 layar, supaya hanya halaman di dekat layar yang diunduh */
+.r-scroll .r-img.wait { min-height: 100vh; }
 .r-endtxt { height: 200px; display: flex; align-items: center; justify-content: center; }
 .r-slides { position: absolute; inset: 0; display: flex; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; overscroll-behavior: contain; scrollbar-width: none; }
 .r-slides::-webkit-scrollbar { display: none; }

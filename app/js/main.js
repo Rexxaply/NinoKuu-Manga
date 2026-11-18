@@ -724,7 +724,10 @@ async function vReader(src, id, chId) {
   const longStrip = kind === "manhwa" || kind === "manhua" || (kind !== "manga" && !!stripSeen[stripKey]);
   let slide = st.readMode === "slide" && !longStrip;
   const rtl = st.readDir !== "ltr";
-  const imgs = p.images.map((im, i) => `<img class="r-img" data-i="${i + 1}" ${im.local ? `src="${esc(im.u)}"` : N.imgAttrs(im.u, { ref: p.ref || "", px: im.p ? api.pageUrl(im.p) : "" })} alt="Halaman ${i + 1}" ${i > 2 ? 'loading="lazy"' : ""} decoding="async" referrerpolicy="no-referrer" draggable="false">`);
+  // Hemat kuota: hanya 2 halaman pertama yang langsung diunduh. Halaman lain memakai data-src dan baru diunduh
+  // saat mendekati layar (lihat lazyIo). Sebelumnya semua gambar belum bertinggi (0 px) sehingga "lazy" bawaan
+  // browser menganggap semuanya dekat layar dan seluruh chapter langsung diunduh.
+  const imgs = p.images.map((im, i) => { const a = im.local ? `src="${esc(im.u)}"` : N.imgAttrs(im.u, { ref: p.ref || "", px: im.p ? api.pageUrl(im.p) : "" }); return `<img class="r-img wait" data-i="${i + 1}" ${i > 1 ? a.replace(/^src=/, "data-src=") : a} alt="Halaman ${i + 1}" decoding="async" referrerpolicy="no-referrer" draggable="false">`; });
 
   view.innerHTML = `<div class="reader ui ${slide ? "slide" : ""}" id="rd">
   ${slide ? `<div class="r-slides" id="rbox" dir="${rtl ? "rtl" : "ltr"}">${imgs.map((im) => `<div class="r-slide">${im}</div>`).join("")}<div class="r-slide r-endslide"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span>${next ? `<button class="r-next-hint" id="rnext" data-act="cancelNext" hidden><span class="r-nbar"></span><span class="r-ntx"></span></button>` : ""}${isLocal ? "" : `${chLike(null)}<a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini</a>`}</div></div>`
@@ -971,18 +974,24 @@ async function vReader(src, id, chId) {
   // #10 gambar gagal (server/internet): tombol muat ulang per halaman, menu "Muat ulang chapter",
   // dan otomatis dicoba lagi saat internet tersambung kembali
   const failed = new Set();
-  $$(".r-img", rd).forEach((im) => { im.dataset.o = im.getAttribute("src") || ""; });
+  $$(".r-img", rd).forEach((im) => { im.dataset.o = im.getAttribute("src") || im.dataset.src || ""; });
+  // muat halaman yang mendekati layar: ±1,5 layar ke depan/belakang (mode slide: 1 halaman ke kiri/kanan)
+  const loadImg = (im) => { if (im.dataset.src) { im.src = im.dataset.src; delete im.dataset.src; } };
+  const lazyIo = new IntersectionObserver((es) => es.forEach((x) => { if (x.isIntersecting) { loadImg(x.target); lazyIo.unobserve(x.target); } }),
+    { root: box, rootMargin: slide ? "0px 100%" : "150% 0px" });
+  $$(".r-img[data-src]", rd).forEach((im) => lazyIo.observe(im));
+  rd.addEventListener("load", (e) => { if (e.target.classList?.contains("r-img")) e.target.classList.remove("wait"); }, true);
   // tombol muat ulang di bar atas: titik merah = ada gambar yang gagal
   const paintFail = () => { const el = $("#rfdot"); if (el) el.hidden = !failed.size; const b = $("[data-act=reload]", rd); if (b) b.setAttribute("aria-label", failed.size ? `Muat ulang ${failed.size} gambar yang gagal` : "Muat ulang chapter"); };
   const markFail = (im) => {
-    im.classList.add("fail"); failed.add(im);
+    im.classList.add("fail"); im.classList.remove("wait"); failed.add(im);
     if (!im.nextElementSibling?.classList.contains("r-fail")) im.insertAdjacentHTML("afterend", `<button class="r-fail" data-act="reimg" data-i="${im.dataset.i}">${icon("refresh", 18, 2)}<span>Halaman ${im.dataset.i} gagal dimuat<br><b>Ketuk untuk muat ulang</b></span></button>`);
     paintFail();
   };
   function reloadImg(im) {
     failed.delete(im); im.classList.remove("fail");
     if (im.nextElementSibling?.classList.contains("r-fail")) im.nextElementSibling.remove();
-    delete im.dataset.fb; im.loading = "eager"; im.src = im.dataset.o; paintFail();
+    delete im.dataset.fb; delete im.dataset.src; im.src = im.dataset.o; paintFail();
   }
   rd.addEventListener("error", async (e) => {
     const im = e.target;
@@ -1021,14 +1030,14 @@ async function vReader(src, id, chId) {
     box.addEventListener("touchstart", quit, { once: true, passive: true });
     box.addEventListener("wheel", quit, { once: true, passive: true });
     setTimeout(quit, 10000);
-    const before = $$(".r-img", rd).slice(0, resumeAt);
-    before.forEach((im) => { im.loading = "eager"; });
+    // halaman sebelum posisi itu TIDAK diunduh (hemat kuota); halaman kosong punya tinggi sementara, dan
+    // posisi disesuaikan lagi setiap kali gambar di sekitar tujuan selesai dimuat
     const jump = () => { if (!stop && parse().name === "reader") goPage(resumeAt); };
     requestAnimationFrame(jump);
-    if (!slide) before.forEach((im) => { if (!im.complete) im.addEventListener("load", jump, { once: true }); });
+    if (!slide) $$(".r-img", rd).slice(Math.max(0, resumeAt - 3), resumeAt).forEach((im) => im.addEventListener("load", jump, { once: true }));
     toast(`Lanjut dari halaman ${resumeAt}`, 1800);
   }
-  cleanup = () => { fsObs.disconnect(); clearTimeout(tapT); clearTimeout(nextT); cancelAnimationFrame(rafPos); endIo?.disconnect(); removeEventListener("online", onOnline); N.setFullscreen(false); S.flushHistory(); };
+  cleanup = () => { lazyIo.disconnect(); fsObs.disconnect(); clearTimeout(tapT); clearTimeout(nextT); cancelAnimationFrame(rafPos); endIo?.disconnect(); removeEventListener("online", onOnline); N.setFullscreen(false); S.flushHistory(); };
   // jenis belum diketahui dari tag: periksa bentuk beberapa gambar pertama. Kebanyakan sangat tinggi
   // (tinggi > 1,8× lebar) → strip panjang manhwa/manhua: diingat, dan mode slide dialihkan ke scroll.
   if (!kind && !longStrip) {
