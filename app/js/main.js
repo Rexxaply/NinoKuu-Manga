@@ -73,6 +73,9 @@ const fxIo = "IntersectionObserver" in window ? new IntersectionObserver((es) =>
 }) : null;
 const FX_SEL = "#view .av-wrap, #view .rk-b, .sheet .av-wrap";
 const watchFx = () => { if (fxIo) $$(FX_SEL).forEach((el) => { if (el.dataset.fx) return; el.dataset.fx = "1"; fxIo.observe(el); }); };
+// isi yang ditambahkan belakangan (pesan chat, komentar) juga diawasi; dikumpulkan per frame
+let fxRaf = 0;
+if (fxIo) new MutationObserver(() => { if (!fxRaf && !fxHold) fxRaf = requestAnimationFrame(() => { fxRaf = 0; watchFx(); }); }).observe(document.getElementById("view"), { childList: true, subtree: true });
 const holdFx = (on) => { fxHold = on; $$(FX_SEL).forEach((el) => el.classList.toggle("fx-hold", on)); fxSprite(); };
 async function render() {
   trackNav();
@@ -572,9 +575,7 @@ async function vDetail(src, id) {
   ${m.desc ? `<p class="desc ${descOpen ? "open" : ""}" data-act="desc">${esc(m.desc)}</p>` : `<p class="desc mu">Belum ada sinopsis dari sumber.</p>`}
   <div class="sec-h mt24"><h2>Chapter</h2><a class="link-red" href="${chaptersHref(src, id)}">Lihat semua (${d.chapters.length})${icon("chev", 16, 2)}</a></div>
   <div class="ch-card">${preview.map((c) => chRow(c)).join("") || `<div class="empty"><b>Belum ada chapter</b></div>`}</div>
-  <div class="sec-h mt24"><h2>Komentar${cmN ? ` <span class="mu cm-n">${cmN}</span>` : ""}</h2><a class="link-red" href="${commentsHref(src, id)}">${cmN ? "Lihat semua" : "Tulis komentar"}${icon("chev", 16, 2)}</a></div>
-  <div class="cm-card" id="cmprev">${cmList === null ? `<div class="mu sm cm-empty">Memuat komentar…</div>` : cmList.length ? cmList.map(miniMsg).join("") + `<a class="cm-more" href="${commentsHref(src, id)}">${icon("msg", 17)}Buka semua komentar</a>`
-    : `<a class="cm-empty" href="${commentsHref(src, id)}">${icon("msg", 20)}<span class="rc-mid g4"><b class="sm">Belum ada komentar</b><span class="mu xs">Jadilah yang pertama berkomentar tentang komik ini.</span></span></a>`}</div>
+  <div id="cmsec">${cmHtml()}</div>
 </div><div style="height:calc(120px + env(safe-area-inset-bottom))"></div>
 <div class="rfab-wrap"><a class="rfab glass" href="${resumeCh ? readHref(src, id, resumeCh.id) : first ? readHref(src, id, first.id) : chaptersHref(src, id)}"><span class="rfab-ic">${icon("play", 18, 2)}</span><b class="redt">${resumeCh ? "Lanjut baca" : "Mulai baca"}</b><span class="grow">${resumeCh ? "Chapter " + esc(resumeCh.ch) : first ? "Chapter " + esc(first.ch) : ""}</span><span class="redt">${icon("chev", 20, 2)}</span></a></div>`;
     bindSpoilers($("#cmprev")); watchAvatars($("#cmprev"));
@@ -584,6 +585,12 @@ async function vDetail(src, id) {
     fitDetail();
   };
   let cmList = null, cmN = 0, lk = null, lkBusy = false;
+  // bagian komentar digambar terpisah: saat komentar datang, hanya bagian ini yang diganti
+  // (sebelumnya seluruh halaman digambar ulang → gambar sampul & latar sempat berkedip)
+  function cmHtml() { return `  <div class="sec-h mt24"><h2>Komentar${cmN ? ` <span class="mu cm-n">${cmN}</span>` : ""}</h2><a class="link-red" href="${commentsHref(src, id)}">${cmN ? "Lihat semua" : "Tulis komentar"}${icon("chev", 16, 2)}</a></div>
+  <div class="cm-card" id="cmprev">${cmList === null ? `<div class="mu sm cm-empty">Memuat komentar…</div>` : cmList.length ? cmList.map(miniMsg).join("") + `<a class="cm-more" href="${commentsHref(src, id)}">${icon("msg", 17)}Buka semua komentar</a>`
+    : `<a class="cm-empty" href="${commentsHref(src, id)}">${icon("msg", 20)}<span class="rc-mid g4"><b class="sm">Belum ada komentar</b><span class="mu xs">Jadilah yang pertama berkomentar tentang komik ini.</span></span></a>`}</div>`; }
+  const paintComments = () => { const el = $("#cmsec"); if (!el) return draw(); el.innerHTML = cmHtml(); bindSpoilers($("#cmprev")); watchAvatars($("#cmprev")); };
   const paintLike = () => { const b = $("[data-act=like]"); if (b) b.outerHTML = likeBtn(lk); };
   S.likeInfo(src, id, "").then((i) => { if (i && parse().name === "detail") { lk = i; paintLike(); } });
   const onBarScroll = () => { const b = $("#dbar"); if (b) b.classList.toggle("solid", window.scrollY > 120); };
@@ -592,8 +599,8 @@ async function vDetail(src, id) {
   window.addEventListener("nk:chapters", onMore);
   cleanup = () => { window.removeEventListener("scroll", onBarScroll); window.removeEventListener("nk:chapters", onMore); };
   const room = roomFor(src, id);
-  Promise.all([roomPreview(room, 3), roomCount(room).catch(() => 0), framesReady()]).then(([l, n]) => { cmList = l; cmN = n; if (parse().name === "detail") { const y = window.scrollY; draw(); window.scrollTo(0, y); } })
-    .catch(() => { cmList = []; if (parse().name === "detail") { const y = window.scrollY; draw(); window.scrollTo(0, y); } });
+  Promise.all([roomPreview(room, 3), roomCount(room).catch(() => 0), new Promise((r) => setTimeout(r, 450)).then(framesReady)]).then(([l, n]) => { cmList = l; cmN = n; if (parse().name === "detail") paintComments(); })
+    .catch(() => { cmList = []; if (parse().name === "detail") paintComments(); });
   setActs({
     back: () => back(),
     retry: () => vDetail(src, id),
@@ -1699,6 +1706,8 @@ const dctx = () => ({ ...ctx(), getDetail, histOf: (s, i) => S.histItem(s, i), o
 const VIEWS = { download: async (s, i) => { cleanup = await DL.vDownload(view, dctx(), s, i); }, chat: async () => { cleanup = await vChat(view, ctx()); }, comments: (s, i) => vComments(s, i), chcomments: (s, i, c) => vComments(s, i, c), chapters: vChapters, home: vHome, search: vSearch, fav: vFav, more: vMore, detail: vDetail, reader: vReader, page: vPage };
 
 /* ---------- mulai ---------- */
+// bingkai rank untuk komentar/chat disiapkan saat aplikasi sedang santai (bukan saat membuka halaman komik)
+setTimeout(() => (window.requestIdleCallback || ((f) => setTimeout(f, 1)))(() => framesReady(), { timeout: 10000 }), 5000);
 const applyGfx = () => document.body.classList.toggle("nk-lite", S.state.settings.gfx === "Ringan");
 applyGfx();
 // Posisi miring dicek dari ukuran layar fisik (tidak berubah saat keyboard muncul).

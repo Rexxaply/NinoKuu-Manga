@@ -312,9 +312,12 @@ body[data-screen="reader"] { background: #0A0A0A; overflow: hidden; }
 .empty-ic { width: 52px; height: 52px; border-radius: 50%; background: var(--s1); display: grid; place-items: center; }
 .empty .btn { margin-top: 6px; }
 .sk-wrap { display: flex; flex-direction: column; gap: 8px; }
-.sk { background: linear-gradient(90deg, var(--s1) 0%, var(--s2) 50%, var(--s1) 100%); background-size: 200% 100%; animation: sk 1.2s linear infinite; border-radius: 14px; }
+/* kilau kerangka memuat: pita terang digeser dengan transform (dikerjakan GPU, tanpa menggambar ulang) */
+.sk { position: relative; overflow: hidden; background: var(--s1); border-radius: 14px; }
+.sk::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent 0%, var(--s2) 50%, transparent 100%); transform: translateX(-100%); animation: sk 1.2s linear infinite; will-change: transform; }
+@media (prefers-reduced-motion: reduce) { .sk::after { animation: none; opacity: 0; } }
 .sk-lrow { height: 74px; } .sk-top { width: 112px; height: 158px; flex: none; margin-left: 40px; } .sk-hero { height: 240px; margin: 10px 18px 18px; } .sk-page { height: 70vh; border-radius: 0; margin-bottom: 4px; }
-@keyframes sk { to { background-position: -200% 0; } }
+@keyframes sk { to { transform: translateX(100%); } }
 
 /* ---------- navigasi bawah (sama seperti prototipe) ---------- */
 /* Bar ringkas gaya iOS: ikon, indikator, dan tab memakai transform/opacity (dikerjakan GPU), tata letak tab tidak berubah.
