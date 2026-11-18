@@ -1175,3 +1175,13 @@ button, [role="button"], .seg, .chips, #nav { -webkit-user-select: none; user-se
 .t10-crown { position: absolute; z-index: 2; left: -6px; top: -15px; width: 42px; height: 34px; transform: rotate(-24deg); transform-origin: 70% 90%;
   filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .55)); pointer-events: none; }
 #pop { padding-top: 16px; }
+
+/* tombol di kartu Koleksi/Riwayat: lencana +N (buka chapter berikutnya), Lanjut, Berikutnya */
+button.fa-new { display: inline-flex; align-items: center; justify-content: center; gap: 3px; border: 0; font-family: inherit; }
+button.fa-new::before, .hl-go::before { content: ""; position: absolute; inset: -8px; }
+button.fa-new, .hl-go { position: relative; }
+button.fa-new:active, .hl-go:active { scale: .92; }
+.hl-go { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 7px 12px; border-radius: 999px; border: 0; background: var(--red); color: #fff; font: inherit; font-size: 12px; font-weight: 800; }
+.hl-go.nx { background: rgba(224, 36, 43, .16); color: var(--redt); padding-right: 9px; }
+.fa-new.busy, .hl-go.busy { opacity: .6; pointer-events: none; }
+.fa-new.busy svg, .hl-go.busy svg { animation: spinb .8s linear infinite; }

@@ -497,6 +497,28 @@ async function getDetail(src, id, force = false) {
   fillMore(src, id, data);
   return data;
 }
+// Buka chapter sesudah chapter yang terakhir dibaca (dipakai lencana +N di Koleksi & tombol di Riwayat).
+// Memakai detail yang tersimpan dulu; bila chapter berikutnya belum ada di situ, ambil daftar terbaru.
+async function openNextChapter(src, id, chId, chNum, el) {
+  if (el?.classList.contains("busy")) return;
+  el?.classList.add("busy");
+  const find = (d) => { const chs = d?.chapters || []; let i = chId ? chs.findIndex((c) => c.id === chId) : -1; if (i < 0 && chNum != null && chNum !== "") i = chs.findIndex((c) => String(c.ch) === String(chNum)); return i >= 0 ? chs[i + 1] || null : undefined; };
+  try {
+    let nx = find(cachedDetail(src, id));
+    if (!nx) nx = find(await getDetail(src, id, true));
+    if (nx) location.hash = readHref(src, id, nx.id);
+    else if (nx === null) toast("Kamu sudah di chapter terbaru. Chapter baru akan diberi tahu.", 2800);
+    else { toast("Chapter terakhir tidak ditemukan, membuka halaman komik", 2500); location.hash = comicHref(src, id); }
+  } catch (e) { toast(e.message || "Gagal memuat daftar chapter", 3500); }
+  finally { el?.classList.remove("busy"); }
+}
+// tombol di dalam kartu (lencana +N, Lanjut, Berikutnya): tidak ikut membuka halaman komik
+document.addEventListener("click", (e) => {
+  const b = e.target.closest?.("[data-next], [data-go]"); if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  if (b.dataset.go) location.hash = b.dataset.go;
+  else openNextChapter(b.dataset.src, b.dataset.id, b.dataset.ch, b.dataset.n, b);
+}, true);
 function cachedDetail(src, id) {
   const k = src + "|" + id;
   if (detailCache.has(k)) { const d = detailCache.get(k).data; fillMore(src, id, d); return d; }
@@ -1332,6 +1354,20 @@ function vFav(tab) {
   const lib = libAll.filter((m) => (!fav.q || m.title.toLowerCase().includes(fav.q.toLowerCase()))
     && (fav.filter === "all" || (fav.filter === "new" ? isNew(m) : m.type === fav.filter)));
   const hist = S.history();
+  // baris riwayat: judul, sumber · waktu, "Ch. 23 · hal 12/48" + bar halaman; tombol Lanjut (ke halaman terakhir)
+  // atau Berikutnya (bila chapter itu sudah selesai dibaca)
+  const histRow = (x) => {
+    const done = x.pages && x.page >= x.pages;
+    const btn = !x.chapter_id ? "" : done
+      ? `<button class="hl-go nx" type="button" data-next data-src="${esc(x.source)}" data-id="${esc(x.comic_id)}" data-ch="${esc(x.chapter_id)}" data-n="${esc(x.chapter ?? "")}">Berikutnya${icon("chev", 13, 2.6)}</button>`
+      : `<button class="hl-go" type="button" data-go="${esc(readHref(x.source, x.comic_id, x.chapter_id))}">${icon("play", 12, 2.6)}Lanjut</button>`;
+    return `<a class="fa-row" href="${comicHref(x.source, x.comic_id)}">${cover(x.cover, x.title, "sm")}<span class="fa-mid">
+      <b class="fa-t">${esc(x.title)}</b>
+      <span class="fa-meta"><i class="fa-dot s-${esc(x.source)}"></i>${esc(srcName(x.source))}<span class="fa-sep">·</span>${esc(ago(x.read_at))}</span>
+      <span class="fa-meta"><b class="fa-rd">Ch. ${esc(x.chapter)}</b>${x.pages ? `<span class="fa-sep">·</span>${done ? "selesai" : `hal ${x.page || 1} / ${x.pages}`}` : ""}</span>
+      <span class="fa-bar"><i style="width:${pct(x.page || 1, x.pages || 0) || 4}%"></i></span>
+    </span>${btn}</a>`;
+  };
   const srcType = (m) => esc(srcName(m.source)) + (m.type ? " · " + esc(typeName(m.type)) : "");
   // baris koleksi (tampilan daftar), ramping: judul 1 baris, sumber · chapter (chapter yang dibaca ditebalkan), bar progres tipis;
   // di kanan lencana jumlah chapter baru (+80) atau centang bila sudah terbaru
@@ -1340,7 +1376,7 @@ function vFav(tab) {
     const pctRead = Number.isFinite(L) && L > 0 && Number.isFinite(R) ? Math.max(4, Math.min(100, Math.round((R / L) * 100))) : 0;
     const gap = fresh && Number.isFinite(L) && Number.isFinite(R) ? Math.floor(L) - Math.floor(R) : 0;
     const chTxt = r ? `<b class="fa-rd">Ch. ${esc(r.chapter)}</b>${m.latest != null ? ` / ${esc(m.latest)}` : ""}` : m.latest != null ? `${esc(m.latest)} chapter` : "Belum dibaca";
-    const badge = fresh ? `<span class="fa-new" title="Chapter baru">${gap > 0 ? "+" + gap : "Baru"}</span>` : r && m.latest != null && R >= L ? `<span class="fa-ok" title="Sudah terbaru">${icon("check", 14, 2.4)}</span>` : "";
+    const badge = fresh ? `<button class="fa-new" type="button" data-next data-src="${esc(m.source)}" data-id="${esc(m.comic_id)}" data-ch="${esc(r?.chapter_id || "")}" data-n="${esc(r?.chapter ?? "")}" aria-label="Baca chapter berikutnya (${gap > 0 ? gap + " chapter baru" : "chapter baru"})">${gap > 0 ? "+" + gap : "Baru"}${icon("play", 11, 2.6)}</button>` : r && m.latest != null && R >= L ? `<span class="fa-ok" title="Sudah terbaru">${icon("check", 14, 2.4)}</span>` : "";
     return `<a class="fa-row" href="${comicHref(m.source, m.comic_id)}">${cover(m.cover, m.title, "sm")}<span class="fa-mid">
       <b class="fa-t">${esc(m.title)}</b>
       <span class="fa-meta"><i class="fa-dot s-${esc(m.source)}"></i>${srcType(m)}${m.notify ? `<span class="gold fa-bell" title="Notifikasi aktif">${icon("bellF", 11)}</span>` : ""}<span class="fa-sep">·</span><span class="fa-ch">${chTxt}</span></span>
@@ -1361,8 +1397,7 @@ function vFav(tab) {
     : `<div class="frows">${lib.map(favRow).join("")}</div>`}`;
   } else if (fav.tab === "hist") {
     body = hist.length ? `<div class="sec-h"><span class="mu xs">Terbaru di atas</span><button class="link-red" data-act="clearHist">Bersihkan</button></div>
-  <div class="rows">${hist.map((x) => lrow(x.chapter_id ? readHref(x.source, x.comic_id, x.chapter_id) : comicHref(x.source, x.comic_id), cover(x.cover, x.title, "sm"),
-      `<span class="t1 b14">${esc(x.title)}</span>`, `Ch. ${esc(x.chapter)} · ${esc(ago(x.read_at))}<span class="prog s"><span style="width:${pct(x.page || 1, x.pages || 0) || 6}%"></span></span>`, `<span class="mu">${icon("play", 18, 2)}</span>`)).join("")}</div>`
+  <div class="frows">${hist.map(histRow).join("")}</div>`
       : `<div class="empty"><span class="empty-ic">${icon("clock", 24)}</span><b>Belum ada riwayat</b><span>Chapter yang kamu baca akan muncul di sini.</span></div>`;
   } else {
     body = DL.favTab();
