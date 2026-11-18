@@ -209,7 +209,9 @@ function placeSeg(el, anim) {
   if (!anim && el._th && el._th.x === box.x && el._th.w === box.w && el._th.y === box.y && el._th.h === box.h) return;
   const prev = el._th || (anim && k && segLast.get(k)?.t > Date.now() - 800 ? segLast.get(k) : null);
   if (k) segLast.set(k, { ...box, t: Date.now() });
-  const set = (b) => { th.style.width = b.w + "px"; th.style.height = b.h + "px"; th.style.transform = `translate3d(${b.x}px, ${b.y}px, 0)`; };
+  // Lebar tidak dianimasikan (itu dikerjakan CPU dan tersendat bila halaman sedang memuat hasil):
+  // ukuran akhir dipasang langsung, perbedaan lebar ditiru dengan scaleX → seluruh gerak murni transform (GPU).
+  const set = (b) => { th.style.width = box.w + "px"; th.style.height = box.h + "px"; th.style.transform = `translate3d(${b.x}px, ${b.y}px, 0) scaleX(${b.w / box.w})`; };
   th.style.borderRadius = getComputedStyle(on).borderRadius;
   if (anim && prev && !segReduce.matches && (prev.x !== box.x || prev.w !== box.w)) {
     // daftar baru (digambar ulang): tulisan pilihan baru ikut memudar ke warna aktif, bukan langsung berganti

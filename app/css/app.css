@@ -1209,7 +1209,7 @@ button.fa-new:active, .hl-go:active { scale: .92; }
 /* pilihan bersegmen gaya iOS: jempol meluncur (lihat ui.js) */
 .seg, .fseg, .chips { position: relative; }
 .seg-th { position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none; background: var(--red); box-shadow: 0 3px 10px rgba(224, 36, 43, .32); will-change: transform;
-  transition: transform .45s cubic-bezier(.32, .72, 0, 1), width .45s cubic-bezier(.32, .72, 0, 1), opacity .15s; }
+  transform-origin: 0 0; transition: transform .45s cubic-bezier(.32, .72, 0, 1), opacity .15s; }
 .seg-th.no-tr { transition: none; }
 .has-th > button { position: relative; z-index: 1; }
 .seg.has-th > button[aria-selected="true"], .fseg.has-th > button[aria-checked="true"] { background: transparent; box-shadow: none; }

@@ -424,10 +424,10 @@ async function vSearch(type) {
 <div class="pad-nav"></div>`;
   let page = 1, items = [], seq = 0, timer = null;
   // tombol filter (angka = jumlah filter aktif) dan baris filter aktif yang bisa dihapus satu-satu
-  const drawFilters = () => {
+  const drawFilters = (keepChips = false) => {
     const n = activeCount(sState);
     $("#fltbtn").innerHTML = `<button class="flt-btn ${n ? "on" : ""}" data-act="filter" aria-label="Filter${n ? ` (${n} aktif)` : ""}">${icon("filter", 20)}${n ? `<span class="flt-n">${n}</span>` : ""}</button>`;
-    $("#tchips").innerHTML = chips(TYPES, sState.type, "type");
+    if (!keepChips || !$("#tchips .chips")) $("#tchips").innerHTML = chips(TYPES, sState.type, "type");
     const pills = [...(sState.status ? [["status", "", STATUS_NAME[sState.status]]] : []), ...sState.genres.map((g) => ["genre", g, genreName(sState.src, g)])];
     $("#factive").innerHTML = pills.length ? `<div class="fact">${pills.map(([k, v, l]) => `<button class="fpill" data-act="unf" data-k="${k}" data-v="${esc(v)}" aria-label="Hapus filter ${esc(l)}">${esc(l)}${icon("x", 13, 2.4)}</button>`).join("")}<button class="link-red sm" data-act="unall">Hapus semua</button></div>` : "";
   };
@@ -491,7 +491,9 @@ async function vSearch(type) {
   setActs({
     clear: () => { inp.value = ""; sState.q = ""; $("[data-act=clear]").hidden = true; inp.focus(); showHist(true); load(); },
     src: (el) => { if (sState.genres.length) toast("Filter genre direset karena tiap sumber punya daftar genre sendiri."); sState.src = el.dataset.v; api.lsSet("searchSrc", sState.src); sState.genres = []; pick("src", el); drawFilters(); load(); },
-    type: (el) => { sState.type = el.dataset.v; drawFilters(); load(); },
+    // chip jenis diubah di tempat (tanpa menggambar ulang barisnya) supaya pil meluncur tanpa gangguan;
+    // hasil dimuat 1 frame kemudian, setelah animasi dimulai
+    type: (el) => { sState.type = el.dataset.v; $$("#tchips .chips > button").forEach((b) => b.setAttribute("aria-pressed", String(b === el))); drawFilters(true); requestAnimationFrame(() => load()); },
     filter: () => openFilter(sState.src, sState, (f) => { sState.type = f.type; sState.status = f.status; sState.genres = f.genres; drawFilters(); load(); }),
     unf: (el) => { if (el.dataset.k === "status") sState.status = ""; else sState.genres = sState.genres.filter((g) => g !== el.dataset.v); drawFilters(); load(); },
     unall: () => { sState.status = ""; sState.genres = []; drawFilters(); load(); },
