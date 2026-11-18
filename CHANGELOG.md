@@ -5,7 +5,22 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
-## 1.6.3 — (belum dirilis global, sedang diuji di Ninokuu Dev)
+## 1.6.3 — 18 Nov 2026
+
+### Ringkasan
+<!-- 12 baris pertama ini tampil di peringatan pembaruan aplikasi; jangan lebih dari 12 -->
+- Lanjut baca 1 ketukan: lencana +N di Koleksi langsung membuka chapter berikutnya
+- Koleksi & Riwayat baru (tombol Lanjut / Berikutnya), daftar Beranda & Pencarian lebih ringkas
+- Top 10 bermedali (emas bermahkota, perak, perunggu) dan riwayat pencarian
+- Bar bawah ringkas & animasi pilihan gaya iOS, semua halaman lebih mulus
+- Hemat kuota: halaman chapter dimuat bertahap tanpa melompat, sampul versi kecil
+- Mode fullscreen, pilihan di akhir chapter, zoom cubit, tombol muat ulang di pembaca
+- Sampul gagal → logo Ninokuu + tombol muat ulang
+- Shinigami kembali bisa dibuka (server baru)
+- Menu ⋯ pembaca lebih ringkas
+- Chapter yang belum selesai lanjut dari halaman terakhir
+- Pembaca aktif di Chat dihitung realtime
+- Rincian lengkap ada di catatan rilis dan CHANGELOG.md
 
 ### Fitur baru
 - **Lanjut baca 1 ketukan.** Lencana `+N` di Koleksi langsung membuka chapter sesudah chapter terakhir yang dibaca. Kalau sudah di chapter terbaru, aplikasi hanya memberi tahu dan tidak pindah halaman.
@@ -25,8 +40,10 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 - Daftar Beranda dan Pencarian minimalis, dengan tanda hati untuk komik yang sudah ada di koleksi.
 - Menu ⋯ pembaca ringkas, kira-kira sepertiga tinggi sebelumnya.
 - Pop-up "Yang baru" memakai slide gambar (carousel) yang mengikuti jari.
+- Pilihan bersegmen (sumber, Koleksi/Riwayat/Unduhan, chip jenis, pengaturan, filter, menu pembaca) memakai "jempol" yang meluncur seperti iOS. Geraknya murni transform (GPU), dan chip tanpa garis tepi supaya tidak ada garis yang tampak saat pil lewat.
 
 ### Perbaikan
+- Sumber di Beranda dan Pencarian disamakan: memilih di salah satu ikut berlaku di yang lain.
 - Shinigami pindah ke server baru (`api.shinigami.io`, situs `s1.shinigami.mx`). Daftar komik memakai `limit/offset`, daftar chapter memakai `cursor`.
 - Gambar chapter tidak lagi melompat saat dimuat. Tinggi sementara mengikuti ukuran gambar sebelumnya, dan halaman dimuat 3 layar atau 2 halaman ke depan.
 - Animasi lebih mulus:

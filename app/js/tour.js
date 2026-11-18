@@ -16,6 +16,7 @@ export const WHATS_NEW = {
       ["Top 10 bermedali", "Peringkat 1 emas bermahkota, 2 perak, 3 perunggu."],
       ["Riwayat pencarian", "Ketuk kolom cari: 10 kata kunci terakhir muncul, bisa dihapus satu-satu atau semuanya."],
       ["Bar bawah ringkas", "Saat digulir ke bawah, bar menu mengecil jadi 1 tombol di tengah. Ketuk untuk membukanya lagi."],
+      ["Animasi gaya iOS", "Pilihan sumber, Koleksi/Riwayat/Unduhan, dan chip jenis meluncur halus ke pilihan baru."],
       ["Menu ⋯ pembaca ringkas", "Mode baca, daftar chapter, laporan, dan pilihan bacaan dalam satu panel pendek."],
       ["Hemat kuota", "Halaman chapter dimuat bertahap tanpa melompat; sampul memakai versi kecil, sampai 94% lebih ringan."],
       ["Sampul cadangan", "Sampul yang gagal dimuat diganti logo Ninokuu dengan tombol muat ulang."],
@@ -28,6 +29,7 @@ export const WHATS_NEW = {
     ],
     fixes: [
       "Shinigami kembali bisa dibuka (pindah ke server barunya).",
+      "Sumber di Beranda dan Pencarian kini selalu sama: pilih di salah satu, ikut di yang lain.",
       "Animasi lebih mulus: pindah halaman, Lainnya, dan halaman komik tidak tersendat; hiasan avatar hanya bergerak saat terlihat.",
       "Halaman komik tidak lagi berkedip saat komentar dimuat.",
       "Menu ⋯ pembaca tidak terpotong; menu bacaan langsung muncul saat layar diketuk.",
