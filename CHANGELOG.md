@@ -17,6 +17,7 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 - Menu baru di Lainnya: "Yang baru di versi ini", berisi pop-up fitur baru dan panduan bergambar yang bisa dibuka kapan saja
 - Pengguna yang sempat memasang 1.6.3 kini juga melihat panduan "Yang baru di 1.7.0"
 - Perbaikan menu ⋯ pembaca: tanda pilihan aktif (Scroll, Layar, Akhir chapter) tidak lagi hilang setelah menu ditutup lalu dibuka lagi
+- Menu ⋯ pembaca memakai kaca buram gaya iOS
 - Perbaikan kolom chat yang melompat terlalu tinggi saat keyboard muncul (tinggi keyboard kini dihitung ulang saat layar menyusut)
 - Perbaikan bar bawah saat kembali dari halaman komik/chat ke Beranda: isi halaman tidak lagi tembus di balik bar
 
