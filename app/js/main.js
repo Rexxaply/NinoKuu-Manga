@@ -410,10 +410,10 @@ async function vSearch(type) {
   if (type !== undefined) sState.type = TYPES.some((t) => t.id === type) ? type : "";
   view.innerHTML = `
 <div class="page-h"><h1>Pencarian</h1></div>
-<div class="px row g8"><label class="search grow"><span class="mu">${icon("search", 20)}</span><span class="sr">Cari judul</span>
+<div class="px row g8 s-wrap"><label class="search grow"><span class="mu">${icon("search", 20)}</span><span class="sr">Cari judul</span>
   <input id="sq" type="search" enterkeyhint="search" autocomplete="off" placeholder="Cari judul manga, manhwa, manhua…" value="${esc(sState.q)}">
   <button type="button" class="clr" data-act="clear" aria-label="Hapus pencarian" ${sState.q ? "" : "hidden"}>${icon("x", 16, 2.2)}</button></label>
-  <span id="fltbtn"></span></div>
+  <span id="fltbtn"></span><div class="sh-pop" id="shpop" role="listbox" aria-label="Pencarian terakhir"></div></div>
 <div class="sec s14">${seg(SOURCES, sState.src, "src")}</div>
 <div class="px mt10" id="tchips"></div>
 <div class="px" id="factive"></div>
@@ -452,18 +452,43 @@ async function vSearch(type) {
     } catch (e) { if (my === seq && $("#sres")) $("#sres").innerHTML = errBox(e); }
   };
   const inp = $("#sq");
+  // Riwayat pencarian: 10 kata kunci terakhir (disimpan di HP). Muncul di bawah kolom cari saat kolomnya
+  // diketuk dan masih kosong. Disimpan saat Enter, saat memilih hasil, atau saat meninggalkan halaman.
+  const HK = "searchHist";
+  const shList = () => { const h = api.lsGet(HK); return Array.isArray(h) ? h : []; };
+  const saveQ = (q) => { q = String(q || "").trim(); if (q.length < 2) return; api.lsSet(HK, [q, ...shList().filter((x) => x.toLowerCase() !== q.toLowerCase())].slice(0, 10)); };
+  const pop = $("#shpop");
+  const drawHist = () => {
+    const h = shList();
+    pop.innerHTML = h.length ? `<div class="shp-h"><span class="cap">Pencarian terakhir</span><button type="button" class="link-red sm" data-shall>Hapus semua</button></div>
+      ${h.map((q) => `<div class="shp-row" role="option"><button type="button" class="shp-q" data-sh="${esc(q)}"><span class="mu">${icon("clock", 16)}</span><span class="t1">${esc(q)}</span></button><button type="button" class="shp-x" data-shx="${esc(q)}" aria-label="Hapus ${esc(q)} dari riwayat">${icon("x", 14, 2.2)}</button></div>`).join("")}` : "";
+    return h.length > 0;
+  };
+  const showHist = (on) => pop.classList.toggle("on", on && document.activeElement === inp && !inp.value && drawHist());
+  pop.addEventListener("pointerdown", (e) => e.preventDefault());          // kolom cari tetap fokus saat panel diketuk
+  pop.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-sh], [data-shx], [data-shall]"); if (!b) return;
+    e.preventDefault(); e.stopPropagation();
+    if (b.dataset.sh != null) { const q = b.dataset.sh; inp.value = q; sState.q = q; saveQ(q); $("[data-act=clear]").hidden = false; pop.classList.remove("on"); inp.blur(); load(); }
+    else if (b.dataset.shx != null) { api.lsSet(HK, shList().filter((x) => x !== b.dataset.shx)); showHist(true); }
+    else { api.lsSet(HK, []); pop.classList.remove("on"); }
+  });
+  inp.addEventListener("focus", () => showHist(true));
+  inp.addEventListener("blur", () => pop.classList.remove("on"));
+  $("#sres").addEventListener("click", (e) => { if (e.target.closest("a") && sState.q) saveQ(sState.q); });
   inp.addEventListener("input", () => {
     const v = inp.value.trim();
+    showHist(true);
     $("[data-act=clear]").hidden = !inp.value;
     clearTimeout(timer);
     if (v === sState.q) return;
     timer = setTimeout(() => { sState.q = v; load(); }, 400);
   });
-  inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); clearTimeout(timer); sState.q = inp.value.trim(); inp.blur(); load(); } });
-  cleanup = () => clearTimeout(timer);
+  inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); clearTimeout(timer); sState.q = inp.value.trim(); saveQ(sState.q); inp.blur(); load(); } });
+  cleanup = () => { clearTimeout(timer); if (sState.q && items.length) saveQ(sState.q); };
   const pick = (act, el) => $$(`[data-act=${act}]`).forEach((b) => b.setAttribute(b.parentElement.classList.contains("chips") ? "aria-pressed" : "aria-selected", String(b === el)));
   setActs({
-    clear: () => { inp.value = ""; sState.q = ""; $("[data-act=clear]").hidden = true; inp.focus(); load(); },
+    clear: () => { inp.value = ""; sState.q = ""; $("[data-act=clear]").hidden = true; inp.focus(); showHist(true); load(); },
     src: (el) => { if (sState.genres.length) toast("Filter genre direset karena tiap sumber punya daftar genre sendiri."); sState.src = el.dataset.v; api.lsSet("searchSrc", sState.src); sState.genres = []; pick("src", el); drawFilters(); load(); },
     type: (el) => { sState.type = el.dataset.v; drawFilters(); load(); },
     filter: () => openFilter(sState.src, sState, (f) => { sState.type = f.type; sState.status = f.status; sState.genres = f.genres; drawFilters(); load(); }),
@@ -1379,7 +1404,7 @@ function vFav(tab) {
     const badge = fresh ? `<button class="fa-new" type="button" data-next data-src="${esc(m.source)}" data-id="${esc(m.comic_id)}" data-ch="${esc(r?.chapter_id || "")}" data-n="${esc(r?.chapter ?? "")}" aria-label="Baca chapter berikutnya (${gap > 0 ? gap + " chapter baru" : "chapter baru"})">${gap > 0 ? "+" + gap : "Baru"}${icon("play", 11, 2.6)}</button>` : r && m.latest != null && R >= L ? `<span class="fa-ok" title="Sudah terbaru">${icon("check", 14, 2.4)}</span>` : "";
     return `<a class="fa-row" href="${comicHref(m.source, m.comic_id)}">${cover(m.cover, m.title, "sm")}<span class="fa-mid">
       <b class="fa-t">${esc(m.title)}</b>
-      <span class="fa-meta"><i class="fa-dot s-${esc(m.source)}"></i>${srcType(m)}${m.notify ? `<span class="gold fa-bell" title="Notifikasi aktif">${icon("bellF", 11)}</span>` : ""}<span class="fa-sep">·</span><span class="fa-ch">${chTxt}</span></span>
+      <span class="fa-meta"><i class="fa-dot s-${esc(m.source)}"></i><span class="fa-src">${srcType(m)}</span>${m.notify ? `<span class="gold fa-bell" title="Notifikasi aktif">${icon("bellF", 11)}</span>` : ""}<span class="fa-sep">·</span><span class="fa-ch">${chTxt}</span></span>
       <span class="fa-bar"><i style="width:${pctRead}%"></i></span>
     </span>${badge}</a>`;
   };

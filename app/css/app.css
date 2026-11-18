@@ -1185,3 +1185,22 @@ button.fa-new:active, .hl-go:active { scale: .92; }
 .hl-go.nx { background: rgba(224, 36, 43, .16); color: var(--redt); padding-right: 9px; }
 .fa-new.busy, .hl-go.busy { opacity: .6; pointer-events: none; }
 .fa-new.busy svg, .hl-go.busy svg { animation: spinb .8s linear infinite; }
+
+/* riwayat pencarian: panel melayang di bawah kolom cari (tidak menggeser isi halaman) */
+.s-wrap { position: relative; z-index: 6; }
+.sh-pop { position: absolute; left: 18px; right: 18px; top: calc(100% + 8px); max-height: min(360px, 50vh); overflow-y: auto; overscroll-behavior: contain; padding: 6px; border-radius: 18px;
+  background: #121824; border: 1px solid var(--line); box-shadow: 0 16px 40px rgba(0, 0, 0, .5);
+  opacity: 0; transform: translateY(-6px) scale(.98); transform-origin: top center; pointer-events: none; visibility: hidden;
+  transition: opacity .16s ease-out, transform .22s cubic-bezier(.32, .72, 0, 1), visibility 0s linear .22s; }
+.sh-pop.on { opacity: 1; transform: none; pointer-events: auto; visibility: visible; transition: opacity .16s ease-out, transform .22s cubic-bezier(.32, .72, 0, 1), visibility 0s; }
+.shp-h { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px 4px 10px; }
+.shp-h .cap { margin: 0; }
+.shp-row { display: flex; align-items: center; border-radius: 12px; }
+.shp-row:active { background-color: rgba(255, 255, 255, .05); }
+.shp-q { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 0 10px; text-align: left; font-size: 14px; }
+.shp-x { flex: none; width: 40px; height: 40px; display: grid; place-items: center; color: var(--mu); border-radius: 12px; }
+.shp-x:active { background-color: rgba(255, 255, 255, .06); }
+
+/* teks sumber yang panjang memendek (…), chapter & lonceng selalu utuh */
+.fa-src { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.fa-bell, .fa-sep, .fa-ch, .fa-dot { flex: none; }
