@@ -832,6 +832,8 @@ async function vReader(src, id, chId) {
   const showZoom = () => { const z = $("#rzoom"); z.hidden = zoom <= 1.02; $("#rzt").textContent = Math.round(zoom * 100) + "%"; };
   // Zoom memperbesar LEBAR gambar (bukan CSS zoom) → geser kiri-kanan & gulir tetap mulus untuk
   // manga, manhwa, maupun manhua (strip panjang). Mode gulir: seluruh halaman; mode slide: halaman yang tampil.
+  // halaman panjang (manhwa/manhua) vs halaman pendek (manga): batas & tingkat zoom berbeda
+  const ZMAX = longStrip ? 3 : 4, ZTAP = longStrip ? 2 : 2.5;
   const zTarget = () => (slide ? $$(".r-slide", box)[curPage - 1]?.querySelector(".r-img") : pages);
   function clearZoom() {
     if (zEl) {
@@ -842,7 +844,7 @@ async function vReader(src, id, chId) {
     zoom = 1; zEl = null; rd.classList.remove("zoomed"); showZoom();
   }
   const applyZoom = (z, fx, fy) => {
-    z = Math.max(1, Math.min(4, z));
+    z = Math.max(1, Math.min(ZMAX, z));
     const el = zTarget(); if (!el) return;
     if (zEl && zEl !== el) clearZoom();
     if (!zEl) { if (z <= 1.01) return; zEl = el; zBase = el.getBoundingClientRect().width; zoom = 1; }
@@ -866,7 +868,7 @@ async function vReader(src, id, chId) {
     if (e.target.closest("a,button")) return;
     const now = Date.now();
     if (lastTap && now - lastTap.t < 320 && Math.hypot(lastTap.x - e.clientX, lastTap.y - e.clientY) < 50) {
-      clearTimeout(tapT); setUi(lastTap.was); lastTap = null; applyZoom(zoom > 1.05 ? 1 : 2.5, e.clientX, e.clientY);
+      clearTimeout(tapT); setUi(lastTap.was); lastTap = null; applyZoom(zoom > 1.05 ? 1 : ZTAP, e.clientX, e.clientY);
     } else {
       const was = rd.classList.contains("ui");
       setUi(!was);
@@ -874,22 +876,50 @@ async function vReader(src, id, chId) {
       clearTimeout(tapT); tapT = setTimeout(() => { lastTap = null; }, 320);
     }
   });
-  // cubit untuk memperbesar (mode gulir)
-  // Penahan gulir (touchmove non-pasif) hanya dipasang selama dua jari menempel. Dengan satu jari tidak ada
-  // penahan sama sekali, jadi gulir ditangani langsung oleh sistem dan tidak bisa "macet".
+  // Cubit untuk memperbesar. Selama dua jari menempel, gambar diperbesar dengan transform (GPU, mulus) dan
+  // ikut bergeser mengikuti titik tengah kedua jari (cubit di kiri lalu geser ke kanan → gambar ikut).
+  // Saat jari dilepas, hasilnya dikunci menjadi zoom lebar biasa supaya bisa digeser/digulir dengan satu jari.
+  // Penahan gulir (touchmove non-pasif) hanya dipasang selama dua jari menempel, jadi gulir satu jari tidak "macet".
   let pinch = null;
+  const pinchPaint = () => {
+    if (!pinch) return;
+    pinch.raf = 0;
+    pinch.el.style.transform = `translate3d(${pinch.dx}px, ${pinch.dy}px, 0) scale(${pinch.s})`;
+    $("#rzt").textContent = Math.round(pinch.z * pinch.s * 100) + "%"; $("#rzoom").hidden = pinch.z * pinch.s <= 1.02;
+  };
   const pinchMove = (e) => {
     if (!pinch || e.touches.length !== 2) return;
     const [a, b] = e.touches, dd = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-    if (!pinch.on && Math.abs(dd - pinch.d) < 12) return;          // dua jari tapi belum mencubit → biarkan bergulir
-    pinch.on = true; e.preventDefault();
-    applyZoom(pinch.z * (dd / pinch.d), pinch.x, pinch.y);
+    const mx = (a.clientX + b.clientX) / 2, my = (a.clientY + b.clientY) / 2;
+    if (!pinch.on && Math.abs(dd - pinch.d) < 10) return;          // dua jari tapi belum mencubit → biarkan bergulir
+    e.preventDefault();
+    if (!pinch.on) {
+      pinch.on = true;
+      const el = zTarget(); if (!el) { pinch = null; return; }
+      const r = el.getBoundingClientRect();
+      pinch.el = el; el.style.transformOrigin = `${pinch.x - r.left}px ${pinch.y - r.top}px`; el.style.willChange = "transform";
+    }
+    const z = Math.max(1, Math.min(ZMAX, pinch.z * (dd / pinch.d)));
+    pinch.s = z / pinch.z;
+    // geser ikut jari, diredam sedikit supaya tetap mudah dikendalikan
+    pinch.dx = (mx - pinch.x) * 0.9; pinch.dy = (my - pinch.y) * 0.9;
+    if (!pinch.raf) pinch.raf = requestAnimationFrame(pinchPaint);
   };
-  const pinchEnd = (e) => { if (e.touches.length < 2 && pinch) { pinch = null; box.removeEventListener("touchmove", pinchMove); } };
+  const pinchEnd = (e) => {
+    if (e.touches.length >= 2 || !pinch) return;
+    const p = pinch; pinch = null; box.removeEventListener("touchmove", pinchMove);
+    if (!p.on) return;
+    cancelAnimationFrame(p.raf);
+    p.el.style.transform = p.el.style.transformOrigin = p.el.style.willChange = "";
+    applyZoom(p.z * p.s, p.x, p.y);
+    const sc = slide ? zTarget()?.parentElement : box;
+    if (sc && zoom > 1.01) { sc.scrollLeft -= p.dx; sc.scrollTop -= p.dy; }
+    showZoom();
+  };
   box.addEventListener("touchstart", (e) => {
     if (e.touches.length !== 2 || pinch) return;
     const [a, b] = e.touches;
-    pinch = { d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1, z: zoom, x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2, on: false };
+    pinch = { d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1, z: zoom, x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2, on: false, s: 1, dx: 0, dy: 0, raf: 0, el: null };
     box.addEventListener("touchmove", pinchMove, { passive: false });
   }, { passive: true });
   box.addEventListener("touchend", pinchEnd, { passive: true });
@@ -1204,10 +1234,10 @@ function vFav(tab) {
   <div class="mu xs info">${libAll.length ? `${lib.length} dari ${libAll.length} judul · ${esc(FAV_SORTS.find(([k]) => k === fs)[1])} · ${S.loggedIn() ? "tersinkron" : "tersimpan di HP ini"}` : ""}</div>
   ${!lib.length ? (libAll.length ? `<div class="empty"><b>Tidak ada yang cocok</b><span>Ubah kata kunci atau filter.</span></div>`
       : `<div class="empty"><span class="empty-ic">${icon("heart", 24)}</span><b>Koleksi masih kosong</b><span>Ketuk ikon hati di halaman komik untuk menyimpannya di sini.</span><a class="btn ghost" href="#/search">Cari komik</a></div>`)
-    : grid ? `<div class="g2">${lib.map((m) => { const r = readOf(m); return `<a class="grid-card" href="${comicHref(m.source, m.comic_id)}"><span class="gc-cv">${cover(m.cover, m.title, "tall")}
+    : grid ? `<div class="g3 favg">${lib.map((m) => { const r = readOf(m); return `<a class="grid-card" href="${comicHref(m.source, m.comic_id)}"><span class="gc-cv">${cover(m.cover, m.title, "fav3")}
         <span class="stack">${m.latest != null ? `<span class="st-red">Terbaru ${esc(m.latest)}</span>` : ""}<span class="st-dark">${r ? "Dibaca " + esc(r.chapter) : "Belum dibaca"}</span></span>
         ${isNew(m) ? `<span class="new-up">NEW UPDATE</span>` : ""}${m.notify ? `<span class="bell-b">${icon("bellF", 12)}</span>` : ""}</span>
-        <b class="t2 b14">${esc(m.title)}</b><span class="mu xs">${srcType(m)}</span></a>`; }).join("")}</div>`
+        <b class="fg-t">${esc(m.title)}</b><span class="mu xs">${srcType(m)}</span></a>`; }).join("")}</div>`
     : `<div class="rows">${lib.map((m) => { const r = readOf(m); return lrow(comicHref(m.source, m.comic_id), cover(m.cover, m.title, "fav"),
         `<span class="row g8 minw0"><span class="t1 b15">${esc(m.title)}</span>${isNew(m) ? `<span class="new-up s">NEW UPDATE</span>` : ""}${m.notify ? `<span class="gold flex">${icon("bellF", 13)}</span>` : ""}</span>`,
         `<span class="row g6 wrap">${m.latest != null ? `<span class="pill">Terbaru Ch. ${esc(m.latest)}</span>` : ""}<span class="pill dim">${r ? "Dibaca Ch. " + esc(r.chapter) : "Belum dibaca"}</span></span><span class="mu xs block mt4">${srcType(m)}</span>`); }).join("")}</div>`}`;
