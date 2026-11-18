@@ -236,6 +236,11 @@ body[data-screen="reader"] { background: #0A0A0A; overflow: hidden; }
   background: linear-gradient(180deg, rgba(0, 0, 0, .78), rgba(0, 0, 0, .45) 45%, rgba(0, 0, 0, .12) 80%, transparent);
   transition: transform .38s cubic-bezier(.32, .72, 0, 1), opacity .3s ease; }
 .reader:not(.ui)::before { transform: translateY(-100%); opacity: 0; }
+/* gradasi bawah: di belakang bar halaman & tombol bawah (dan bilah navigasi HP), turun bersama bar saat disembunyikan */
+.reader::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; height: calc(env(safe-area-inset-bottom) + 170px); pointer-events: none;
+  background: linear-gradient(0deg, rgba(0, 0, 0, .8), rgba(0, 0, 0, .5) 40%, rgba(0, 0, 0, .14) 78%, transparent);
+  transition: transform .38s cubic-bezier(.32, .72, 0, 1), opacity .3s ease; }
+.reader:not(.ui)::after { transform: translateY(100%); opacity: 0; }
 .reader:not(.ui) .r-top > * { opacity: 0; transform: translateY(-90px); pointer-events: none; }
 .reader:not(.ui) .r-seek, .reader:not(.ui) .r-btns > * { opacity: 0; transform: translateY(90px); pointer-events: none; }
 .r-round { width: 52px; height: 52px; flex: none; border-radius: 50%; display: grid; place-items: center; color: var(--tx); }
