@@ -1662,7 +1662,7 @@ if (!N.isApp && "serviceWorker" in navigator && location.protocol === "https:") 
   // pembaca aktif realtime (Presence); kunci = akun, tersambung ulang saat masuk/keluar akun
   O.start({ url: api.SB_URL, apikey: api.SB_KEY, userKey: () => api.userId() });
   { let last = api.userId(); api.onAuth(() => { const u = api.userId(); if (u !== last) { last = u; O.restart(); } }); }
-  // pop-up "Yang baru" sekali setelah pembaruan (Dev: sekali per build)
+  // pop-up "Yang baru" sekali setelah pembaruan (Dev: sekali setiap isi changelog berubah)
   T.maybeShow({ version: VERSION, build: N.BUILD, dev: N.DEV, go });
   X.startDaily();
   DL.start();

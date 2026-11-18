@@ -10,30 +10,34 @@ import { esc, icon } from "./ui.js";
 export const WHATS_NEW = {
   "1.6.3": {
     title: "Yang baru di Ninokuu 1.6.3",
-    intro: "Membaca jadi lebih nyaman: lanjut dari halaman terakhir, layar penuh, urutan daftar, dan pengaturan baru.",
+    intro: "Lebih hemat kuota, membaca lebih nyaman, dan aplikasi terasa lebih responsif saat disentuh.",
     features: [
+      ["Hemat kuota", "Halaman chapter dimuat bertahap saat mendekati layar (sebelumnya seluruh chapter sekaligus). Sampul di daftar memakai versi kecil, sampai 94% lebih ringan."],
       ["Lanjut dari halaman terakhir", "Keluar di halaman 12/48, buka lagi chapter itu → langsung ke halaman 12."],
-      ["Urutkan Beranda & Koleksi", "Beranda: Update terbaru, Populer, Judul A-Z/Z-A, Rating (sesuai sumber). Koleksi: Update terbaru, Terakhir ditambah, Judul A-Z/Z-A."],
-      ["Mode fullscreen", "Pilih Mode standar atau Mode fullscreen di Pengaturan. Mode fullscreen: bilah status HP ikut menu bacaan, tampil bersama menu dan hilang saat menu disembunyikan."],
-      ["Muat ulang gambar yang gagal", "Halaman yang gagal dimuat punya tombol muat ulang; dicoba lagi otomatis saat internet kembali."],
-      ["Pilihan di akhir chapter", "Tampilkan menu (bawaan) atau Otomatis lanjut: sampai di akhir chapter, chapter berikutnya terbuka sendiri."],
-      ["Pengaturan baru", "Mode efek avatar dan pilihan bacaan dikumpulkan di Lainnya → Pengaturan, juga di menu ⋯ saat membaca."],
+      ["Zoom cubit lebih mulus", "Gambar mengikuti jari saat dicubit dan digeser. Manhwa/manhua maks. 300%, manga 400%."],
+      ["Tombol muat ulang di atas", "Ikon muat ulang di bar atas pembaca; titik merah bila ada gambar yang gagal dimuat."],
+      ["Mode fullscreen", "Lainnya → Pengaturan → Tampilan layar. Bilah status HP ikut menu bacaan: muncul bersama menu, hilang saat menu disembunyikan."],
+      ["Pilihan di akhir chapter", "Tampilkan menu (bawaan) atau Otomatis lanjut ke chapter berikutnya (bisa dibatalkan)."],
+      ["Urutkan Beranda & Koleksi", "Beranda: Update terbaru, Populer, Judul A-Z/Z-A, Rating (sesuai sumber), 15 judul per muatan. Koleksi: grid 3 kolom, label Terbaru muncul sendiri."],
+      ["Pembaca aktif sungguhan", "Angka di Chat publik menghitung orang yang sedang membuka Ninokuu saat ini, realtime."],
+      ["Lebih responsif disentuh", "Tombol dan kartu langsung bereaksi saat disentuh; lembar bawah bisa digeser turun untuk menutup."],
+      ["Pengaturan baru", "Mode efek avatar dan pilihan bacaan di Lainnya → Pengaturan, juga di menu ⋯ saat membaca."],
       ["Posisi daftar tersimpan", "Kembali dari halaman komik, Beranda dan Pencarian tetap di posisi terakhir."],
-      ["Martial Peak & komik ribuan chapter", "Daftar chapter lengkap sampai chapter 1, sisanya dimuat di belakang layar."],
-      ["Reset password di ninokuu.site", "Tautan lupa password membuka halaman baru dengan tombol kembali ke aplikasi."],
+      ["Komik ribuan chapter & reset password", "Daftar chapter lengkap sampai chapter 1. Lupa password membuka ninokuu.site dengan tombol kembali ke aplikasi."],
     ],
     fixes: [
-      "Menu bacaan langsung muncul saat layar diketuk (sebelumnya tertunda).",
-      "Menu bacaan sembunyi otomatis setelah digulir ±40 px, tidak perlu gulir cepat.",
+      "Menu bacaan langsung muncul saat layar diketuk, dan sembunyi setelah digulir ±40 px.",
+      "Menu ⋯ pembaca tidak lagi terpotong.",
+      "Label Terbaru di Koleksi tidak perlu membuka komiknya dulu; judul grid maksimal 2 baris.",
       "File CBZ/ZIP besar bisa dibuka; pesan error menyebut alasan sebenarnya.",
     ],
     tour: [
-      { hash: "#/home", sel: "[data-act=hsort]", title: "Urutkan Beranda", text: "Pilih urutan daftar: Update terbaru, Populer, Judul A-Z/Z-A, atau Rating (pilihan menyesuaikan sumber)." },
-      { hash: "#/home", sel: "#upd", title: "15 judul per muatan", text: "Daftar tampil 3 × 5. Gulir ke bawah, judul berikutnya dimuat otomatis. Posisinya tetap saat kamu kembali." },
-      { hash: "#/fav", sel: "[data-act=fsort]", title: "Urutkan koleksi", text: "Update terbaru, Terakhir ditambah, Judul A-Z, atau Judul Z-A." },
+      { hash: "#/home", sel: "[data-act=hsort]", title: "Urutkan Beranda", text: "Update terbaru, Populer, Judul A-Z/Z-A, atau Rating (pilihan menyesuaikan sumber)." },
+      { hash: "#/home", sel: "#upd", title: "15 judul per muatan", text: "Gulir ke bawah, judul berikutnya dimuat otomatis. Posisinya tetap saat kamu kembali." },
+      { hash: "#/fav", sel: "[data-act=fsort]", title: "Urutkan koleksi", text: "Update terbaru, Terakhir ditambah, Judul A-Z, atau Judul Z-A. Label Terbaru muncul sendiri." },
       { hash: "#/more", sel: "[data-act=settings]", title: "Pengaturan", text: "Mode efek avatar dan pilihan bacaan sekarang ada di sini." },
       { hash: "#/p/settings", sel: "#setRead", title: "Pilihan bacaan", text: "Sembunyikan menu otomatis, Mode standar/fullscreen, dan pilihan di akhir chapter. Juga ada di menu ⋯ saat membaca." },
-      { hash: null, sel: null, title: "Saat membaca", text: "Buka lagi chapter yang belum selesai → langsung ke halaman terakhir. Gambar gagal? Ketuk tombol muat ulang di halaman itu." },
+      { hash: null, sel: null, title: "Saat membaca", text: "Chapter yang belum selesai lanjut dari halaman terakhir. Ikon muat ulang ada di bar atas. Cubit untuk zoom, gambar mengikuti jari. Halaman dimuat bertahap supaya hemat kuota." },
     ],
   },
 };
@@ -43,11 +47,13 @@ const seen = () => { try { return localStorage.getItem(SEEN) || ""; } catch { re
 const markSeen = (v) => { try { localStorage.setItem(SEEN, v); } catch {} };
 
 // Panggil sekali saat aplikasi dibuka. Global: hanya setelah memperbarui dari versi lama (bukan pemasangan baru).
-// Dev: sekali per build, termasuk pemasangan baru, supaya bisa diuji.
+// Dev: sekali setiap isi changelog berubah, termasuk pemasangan baru, supaya bisa diuji.
+// Dev: muncul lagi hanya bila ISI changelog berubah (bukan setiap build), supaya isinya bisa dicek tanpa berulang.
+const hashOf = (o) => { let h = 0; const t = JSON.stringify(o || ""); for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
 export function maybeShow(ctx) {
-  const { version, build, dev } = ctx;
+  const { version, dev } = ctx;
   const info = WHATS_NEW[version];
-  const key = dev ? `${version}-dev${build}` : version;
+  const key = dev ? `${version}-dev-${hashOf(info)}` : version;
   const before = seen();
   if (before === key) return;
   markSeen(key);
