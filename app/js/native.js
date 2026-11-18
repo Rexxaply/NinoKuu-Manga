@@ -86,12 +86,22 @@ export function imgAttrs(url, { ref = "", px = "" } = {}) {
   const d = p.d || (/^https:\/\//i.test(p.src) ? p.src : ""), r = p.ref || ref, x = p.px || px;
   return `src="${e(p.src)}"${d ? ` data-d="${e(d)}"` : ""}${r ? ` data-ref="${e(r)}"` : ""}${x ? ` data-px="${e(x)}"` : ""}`;
 }
+// Situs gambar yang terbukti menolak dimuat langsung oleh WebView: halaman berikutnya langsung lewat jaringan HP,
+// tanpa menunggu percobaan langsung gagal dulu (itu yang membuat jeda sebelum gambar muncul).
+const nativeHosts = new Set();
+const hostOf = (u) => { try { return new URL(u).hostname; } catch { return ""; } };
+export const nativeFirst = (u) => isApp && !!u && nativeHosts.has(hostOf(u));
 // gambar langsung gagal: APK → ambil lewat jaringan HP (dengan Referer, tanpa Supabase); lalu proxy; lalu menyerah
 export async function imgFallback(im) {
   const st = Number(im.dataset.fb || 0);
   im.dataset.fb = String(st + 1);
   if (st === 0 && isApp && im.dataset.d) {
-    try { im.src = await imageViaNative(im.dataset.d, im.dataset.ref || ""); return true; } catch {}
+    try {
+      im.src = await imageViaNative(im.dataset.d, im.dataset.ref || "");
+      const h = hostOf(im.dataset.d);
+      if (h && !nativeHosts.has(h)) { nativeHosts.add(h); logDev("img", `${h} menolak dimuat langsung; halaman berikutnya langsung lewat jaringan HP`); }
+      return true;
+    } catch {}
   }
   if (st <= 1 && im.dataset.px && im.getAttribute("src") !== im.dataset.px) { im.dataset.fb = "2"; im.src = im.dataset.px; return true; }
   return false;

@@ -1001,12 +1001,30 @@ async function vReader(src, id, chId) {
   // dan otomatis dicoba lagi saat internet tersambung kembali
   const failed = new Set();
   $$(".r-img", rd).forEach((im) => { im.dataset.o = im.getAttribute("src") || im.dataset.src || ""; });
-  // muat halaman yang mendekati layar: ±1,5 layar ke depan/belakang (mode slide: 1 halaman ke kiri/kanan)
-  const loadImg = (im) => { if (im.dataset.src) { im.src = im.dataset.src; delete im.dataset.src; } };
-  const lazyIo = new IntersectionObserver((es) => es.forEach((x) => { if (x.isIntersecting) { loadImg(x.target); lazyIo.unobserve(x.target); } }),
-    { root: box, rootMargin: slide ? "0px 100%" : "150% 0px" });
+  // muat halaman yang mendekati layar: 3 layar ke depan, 1 layar ke belakang (mode slide: 1 halaman ke kiri/kanan),
+  // supaya saat digulir gambar berikutnya sudah siap tanpa jeda, tapi tetap tidak mengunduh seluruh chapter
+  const loadImg = (im) => {
+    const u = im.dataset.src; if (!u) return;
+    delete im.dataset.src; im.dataset.t0 = String(Date.now());
+    if (N.nativeFirst(im.dataset.d)) { im.dataset.fb = "1"; N.imageViaNative(im.dataset.d, im.dataset.ref || "").then((b) => { im.src = b; }, () => { im.src = u; }); }
+    else im.src = u;
+  };
+  let slowLogged = 0;
+  // selain jarak 3 layar, 2 halaman sesudah halaman yang mulai dimuat ikut diunduh (halaman manhwa bisa sangat panjang)
+  const loadNear = (im) => { const i = Number(im.dataset.i); [i, i + 1, i + 2].forEach((k) => { const x = $(`.r-img[data-i="${k}"]`, rd); if (x?.dataset.src) { loadImg(x); lazyIo.unobserve(x); } }); };
+  const lazyIo = new IntersectionObserver((es) => es.forEach((x) => { if (x.isIntersecting) loadNear(x.target); }),
+    { root: box, rootMargin: slide ? "0px 100%" : "100% 0px 300% 0px" });
   $$(".r-img[data-src]", rd).forEach((im) => lazyIo.observe(im));
-  rd.addEventListener("load", (e) => { if (e.target.classList?.contains("r-img")) e.target.classList.remove("wait"); }, true);
+  // Tinggi sementara halaman yang belum dimuat = rasio gambar terakhir yang sudah tampil (halaman satu chapter
+  // biasanya sama ukurannya), bukan 1 layar penuh. Jadi saat gambar datang, isi layar hampir tidak bergeser.
+  rd.addEventListener("load", (e) => {
+    const im = e.target; if (!im.classList?.contains("r-img")) return;
+    im.classList.remove("wait");
+    // Log error (Dev): catat halaman yang lama sekali dimuat, untuk mencari sumber jeda
+    const ms = im.dataset.t0 ? Date.now() - Number(im.dataset.t0) : 0;
+    if (ms > 2500 && slowLogged++ < 5) N.logDev("img", `halaman ${im.dataset.i} dimuat ${(ms / 1000).toFixed(1)} dtk`, `${src} · ${(im.currentSrc || "").slice(0, 120)}`);
+    if (!slide && im.naturalWidth > 0) rd.style.setProperty("--ar", String(im.naturalWidth / im.naturalHeight));
+  }, true);
   // tombol muat ulang di bar atas: titik merah = ada gambar yang gagal
   const paintFail = () => { const el = $("#rfdot"); if (el) el.hidden = !failed.size; const b = $("[data-act=reload]", rd); if (b) b.setAttribute("aria-label", failed.size ? `Muat ulang ${failed.size} gambar yang gagal` : "Muat ulang chapter"); };
   const markFail = (im) => {
