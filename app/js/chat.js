@@ -340,22 +340,19 @@ function annCard(a) {
 /* ---------- Panel developer ---------- */
 // Panduan (khusus developer): domain situs sumber pindah → ganti alamat sampai jadi APK lagi.
 const gh = (path, label) => `<a href="https://github.com/Rexxaply/NinoKuu-Manga/${path}" target="_blank" rel="noopener">${label}</a>`;
+const step = (n, t, hint = "") => `<li><span class="gs-n">${n}</span><span class="gs-t"><b>${t}</b>${hint ? `<span class="mu xs">${hint}</span>` : ""}</span></li>`;
 const SITE_GUIDE = `<section class="col g10"><h2 class="cap m0">Panduan</h2>
-<details class="card guide"><summary><b>Situs sumber pindah alamat</b><span class="mu xs">Langkah dari ganti alamat sampai jadi APK lagi</span></summary>
-<div class="guide-b">
-<p><b>1. Cari alamat baru.</b> Buka situs lama di browser; biasanya langsung dialihkan ke alamat baru. Salin bagian depannya saja, mis. <code>https://v8.kiryuu.to</code> (tanpa garis miring di akhir). Untuk server data (mis. Shinigami <code>api.shngm.io</code>): buka situsnya di browser PC → F12 → tab <b>Network</b> → lihat alamat yang dipakai saat daftar komik dimuat.</p>
-<p><b>2A. Komiku &amp; Kiryuu — tanpa kode.</b> Supabase → project <b>ninokuu</b> → Edge Functions → <b>Secrets</b>. Isi / ubah lalu Save:</p>
-<ul><li><code>KOMIKU_SITE</code> · mis. <code>https://komiku.org</code></li><li><code>KOMIKU_API</code> · mis. <code>https://api.komiku.org</code></li><li><code>KIRYUU_SITE</code> · mis. <code>https://v8.kiryuu.to</code></li></ul>
-<p>Berlaku untuk global &amp; Dev sekaligus, tanpa APK baru. Belum berubah setelah beberapa menit → Edge Functions → <b>ninokuu-api</b> → Deploy sekali.</p>
-<p><b>2B. Shinigami &amp; WestManga — ubah 1 baris kode</b> (di APK keduanya diambil langsung dari HP).</p>
-<ul><li>GitHub → ${gh("blob/main/app/js/native.js", "app/js/native.js")} → ikon pensil (Edit). Pilih branch <code>dev</code> bila ingin diuji di Ninokuu Dev dulu.</li>
-<li>Shinigami: baris <code>const API = "https://api.shngm.io", SITE = "https://…";</code></li>
-<li>WestManga: baris <code>const SITES = ["https://v1.westmanga.my", …];</code></li>
-<li>Ganti alamat di dalam tanda kutip saja. Server juga punya secret <code>SHNGM_SITE</code>, <code>SHNGM_API</code>, <code>WEST_SITE</code>: isi juga dengan alamat yang sama.</li></ul>
-<p><b>3. Naikkan versi</b> (hanya untuk global / branch <code>main</code>). Edit ${gh("blob/main/VERSION", "VERSION")}: naikkan angka terakhir, mis. <code>1.6.3</code> → <code>1.6.4</code>. Tanpa ini APK global tidak dibangun ulang (versi web tetap ter-update).</p>
-<p><b>4. Commit changes.</b> GitHub Actions membangun sendiri: ${gh("actions", "tab Actions")} → <b>Build APK</b> (global) atau <b>Build Ninokuu Dev</b> (dev), ±3–5 menit. Tanda centang hijau = selesai; silang merah = buka lalu baca baris error-nya.</p>
-<p><b>5. Pasang &amp; cek.</b> Aplikasi menawarkan pembaruan sendiri (Lainnya → Versi aplikasi). APK juga bisa diunduh langsung:<br>global ${gh("releases/download/apk-terbaru/ninokuu.apk", "ninokuu.apk")} · Dev ${gh("releases/download/apk-dev/ninokuu-dev.apk", "ninokuu-dev.apk")}.<br>Buka sumber yang diganti: daftar komik tampil → beres. Masih gagal → Ninokuu Dev → Lainnya → Log error → salin.</p>
-</div></details></section>`;
+<details class="card guide"><summary><b>Situs sumber pindah alamat</b><span class="mu xs">Komiku & Kiryuu: langkah 1–2 · Shinigami & WestManga: langkah 1, 3–6</span></summary>
+<ol class="gsteps">
+${step(1, "Cari alamat baru", "Buka situs lama di browser → salin alamat barunya, mis. <code>https://v8.kiryuu.to</code>")}
+${step(2, "Komiku / Kiryuu: ganti di Supabase → selesai", "Supabase → ninokuu → Edge Functions → Secrets → ubah <code>KOMIKU_SITE</code> atau <code>KIRYUU_SITE</code> → Save. Tidak perlu APK baru.")}
+${step(3, "Shinigami / WestManga: ganti di GitHub", `Buka ${gh("blob/main/app/js/native.js", "app/js/native.js")} → ✏️ Edit → ganti alamat di dalam tanda kutip (cari <code>shinigami</code> atau <code>westmanga</code>)`)}
+${step(4, "Naikkan versi", `Buka ${gh("blob/main/VERSION", "VERSION")} → ✏️ Edit → angka terakhir +1, mis. <code>1.6.3</code> → <code>1.6.4</code>`)}
+${step(5, "Commit, tunggu APK jadi", `Tekan <b>Commit changes</b> → ${gh("actions", "tab Actions")} → tunggu centang hijau (±5 menit)`)}
+${step(6, "Pasang APK baru → selesai", `Lainnya → Versi aplikasi → perbarui, atau unduh ${gh("releases/download/apk-terbaru/ninokuu.apk", "ninokuu.apk")}`)}
+</ol>
+<p class="mu xs gs-foot">Mau uji dulu? Di langkah 3–4 pilih branch <code>dev</code> → hasilnya ${gh("releases/download/apk-dev/ninokuu-dev.apk", "ninokuu-dev.apk")}. Masih gagal → Ninokuu Dev → Lainnya → Log error → salin.</p>
+</details></section>`;
 export async function vDev(view, ctx) {
   const { topbar, setActs, back, loading } = ctx;
   const p = S.state.profile, dev = p?.role === "developer", staff = dev || p?.role === "moderator";

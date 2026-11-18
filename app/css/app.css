@@ -1018,7 +1018,11 @@ body.tw-lock { overflow: hidden; touch-action: none; }
 .guide summary::-webkit-details-marker { display: none; }
 .guide summary::after { content: "Ketuk untuk membuka"; margin-top: 4px; color: var(--redt); font-size: 12px; font-weight: 700; }
 .guide[open] summary::after { content: "Ketuk untuk menutup"; }
-.guide-b { margin-top: 12px; font-size: 13.5px; line-height: 1.6; }
-.guide-b p { margin: 0 0 10px; } .guide-b ul { margin: 0 0 10px; padding-left: 18px; } .guide-b li { margin-bottom: 4px; }
-.guide-b code { padding: 1px 5px; border-radius: 6px; background: rgba(255, 255, 255, .08); font-size: 12.5px; overflow-wrap: anywhere; }
-.guide-b a { color: var(--gold); font-weight: 700; }
+.gsteps { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.gsteps li { display: flex; gap: 12px; align-items: flex-start; }
+.gs-n { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--red); color: #fff; font-size: 13px; font-weight: 800; }
+.gs-t { display: flex; flex-direction: column; gap: 3px; padding-top: 3px; font-size: 14px; line-height: 1.45; }
+.gs-t .mu { line-height: 1.55; }
+.guide code { padding: 1px 5px; border-radius: 6px; background: rgba(255, 255, 255, .08); font-size: 12px; overflow-wrap: anywhere; }
+.guide a { color: var(--gold); font-weight: 700; }
+.gs-foot { margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--line); line-height: 1.55; }
