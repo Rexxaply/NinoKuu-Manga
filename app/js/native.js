@@ -58,7 +58,7 @@ export async function nget(url, { headers = {}, type = "json" } = {}) {
   // tiru permintaan dari browser Chrome biasa: UA tanpa penanda WebView, Referer situs aslinya
   const org = new URL(url).origin;
   const ua = navigator.userAgent.replace(/; wv\)/, ")").replace(/ Version\/[\d.]+/, "");
-  const base = type === "json"
+  const base = type === "json" || type === "text"
     ? { "User-Agent": ua, Accept: "application/json, text/plain, */*", "Accept-Language": "id-ID,id;q=0.9,en;q=0.7", Referer: org + "/", "Sec-Fetch-Dest": "empty", "Sec-Fetch-Mode": "cors", "Sec-Fetch-Site": "same-origin" }
     : { "User-Agent": ua, Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8", "Accept-Language": "id-ID,id;q=0.9,en;q=0.7", "Sec-Fetch-Dest": "image", "Sec-Fetch-Mode": "no-cors", "Sec-Fetch-Site": "cross-site" };
   const r = await H.request({ url, method: "GET", headers: { ...base, ...headers }, responseType: type, connectTimeout: 15000, readTimeout: 30000 });
@@ -69,6 +69,7 @@ export async function nget(url, { headers = {}, type = "json" } = {}) {
     throw Object.assign(new Error(`HTTP ${r.status}${msg ? " (" + msg + ")" : ""}`), { status: r.status, cf });
   }
   if (type === "json") return typeof r.data === "string" ? JSON.parse(r.data) : r.data;
+  if (type === "text") return typeof r.data === "string" ? r.data : JSON.stringify(r.data ?? "");
   const h = Object.fromEntries(Object.entries(r.headers || {}).map(([k, v]) => [k.toLowerCase(), String(v)]));
   return { bytes: typeof r.data === "string" ? b64bytes(r.data) : new Uint8Array(r.data || []), type: h["content-type"] || "image/jpeg" };
 }
@@ -348,22 +349,46 @@ export async function checkBlockedSources(lib, call) {
 }
 
 /* ---------- versi APK terbaru (GitHub Release "apk-terbaru") ---------- */
-export async function latestBuild() {
-  if (!isApp) return null;
+// API GitHub tanpa login dibatasi 60 permintaan/jam per jaringan (IP). Supaya tidak habis (lalu muncul
+// "Tidak bisa memeriksa pembaruan"): hasil disimpan 10 menit, dan bila API menolak, versi global dibaca dari
+// berkas VERSION + CHANGELOG di raw.githubusercontent.com (CDN, tanpa batas itu).
+const UPDK = "ninokuu:updCache";
+function fromRelease(j) {
+  const name = String(j?.name || "");
+  const n = Number(name.match(/build (\d+)/i)?.[1] || 0);
+  const version = name.match(/v(\d+\.\d+\.\d+)/i)?.[1] || null;
+  // catatan rilis: baris "Yang baru" dari pesan commit (tanpa baris atribusi)
+  const notes = String(j?.body || "").split(/\r?\n/).map((x) => x.trim())
+    .filter((x) => x && !/^(Co-Authored-By|Claude-Session|Dibangun otomatis|Unduh |Pembaruan bisa)/i.test(x)).slice(0, 12);
+  return (version || n) ? { version, build: n, notes, at: j?.published_at || null } : null;
+}
+async function fromRaw() {
+  if (DEV) return null;   // nomor build Dev hanya ada di rilis GitHub
+  const raw = (f) => nget(`https://raw.githubusercontent.com/${REPO}/main/${f}?t=${Math.floor(Date.now() / 300e3)}`, { type: "text" }).then((r) => String(r ?? ""));
+  const version = (await raw("VERSION")).trim().match(/^\d+\.\d+\.\d+/)?.[0];
+  if (!version) return null;
+  let notes = [];
   try {
-    const j = await nget(`https://api.github.com/repos/${REPO}/releases/tags/${RELEASE_TAG}`, { headers: { Accept: "application/vnd.github+json" } });
-    const name = String(j?.name || "");
-    const n = Number(name.match(/build (\d+)/i)?.[1] || 0);
-    const version = name.match(/v(\d+\.\d+\.\d+)/i)?.[1] || null;
-    // catatan rilis: baris "Yang baru" dari pesan commit (tanpa baris atribusi)
-    const notes = String(j?.body || "").split(/\r?\n/).map((x) => x.trim())
-      .filter((x) => x && !/^(Co-Authored-By|Claude-Session|Dibangun otomatis|Unduh |Pembaruan bisa)/i.test(x)).slice(0, 12);
-    if (!version && !n) return null;
-    // rilis lama tanpa nomor versi dibandingkan lewat nomor build
-    // Dev: setiap build baru dihitung pembaruan (nomor versi bisa sama selama belum rilis global)
-    const newer = DEV ? n > BUILD : version ? cmpVersion(version, VERSION) > 0 : n > BUILD;
-    return { version, build: n, newer, kind: version ? updateKind(VERSION, version) : "patch", url: DEV ? `https://github.com/${REPO}/releases/tag/${RELEASE_TAG}` : `${SITE_URL}update/`, notes, at: j?.published_at || null };
-  } catch { return null; }
+    const cl = await raw("CHANGELOG.md"), at = cl.indexOf(`## ${version} `);
+    if (at >= 0) { const sec = cl.slice(at).split(/\n---/)[0], r = sec.split("### Ringkasan")[1] || ""; notes = r.split("\n### ")[0].split("\n").map((x) => x.trim()).filter((x) => x.startsWith("- ")).slice(0, 12); }
+  } catch {}
+  return { version, build: 0, notes, at: null };
+}
+export async function latestBuild(force = false) {
+  if (!isApp) return null;
+  let info = null;
+  try { const c = JSON.parse(localStorage.getItem(UPDK) || "null"); if (c && c.k === RELEASE_TAG && Date.now() - c.t < (force ? 60e3 : 10 * 60e3)) info = c.info; } catch {}
+  if (!info) {
+    try { info = fromRelease(await nget(`https://api.github.com/repos/${REPO}/releases/tags/${RELEASE_TAG}`, { headers: { Accept: "application/vnd.github+json" } })); }
+    catch { try { info = await fromRaw(); } catch { info = null; } }
+    if (info) try { localStorage.setItem(UPDK, JSON.stringify({ k: RELEASE_TAG, t: Date.now(), info })); } catch {}
+  }
+  if (!info) return null;
+  const { version, build: n } = info;
+  // rilis lama tanpa nomor versi dibandingkan lewat nomor build
+  // Dev: setiap build baru dihitung pembaruan (nomor versi bisa sama selama belum rilis global)
+  const newer = DEV ? n > BUILD : version ? cmpVersion(version, VERSION) > 0 : n > BUILD;
+  return { version, build: n, newer, kind: version ? updateKind(VERSION, version) : "patch", url: DEV ? `https://github.com/${REPO}/releases/tag/${RELEASE_TAG}` : `${SITE_URL}update/`, notes: info.notes || [], at: info.at };
 }
 
 /* ---------- Ninokuu Dev: catatan error untuk dikirim ke developer ---------- */
