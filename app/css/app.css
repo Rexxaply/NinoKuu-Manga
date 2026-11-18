@@ -1300,3 +1300,10 @@ body.short .r-menu { top: calc(60px + var(--sat)); max-height: calc(100dvh - 76p
 
 body.is-app { --sat: 0px; }
 body.is-app.nk-fs { --sat: env(safe-area-inset-top, 0px); }
+
+/* Pencarian: tombol grid/daftar sejajar di ujung kanan deretan chip tipe */
+.t-row { display: flex; align-items: center; gap: 8px; }
+.t-row > #tchips { flex: 1; min-width: 0; }
+.t-row > .sq-btn { margin-top: 6px; }   /* chip punya jarak atas 12px & bawah 6px → tengah tombol sejajar tengah chip */
+.t-row + #factive:empty + .sec-h { margin-top: 4px; }
+.t-row .chips button { flex: 1 0 auto; padding: 0 11px; }   /* 4 chip tipe muat penuh di samping tombol */

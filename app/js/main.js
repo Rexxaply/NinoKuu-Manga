@@ -431,9 +431,9 @@ async function vSearch(type) {
   <div class="sh-pop" id="shpop" role="listbox" aria-label="Pencarian terakhir"></div></label>
   <span id="fltbtn"></span></div>
 <div class="sec s14">${seg(SOURCES, sState.src, "src")}</div>
-<div class="px mt10" id="tchips"></div>
+<div class="px mt10 t-row"><div id="tchips"></div>${viewBtn(S.state.settings.searchView === "grid", "view")}</div>
 <div class="px" id="factive"></div>
-<div class="sec-h px mt10"><span class="mu sm" id="sinfo"></span>${viewBtn(S.state.settings.searchView === "grid", "view")}</div>
+<div class="sec-h px mt10"><span class="mu sm" id="sinfo"></span></div>
 <div id="sres" class="px">${loading(6, "sk-lrow")}</div>
 <button class="btn ghost wide" data-act="more" id="sMore" hidden>Muat lagi</button>
 <div class="pad-nav"></div>`;
