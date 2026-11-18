@@ -1156,3 +1156,14 @@ button, [role="button"], .seg, .chips, #nav { -webkit-user-select: none; user-se
 .fa-new { flex: none; min-width: 34px; padding: 4px 8px; border-radius: 999px; background: var(--red); color: #fff; font-size: 11.5px; font-weight: 800; text-align: center; }
 .fa-ok { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: rgba(93, 211, 158, .14); color: #5DD39E; }
 .fa-row:active { background-color: rgba(255, 255, 255, .04); }
+
+/* daftar minimalis Beranda & Pencarian */
+.mn-rows { display: flex; flex-direction: column; }
+.mn-row { display: flex; align-items: center; gap: 12px; padding: 7px 2px; position: relative; }
+.mn-row + .mn-row::before { content: ""; position: absolute; left: 54px; right: 2px; top: 0; height: 1px; background: var(--line); opacity: .7; }
+.mn-row .cover.sm { width: 40px; height: 54px; border-radius: 8px; }
+.mn-row .cover.sm::before { font-size: 18px; }
+.mn-mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.mn-t { font-size: 14px; font-weight: 600; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mn-fav { flex: none; display: inline-flex; opacity: .9; }
+.mn-row:active { background-color: rgba(255, 255, 255, .04); }

@@ -207,6 +207,9 @@ const dlOpen = (src, id) => () => (DL.supported() ? go(`#/dl/${src}/${encodeURIC
 const topbar = (title, right = "") => `<div class="topbar"><button class="icon-btn" data-act="back" aria-label="Kembali">${icon("back", 22)}</button><h1>${title}</h1>${right || '<span class="tb-sp"></span>'}</div>`;
 const seg = (list, cur, act, cls = "") => `<div class="seg ${cls}" role="tablist">${list.map((x) => `<button role="tab" aria-selected="${x.id === cur}" data-act="${act}" data-v="${esc(x.id)}">${esc(x.name)}</button>`).join("")}</div>`;
 const chips = (list, cur, act) => `<div class="chips" role="group">${list.map((x) => `<button aria-pressed="${x.id === cur}" data-act="${act}" data-v="${esc(x.id)}">${esc(x.name)}</button>`).join("")}</div>`;
+// baris minimalis untuk daftar Beranda & Pencarian: sampul kecil, judul 1 baris, titik warna sumber · jenis;
+// hati kecil bila komik sudah ada di koleksi
+const minRow = (src, it) => `<a class="mn-row" href="${comicHref(src, it.id)}">${cover(it.cover, it.title, "sm")}<span class="mn-mid"><b class="mn-t">${esc(it.title)}</b><span class="fa-meta"><i class="fa-dot s-${esc(src)}"></i>${esc(srcName(src))}${it.type ? ` · ${esc(typeName(it.type))}` : ""}</span></span>${S.inLib(src, it.id) ? `<span class="redt mn-fav" title="Ada di koleksi">${icon("heartF", 14)}</span>` : ""}</a>`;
 const lrow = (href, cv, title, sub, right = "") => `<a class="lrow" href="${href}">${cv}<span class="rc-mid"><span class="lr-t">${title}</span><span class="mu sm">${sub}</span></span>${right}</a>`;
 const gcard = (href, it, src, badge = "") => `<a class="grid-card" href="${href}"><span class="gc-cv">${cover(it.cover, it.title)}${badge}</span><b class="t2">${esc(it.title)}</b><span class="mu xs">${esc(typeName(it.type) || srcName(src))}</span></a>`;
 const viewBtn = (grid, act, cls = "") => `<button class="sq-btn ${cls}" data-act="${act}" aria-label="${grid ? "Tampilan daftar" : "Tampilan grid"}">${icon(grid ? "list" : "grid", 18, 2)}</button>`;
@@ -271,7 +274,7 @@ ${last ? `<section class="sec s16"><h2 class="cap">Lanjut baca</h2>
     const grid = S.state.settings.updView === "grid";
     $("#upd").innerHTML = !items.length ? `<div class="empty"><b>Belum ada komik</b></div>`
       : grid ? `<div class="g3 mt14">${items.map((it) => gcard(comicHref(homeSrc, it.id), it, homeSrc)).join("")}</div>`
-      : `<div class="rows mt8">${items.map((it) => lrow(comicHref(homeSrc, it.id), cover(it.cover, it.title, "sm"), esc(it.title), esc(typeName(it.type) || "Komik") + " · " + esc(srcName(homeSrc)), `<span class="mu">${icon("chev", 18)}</span>`)).join("")}</div>`;
+      : `<div class="mn-rows mt8">${items.map((it) => minRow(homeSrc, it)).join("")}</div>`;
   };
   const loadUpd = async (more = false) => {
     const src = homeSrc, sort = homeSortOf(src);
@@ -425,7 +428,7 @@ async function vSearch(type) {
   const draw = () => {
     const grid = S.state.settings.searchView === "grid";
     $("#sres").innerHTML = items.length ? (grid ? `<div class="g3 mt8">${items.map((it) => gcard(comicHref(sState.src, it.id), it, sState.src)).join("")}</div>`
-      : `<div class="rows">${items.map((it) => lrow(comicHref(sState.src, it.id), cover(it.cover, it.title, "sm"), esc(it.title), esc(typeName(it.type) || "Komik") + " · " + esc(srcName(sState.src)), `<span class="mu">${icon("chev", 18)}</span>`)).join("")}</div>`)
+      : `<div class="mn-rows">${items.map((it) => minRow(sState.src, it)).join("")}</div>`)
       : `<div class="empty"><span class="empty-ic">${icon("search", 24)}</span><b>Tidak ditemukan</b><span>${activeCount(sState) ? "Tidak ada komik yang cocok dengan semua filter. Coba kurangi filternya." : "Coba kata lain, atau pilih sumber lain di atas."}</span></div>`;
   };
   const load = async (more = false) => {
