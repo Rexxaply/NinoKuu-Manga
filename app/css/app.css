@@ -1251,3 +1251,7 @@ button.fa-new:active, .hl-go:active { scale: .92; }
 .r-menu-bg { background: rgba(0, 0, 0, .18); }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .r-menu, .r-menu.glass { background: rgba(18, 24, 36, .97); } }
 body.chfoc #view .chbar { animation: chdrop .22s cubic-bezier(.2, .8, .2, 1); }
+
+/* pilihan segmen aktif: tanpa efek tekan */
+.seg > button[aria-selected="true"], .fseg > button[aria-checked="true"] { cursor: default; }
+.seg > button[aria-selected="true"]:active, .fseg > button[aria-checked="true"]:active { transform: none; filter: none; }

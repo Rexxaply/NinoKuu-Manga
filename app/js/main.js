@@ -160,6 +160,11 @@ const back = (fallback = "#/home") => (navIdx > 0 ? history.back() : goReplace(f
 // kembali ke halaman tertentu: mundur bila itu memang halaman sebelumnya, selain itu ganti halaman ini
 const backTo = (href, alsoOk = []) => { const prev = navStack[navIdx - 1]; if (navIdx > 0 && (prev === href || alsoOk.includes(prev))) history.back(); else goReplace(href); };
 
+// pilihan segmen yang sedang aktif tidak bisa ditekan lagi (mis. "Scroll" saat sudah Scroll → tidak memuat ulang)
+document.addEventListener("click", (e) => {
+  const b = e.target.closest?.(".seg > button, .fseg > button");
+  if (b && (b.getAttribute("aria-selected") === "true" || b.getAttribute("aria-checked") === "true")) { e.preventDefault(); e.stopImmediatePropagation(); }
+}, true);
 let acts = {};
 view.addEventListener("click", (e) => {
   const el = e.target.closest("[data-act]");
