@@ -123,12 +123,16 @@ async function zipImages(u8) {
 }
 
 /* ---------- ambil gambar halaman ---------- */
+// Hemat kuota Supabase: unduh langsung dari situs aslinya. APK lewat jaringan HP (bisa kirim Referer),
+// browser web tidak bisa (CORS & CSP), jadi di web tetap lewat proxy ninokuu-api. Di APK proxy hanya cadangan.
 async function pageBytes(im, ref) {
-  if (im.direct && N.isApp) {
-    const r = await N.nget(im.u, { type: "arraybuffer", headers: ref ? { Referer: ref } : {} });
-    return { u8: new Uint8Array(r.bytes), type: r.type || "image/jpeg" };
+  if (N.isApp) {
+    try {
+      const r = await N.nget(im.u, { type: "arraybuffer", headers: ref ? { Referer: ref } : {} });
+      return { u8: new Uint8Array(r.bytes), type: r.type || "image/jpeg" };
+    } catch (e) { if (!im.p) throw e; }
   }
-  const r = await fetch(im.direct ? im.u : api.pageUrl(im.p));
+  const r = await fetch(im.p ? api.pageUrl(im.p) : im.u);
   if (!r.ok) throw new Error(`Gambar gagal diunduh (HTTP ${r.status})`);
   return { u8: new Uint8Array(await r.arrayBuffer()), type: r.headers.get("content-type") || "image/jpeg" };
 }

@@ -69,6 +69,32 @@ export async function nget(url, { headers = {}, type = "json" } = {}) {
   const h = Object.fromEntries(Object.entries(r.headers || {}).map(([k, v]) => [k.toLowerCase(), String(v)]));
   return { bytes: typeof r.data === "string" ? b64bytes(r.data) : new Uint8Array(r.data || []), type: h["content-type"] || "image/jpeg" };
 }
+// Hemat kuota (egress) Supabase: gambar sampul & halaman selalu dicoba langsung dari situs aslinya.
+// Alamat proxy ninokuu-api (…/functions/v1/ninokuu-api?img=…&ref=…&sig=…) hanya dipakai sebagai cadangan terakhir.
+export function imgParts(url) {
+  const s = String(url || "");
+  const i = s.indexOf("/functions/v1/ninokuu-api?");
+  if (i < 0) return { src: s, d: "", ref: "", px: "" };
+  const q = new URLSearchParams(s.slice(s.indexOf("?") + 1)), d = q.get("img") || "";
+  return /^https:\/\//i.test(d) ? { src: d, d, ref: q.get("ref") || "", px: s } : { src: s, d: "", ref: "", px: "" };
+}
+// atribut <img>: src langsung + data cadangan (dipakai oleh penangan error di ui.js)
+export function imgAttrs(url, { ref = "", px = "" } = {}) {
+  const p = imgParts(url), e = (v) => String(v).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  const d = p.d || (/^https:\/\//i.test(p.src) ? p.src : ""), r = p.ref || ref, x = p.px || px;
+  return `src="${e(p.src)}"${d ? ` data-d="${e(d)}"` : ""}${r ? ` data-ref="${e(r)}"` : ""}${x ? ` data-px="${e(x)}"` : ""}`;
+}
+// gambar langsung gagal: APK → ambil lewat jaringan HP (dengan Referer, tanpa Supabase); lalu proxy; lalu menyerah
+export async function imgFallback(im) {
+  const st = Number(im.dataset.fb || 0);
+  im.dataset.fb = String(st + 1);
+  if (st === 0 && isApp && im.dataset.d) {
+    try { im.src = await imageViaNative(im.dataset.d, im.dataset.ref || ""); return true; } catch {}
+  }
+  if (st <= 1 && im.dataset.px && im.getAttribute("src") !== im.dataset.px) { im.dataset.fb = "2"; im.src = im.dataset.px; return true; }
+  return false;
+}
+
 // gambar yang menolak dimuat langsung oleh WebView (mis. butuh Referer) → ambil lewat jaringan HP
 const blobUrls = new Map();
 export async function imageViaNative(url, referer) {

@@ -1,6 +1,6 @@
 // Bantuan tampilan kecil: escape HTML, ikon, toast, waktu relatif, sampul.
 import { ICONS } from "./assets.js";
-import { isApp, SITE_URL } from "./native.js";
+import { isApp, SITE_URL, imgAttrs, imgFallback } from "./native.js";
 
 export const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 export const icon = (name, size = 22, sw = 1.8) =>
@@ -40,7 +40,7 @@ export const typeName = (t) => TYPES.find((x) => x.id === t)?.name || "";
 
 // sampul dengan cadangan huruf awal bila gambar gagal dimuat
 export const cover = (url, title, cls = "") =>
-  `<span class="cover ${cls}" data-ini="${esc((title || "?").trim()[0] || "?")}">${url ? `<img src="${esc(url)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-rm>` : ""}</span>`;
+  `<span class="cover ${cls}" data-ini="${esc((title || "?").trim()[0] || "?")}">${url ? `<img ${imgAttrs(url)} alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-rm>` : ""}</span>`;
 
 export const comicHref = (src, id) => `#/c/${src}/${encodeURIComponent(id)}`;
 export const readHref = (src, id, ch) => `#/r/${src}/${encodeURIComponent(id)}/${encodeURIComponent(ch)}`;
@@ -68,7 +68,10 @@ export const rankText = (name, tier) => `<b class="rk-t t${tier}"><span class="r
 
 // CSP (script-src 'self') memblokir atribut onerror inline, jadi gambar bertanda data-rm yang gagal dimuat
 // (sampul, avatar, gambar chat) dihapus di sini supaya inisial/latar cadangan terlihat.
-document.addEventListener("error", (e) => {
+// Gambar dari situs asli yang gagal dimuat dicoba ulang dulu (jaringan HP di APK, lalu proxy Supabase sebagai cadangan).
+document.addEventListener("error", async (e) => {
   const t = e.target;
-  if (t instanceof HTMLImageElement && t.hasAttribute("data-rm")) t.remove();
+  if (!(t instanceof HTMLImageElement)) return;
+  if ((t.dataset.d || t.dataset.px) && await imgFallback(t)) return;
+  if (t.hasAttribute("data-rm")) t.remove();
 }, true);

@@ -67,6 +67,27 @@ baru (FCM), pengumuman developer, dan pembersihan chat/notifikasi lama. Deploy l
 | `test_push` | ya | tes notifikasi ke HP sendiri |
 | `run_cron` | developer | jalankan cron sekarang |
 
+### Hemat Egress (kuota paket gratis 5 GB/bulan)
+
+Setiap gambar yang lewat proxy `?img=…` dikirim ulang dari Supabase dan memakai kuota **Egress**.
+Sejak 1.6.2 (function 1.4.0), aplikasi memuat sampul dan halaman **langsung dari situs aslinya**. Urutannya:
+
+1. alamat asli gambar (WebView/browser),
+2. di APK: jaringan HP dengan Referer situsnya (tetap tanpa Supabase),
+3. proxy `ninokuu-api` (cadangan terakhir).
+
+Unduhan chapter di APK juga langsung dari situsnya. Gambar notifikasi memakai alamat asli sampul.
+
+Rem darurat: secret **`IMG_PROXY`** di Supabase → Edge Functions → Secrets.
+
+| nilai | efek |
+|---|---|
+| `on` (bawaan) | proxy dipakai sebagai cadangan |
+| `cover` | proxy hanya untuk sampul; halaman chapter tidak pernah lewat Supabase |
+| `off` | proxy mati total; gambar yang ditolak situsnya tidak tampil di versi web |
+
+Pantau di Supabase → **Usage → Egress**. Kalau mendekati batas, set `IMG_PROXY=cover` atau `off`.
+
 ## Menjaga Supabase tetap aktif (paket gratis)
 
 Supabase paket gratis menjeda proyek setelah 7 hari tanpa aktivitas. Repo ini punya
