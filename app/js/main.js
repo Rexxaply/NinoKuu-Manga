@@ -1439,8 +1439,9 @@ async function refreshLatest(items) {
 const FAV_SORTS = [["update", "Update terbaru"], ["added", "Terakhir ditambah"], ["az", "Judul A-Z"], ["za", "Judul Z-A"]];
 let fav = { tab: "lib", q: "", filter: "all" };
 // perilaku tab Unduhan dilepas setiap kali Favorit digambar ulang (tidak menumpuk)
-let favDlOff = null;
-function vFav(tab) {
+let favDlOff = null, favShell = "";
+const FAV_CARDS = "<!--kartu-->";
+function vFav(tab, soft = false) {
   if (favDlOff) { favDlOff(); favDlOff = null; }
   if (tab && ["lib", "hist", "dl"].includes(tab)) fav.tab = tab;
   const grid = S.state.settings.favView === "grid";
@@ -1489,29 +1490,49 @@ function vFav(tab) {
       <span class="fa-bar"><i style="width:${pctRead}%"></i></span>
     </span>${badge}</a>`;
   };
-  let body = "";
+  let body = "", cards = null;
   if (fav.tab === "lib") {
     body = `<div class="row g8"><label class="search box grow"><span class="mu">${icon("search", 19)}</span><span class="sr">Cari di koleksi</span><input id="fq" placeholder="Cari di koleksimu" value="${esc(fav.q)}"></label><button class="sq-btn lg" data-act="fsort" aria-label="Urutkan: ${esc(FAV_SORTS.find(([k]) => k === fs)[1])}">${icon("sort", 18, 2)}</button>${viewBtn(grid, "fview", "lg")}</div>
   ${chips([{ id: "all", name: "Semua" }, { id: "new", name: "New update" }, { id: "manga", name: "Manga" }, { id: "manhwa", name: "Manhwa" }, { id: "manhua", name: "Manhua" }], fav.filter, "ff")}
   <div class="mu xs info">${libAll.length ? `${lib.length} dari ${libAll.length} judul · ${esc(FAV_SORTS.find(([k]) => k === fs)[1])} · ${S.loggedIn() ? "tersinkron" : "tersimpan di HP ini"}` : ""}</div>
   ${!lib.length ? (libAll.length ? `<div class="empty"><b>Tidak ada yang cocok</b><span>Ubah kata kunci atau filter.</span></div>`
       : `<div class="empty"><span class="empty-ic">${icon("heart", 24)}</span><b>Koleksi masih kosong</b><span>Ketuk ikon hati di halaman komik untuk menyimpannya di sini.</span><a class="btn ghost" href="#/search">Cari komik</a></div>`)
-    : grid ? `<div class="g3 favg">${lib.map((m) => { const r = readOf(m); return `<a class="grid-card" href="${comicHref(m.source, m.comic_id)}"><span class="gc-cv">${cover(m.cover, m.title, "fav3")}
+    : grid ? `<div class="g3 favg">${FAV_CARDS}</div>`
+    : `<div class="frows">${FAV_CARDS}</div>`}`;
+    cards = grid ? lib.map((m) => { const r = readOf(m); return `<a class="grid-card" href="${comicHref(m.source, m.comic_id)}"><span class="gc-cv">${cover(m.cover, m.title, "fav3")}
         <span class="stack">${m.latest != null ? `<span class="st-red">Terbaru ${esc(m.latest)}</span>` : ""}<span class="st-dark">${r ? "Dibaca " + esc(r.chapter) : "Belum dibaca"}</span></span>
         ${isFresh(m) ? `<span class="new-up">NEW UPDATE</span>` : ""}${m.notify ? `<span class="bell-b">${icon("bellF", 12)}</span>` : ""}</span>
-        <b class="fg-t">${esc(m.title)}</b><span class="mu xs">${srcType(m)}</span></a>`; }).join("")}</div>`
-    : `<div class="frows">${lib.map(favRow).join("")}</div>`}`;
+        <b class="fg-t">${esc(m.title)}</b><span class="mu xs">${srcType(m)}</span></a>`; }) : lib.map(favRow);
   } else if (fav.tab === "hist") {
+    cards = hist.map(histRow);
     body = hist.length ? `<div class="sec-h"><span class="mu xs">Terbaru di atas</span><button class="link-red" data-act="clearHist">Bersihkan</button></div>
-  <div class="frows">${hist.map(histRow).join("")}</div>`
+  <div class="frows">${FAV_CARDS}</div>`
       : `<div class="empty"><span class="empty-ic">${icon("clock", 24)}</span><b>Belum ada riwayat</b><span>Chapter yang kamu baca akan muncul di sini.</span></div>`;
   } else {
     body = DL.favTab();
   }
-  view.innerHTML = `
+  const shell = `
 <div class="page-h"><h1>Favorit</h1>${seg([{ id: "lib", name: "Koleksi" }, { id: "hist", name: "Riwayat" }, { id: "dl", name: "Unduhan" }], fav.tab, "tab")}</div>
 ${!S.loggedIn() && fav.tab !== "dl" ? `<div class="note mx">${icon("cloud", 18)}<span>Tersimpan di HP ini saja. <a href="#/more">Masuk</a> agar tersinkron di semua perangkat.</span></div>` : ""}
 <div class="px s14">${body}</div><div class="pad-nav"></div>`;
+  // Gambar ulang karena data berubah di belakang layar (chapter terbaru tiap komik, sinkron riwayat):
+  // bila kerangka halaman sama, hanya kartu yang berubah yang diganti. Kartu lain (beserta sampulnya yang sudah
+  // termuat) dibiarkan, jadi tidak ada sampul berkedip & animasi masuk halaman tidak terulang dari awal.
+  const list = soft && cards && favShell === shell ? view.querySelector(":scope > .px > .favg, :scope > .px > .frows") : null;
+  if (list?._cards) {
+    if (list._cards.join("\n") === cards.join("\n")) return;
+    const pool = new Map();
+    [...list.children].forEach((el, i) => { const h = list._cards[i]; if (h == null) return; if (!pool.has(h)) pool.set(h, []); pool.get(h).push(el); });
+    const tp = document.createElement("template");
+    const nodes = cards.map((h) => pool.get(h)?.shift() || (tp.innerHTML = h, tp.content.firstElementChild));
+    nodes.forEach((n, i) => { if (list.children[i] !== n) list.insertBefore(n, list.children[i] || null); });
+    while (list.children.length > nodes.length) list.lastElementChild.remove();
+    list._cards = cards;
+    return;
+  }
+  favShell = shell;
+  view.innerHTML = cards ? shell.replace(FAV_CARDS, () => cards.join("")) : shell;
+  const lst = cards && view.querySelector(":scope > .px > .favg, :scope > .px > .frows"); if (lst) lst._cards = cards;
   const fq = $("#fq");
   if (fq) fq.addEventListener("input", () => { fav.q = fq.value; const pos = fq.selectionStart; vFav(); const n = $("#fq"); n.focus(); n.setSelectionRange(pos, pos); });
   setActs({
@@ -2009,7 +2030,9 @@ let oriT = 0; window.addEventListener("resize", () => { clearTimeout(oriT); oriT
 
 api.onAuth((s) => { if (!s) S.clearUserData(); });
 if (S.loggedIn()) { S.loadProfile().catch(() => {}); S.pull().catch(() => {}); }
-S.subscribe(() => { if (route.name === "fav" && !document.activeElement?.matches?.("#fq")) vFav(); });
+// perubahan data beruntun (mis. 12 komik dicek chapter terbarunya) digabung jadi 1 gambar ulang per frame
+let favSubRaf = 0;
+S.subscribe(() => { if (route.name !== "fav" || favSubRaf) return; favSubRaf = requestAnimationFrame(() => { favSubRaf = 0; if (route.name === "fav" && !document.activeElement?.matches?.("#fq")) vFav(undefined, true); }); });
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") S.flushHistory(); });
 // Android WebView kadang tidak menggambar ulang area gulir (halaman komik) setelah aplikasi dibuka lagi dari
 // latar belakang: layar gelap kosong sampai digeser. Geser 1 px lalu kembalikan untuk memaksa gambar ulang.
