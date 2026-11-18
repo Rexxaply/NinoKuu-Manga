@@ -836,6 +836,7 @@ async function vChapters(src, id) {
 }
 
 /* ---------- Pembaca (gulir atau slide), tampilan sama seperti prototipe ---------- */
+const pagesMem = new Map();
 async function vReader(src, id, chId) {
   const shell = (inner) => `<div class="reader ui" id="rd">${inner}<div class="r-top"><button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 22, 2)}</button><div class="r-pill glass"><b class="t1">Memuat…</b></div><span class="r-sp"></span></div></div>`;
   view.innerHTML = shell(`<div class="r-pages">${loading(3, "sk-page")}</div>`);
@@ -856,7 +857,13 @@ async function vReader(src, id, chId) {
   catch (e) { if (e?.localRead) { $(".r-pages").innerHTML = errBox(e); return; } p = null; }
   if (!p) {
     if (isLocal) { $(".r-pages").innerHTML = errBox(new Error("File unduhan tidak ditemukan di HP.")); return; }
-    try { p = await api.call("pages", { source: src, chapter_id: chId }); } catch (e) { $(".r-pages").innerHTML = errBox(e); return; }
+    // daftar halaman disimpan sebentar di memori: kembali ke chapter yang sama (mis. dari info komik) langsung tampil
+    const pk = src + "|" + chId, pc = pagesMem.get(pk);
+    if (pc && Date.now() - pc.t < 30 * 60e3) p = pc.p;
+    else {
+      try { p = await api.call("pages", { source: src, chapter_id: chId }); } catch (e) { $(".r-pages").innerHTML = errBox(e); return; }
+      pagesMem.set(pk, { p, t: Date.now() }); if (pagesMem.size > 12) pagesMem.delete(pagesMem.keys().next().value);
+    }
   }
   if (parse().name !== "reader") return;
   const st = S.state.settings, total = p.images.length;
@@ -870,7 +877,7 @@ async function vReader(src, id, chId) {
   // Hemat kuota: hanya 2 halaman pertama yang langsung diunduh. Halaman lain memakai data-src dan baru diunduh
   // saat mendekati layar (lihat lazyIo). Sebelumnya semua gambar belum bertinggi (0 px) sehingga "lazy" bawaan
   // browser menganggap semuanya dekat layar dan seluruh chapter langsung diunduh.
-  const imgs = p.images.map((im, i) => { const a = im.local ? `src="${esc(im.u)}"` : N.imgAttrs(im.u, { ref: p.ref || "", px: im.p ? api.pageUrl(im.p) : "" }); return `<img class="r-img wait" data-i="${i + 1}" ${i > 1 ? a.replace(/^src=/, "data-src=") : a} alt="Halaman ${i + 1}" decoding="async" referrerpolicy="no-referrer" draggable="false">`; });
+  const imgs = p.images.map((im, i) => { const a = im.local ? `src="${esc(im.u)}"` : N.imgAttrs(im.u, { ref: p.ref || "", px: im.p ? api.pageUrl(im.p) : "" }); return `<img class="r-img wait" data-i="${i + 1}" ${i > 1 ? a.replace(/^src=/, "data-src=") : a} alt="" aria-label="Halaman ${i + 1}" decoding="async" referrerpolicy="no-referrer" draggable="false">`; });
 
   view.innerHTML = `<div class="reader ui ${slide ? "slide" : ""}" id="rd">
   ${slide ? `<div class="r-slides" id="rbox" dir="${rtl ? "rtl" : "ltr"}">${imgs.map((im) => `<div class="r-slide">${im}</div>`).join("")}<div class="r-slide r-endslide"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span>${next ? `<button class="r-next-hint" id="rnext" data-act="cancelNext" hidden><span class="r-nbar"></span><span class="r-ntx"></span></button>` : ""}${isLocal ? "" : `${chLike(null)}<a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini</a>`}</div></div>`

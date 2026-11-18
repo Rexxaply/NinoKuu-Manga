@@ -24,6 +24,9 @@ img { display: block; }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .14); border-radius: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
+/* layar sentuh (HP): tanpa bilah gulir. Di WebView Android bilah gulir bergaya memakan 8 px di kanan sehingga
+   tampak seperti pita hitam yang tidak simetris dengan sisi kiri (terutama di pembaca) */
+@media (pointer: coarse) { ::-webkit-scrollbar { width: 0; height: 0; display: none; } html, .r-scroll { scrollbar-width: none; } }
 
 #view { max-width: 980px; margin: 0 auto; padding-top: var(--sat); }
 /* animasi meluncur tidak boleh membuat halaman lebih lebar dari layar (bar bawah sempat hilang) */
@@ -36,7 +39,9 @@ html, body { overflow-x: clip; }
 #view.in-f > :not(.vfix):not(.rfab-wrap):not(.chbar) { animation: slideF .36s cubic-bezier(.2, .8, .2, 1); }
 #view.in-b > :not(.vfix):not(.rfab-wrap):not(.chbar) { animation: slideB .36s cubic-bezier(.2, .8, .2, 1); }
 /* bar bawah halaman: naik dari bawah saat pertama muncul (juga bila datanya datang belakangan), sekali per kunjungan */
-#view .rfab-wrap, #view .chbar { animation: fixUp .5s cubic-bezier(.32, .72, 0, 1) both; }
+/* mulai sedikit setelah halaman digambar: saat halaman baru sedang disusun, beberapa frame pertama terlewat dan
+   bar tampak "meloncat" ke tempatnya; dengan jeda singkat seluruh gerakannya terlihat */
+#view .rfab-wrap, #view .chbar { animation: fixUp .46s cubic-bezier(.32, .72, 0, 1) .12s both; will-change: transform; }
 #view[data-up-done] .rfab-wrap, #view[data-up-done] .chbar { animation: none; }
 @keyframes fixUp { from { transform: translateY(calc(100% + 40px)); } }
 /* tanpa opacity: opacity < 1 pada #view mematikan efek kaca (backdrop-filter) semua tombol/menu di dalamnya selama
