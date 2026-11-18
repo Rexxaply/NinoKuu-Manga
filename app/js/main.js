@@ -109,6 +109,7 @@ async function render() {
     if (animated || my !== renderSeq) return; animated = true;
     holdFx(true); clearTimeout(movingT);
     movingT = setTimeout(() => { holdFx(false); watchFx(); }, 420);
+    for (const c of view.children) c.classList.toggle("vfix", getComputedStyle(c).position === "fixed");
     void view.offsetWidth; view.classList.add("in", fwd ? "in-f" : "in-b");
   };
   const job = (VIEWS[route.name] || VIEWS.home)(...route.params);
@@ -1615,12 +1616,16 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
 // setinggi bagian keyboard yang belum "dimakan" oleh penyusutan layar.
 // Dihitung ulang setiap kali layar berubah ukuran: di sebagian HP, keyboard dilaporkan "sudah muncul" sebelum
 // WebView menyusut. Dulu tingginya dihitung sekali saja → kolom chat terangkat 2× (melompat ke atas layar).
+// Tinggi layar penuh (kbBase) hanya diambil saat keyboard pasti tertutup: waktu mulai & setelah keyboard hilang,
+// dan dijaga = tinggi terbesar yang pernah terlihat. Di sebagian HP layar sudah menyusut SEBELUM laporan
+// "keyboard muncul" datang; dulu tinggi yang sudah menyusut itu dianggap layar penuh → kolom terangkat 2×.
 let kbBase = window.innerHeight, kbOpen = false, kbH = 0;
 const applyKb = () => {
   const extra = kbH - Math.max(0, kbBase - window.innerHeight);
   document.documentElement.style.setProperty("--kb", (extra > 40 ? Math.round(extra) : 0) + "px");
 };
-window.addEventListener("resize", () => { if (!kbOpen) kbBase = window.innerHeight; else if (kbH) applyKb(); });
+window.addEventListener("resize", () => { if (kbOpen) { if (kbH) applyKb(); } else if (window.innerHeight > kbBase) kbBase = window.innerHeight; });
+addEventListener("orientationchange", () => setTimeout(() => { if (!kbOpen) kbBase = window.innerHeight; }, 400));
 function setKeyboard(h, phase) {
   const root = document.documentElement;
   if (h > 0) {
@@ -1632,6 +1637,7 @@ function setKeyboard(h, phase) {
     if (ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName) && !ae.closest(".composer, .chbar")) setTimeout(() => ae.scrollIntoView({ block: "center", behavior: "smooth" }), 60);
   } else {
     kbOpen = false; kbH = 0;
+    if (phase === "did") setTimeout(() => { if (!kbOpen) kbBase = window.innerHeight; }, 250);   // tinggi penuh yang pasti benar
     root.style.setProperty("--kb", "0px");
     document.body.classList.remove("kb-open");
   }

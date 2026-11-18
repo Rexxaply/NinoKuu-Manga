@@ -27,13 +27,18 @@ img { display: block; }
 html, body { overflow-x: clip; }
 @supports not (overflow-x: clip) { html, body { overflow-x: hidden; } }
 /* pindah layar: meluncur dari kanan (maju) atau kiri (kembali), seperti prototipe */
-#view.in-f { animation: slideF .36s cubic-bezier(.2, .8, .2, 1); }
-#view.in-b { animation: slideB .36s cubic-bezier(.2, .8, .2, 1); }
+/* Animasi pindah halaman dipasang di isi #view, bukan #view sendiri: transform pada #view membuat elemen "fixed" di
+   dalamnya (bar Mulai baca, bar bawah daftar chapter) ikut terbawa ke dasar halaman selama animasi lalu muncul
+   tiba-tiba. Elemen fixed (.vfix, ditandai main.js) meluncur naik sendiri dari bawah. */
+#view.in-f > :not(.vfix) { animation: slideF .36s cubic-bezier(.2, .8, .2, 1); }
+#view.in-b > :not(.vfix) { animation: slideB .36s cubic-bezier(.2, .8, .2, 1); }
+#view.in > .vfix.rfab-wrap, #view.in > .vfix.chbar { animation: fixUp .42s cubic-bezier(.32, .72, 0, 1); }
+@keyframes fixUp { from { transform: translateY(calc(100% + 40px)); } }
 /* tanpa opacity: opacity < 1 pada #view mematikan efek kaca (backdrop-filter) semua tombol/menu di dalamnya selama
    animasi → isi di belakangnya sempat tembus tajam. Cukup geser seperti "push" iOS. */
 @keyframes slideF { from { transform: translateX(44px); } }
 @keyframes slideB { from { transform: translateX(-32px); } }
-@media (prefers-reduced-motion: reduce) { #view.in-f, #view.in-b { animation: none; } }
+@media (prefers-reduced-motion: reduce) { #view.in-f > *, #view.in-b > *, #view.in > .vfix { animation: none !important; } }
 
 /* ---------- utilitas ---------- */
 .mu { color: var(--mu); } .gold { color: var(--gold); } .ok { color: var(--ok); }
