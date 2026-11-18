@@ -198,7 +198,8 @@ function placeSeg(el, anim) {
   const on = el.querySelector(`:scope > button:is(${SEG_ON})`);
   let th = el.querySelector(":scope > .seg-th");
   // belum terlihat (mis. di dalam menu yang tertutup): diawasi ResizeObserver, dipasang saat muncul
-  if (!on || !on.offsetWidth) { if (th) th.style.opacity = "0"; segRo?.observe(el); return; }
+  // (posisi lama dilupakan, supaya saat muncul lagi jempol dipasang ulang & terlihat, bukan tetap tersembunyi)
+  if (!on || !on.offsetWidth) { if (th) th.style.opacity = "0"; el._th = null; segRo?.observe(el); return; }
   if (!th) {
     th = document.createElement("span"); th.className = "seg-th no-tr"; th.setAttribute("aria-hidden", "true");
     el.prepend(th); el.classList.add("has-th"); segRo?.observe(el);
