@@ -314,7 +314,7 @@ ${last ? `<section class="sec s16"><h2 class="cap">Lanjut baca</h2>
   setActs({
     quote: (el) => { qi = (qi + 1) % QUOTES.length; el.classList.add("fade"); setTimeout(() => { el.textContent = `“${QUOTES[qi]}”`; el.classList.remove("fade"); }, 200); },
     bell: () => openNotif(),
-    src: (el) => { homeSrc = el.dataset.v; api.lsSet("homeSrc", homeSrc); const y = window.scrollY; vHome().then(() => window.scrollTo(0, y)); },
+    src: (el) => { setSrc(el.dataset.v); const y = window.scrollY; vHome().then(() => window.scrollTo(0, y)); },
     updView: (el) => { S.setSetting("updView", S.state.settings.updView === "grid" ? "list" : "grid"); el.outerHTML = viewBtn(S.state.settings.updView === "grid", "updView"); drawUpd(); },
     more: () => { if (!busy) { page++; loadUpd(true); } },
     hsort: () => sortSheet(`Urutkan · ${srcName(homeSrc)}`, SRC_SORTS[homeSrc].map((k) => [k, SORT_NAME[k]]), homeSortOf(homeSrc), (v) => {
@@ -402,7 +402,13 @@ function closeNotif() {
 }
 
 /* ---------- Pencarian (hasil muncul sambil mengetik) ---------- */
-let sState = { q: "", src: savedSrc("searchSrc"), type: "", status: "", genres: [] };
+let sState = { q: "", src: savedSrc("homeSrc"), type: "", status: "", genres: [] };
+// Sumber di Beranda dan Pencarian satu pilihan yang sama: diganti di salah satu, ikut di yang lain
+function setSrc(v) {
+  if (!SRC_IDS.includes(v)) return;
+  homeSrc = v; api.lsSet("homeSrc", v); api.lsSet("searchSrc", v);
+  if (sState.src !== v) { sState.src = v; sState.genres = []; sMem = null; }
+}
 // hasil Pencarian yang sudah dimuat: kembali dari halaman komik → daftar & posisi gulir utuh
 let sMem = null;
 const sKey = () => JSON.stringify([sState.src, sState.q, sState.type, sState.status, sState.genres]);
@@ -490,7 +496,7 @@ async function vSearch(type) {
   const pick = (act, el) => $$(`[data-act=${act}]`).forEach((b) => b.setAttribute(b.parentElement.classList.contains("chips") ? "aria-pressed" : "aria-selected", String(b === el)));
   setActs({
     clear: () => { inp.value = ""; sState.q = ""; $("[data-act=clear]").hidden = true; inp.focus(); showHist(true); load(); },
-    src: (el) => { if (sState.genres.length) toast("Filter genre direset karena tiap sumber punya daftar genre sendiri."); sState.src = el.dataset.v; api.lsSet("searchSrc", sState.src); sState.genres = []; pick("src", el); drawFilters(); load(); },
+    src: (el) => { if (sState.genres.length) toast("Filter genre direset karena tiap sumber punya daftar genre sendiri."); setSrc(el.dataset.v); pick("src", el); drawFilters(); load(); },
     // chip jenis diubah di tempat (tanpa menggambar ulang barisnya) supaya pil meluncur tanpa gangguan;
     // hasil dimuat 1 frame kemudian, setelah animasi dimulai
     type: (el) => { sState.type = el.dataset.v; $$("#tchips .chips > button").forEach((b) => b.setAttribute("aria-pressed", String(b === el))); drawFilters(true); requestAnimationFrame(() => load()); },
