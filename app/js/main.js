@@ -1613,20 +1613,25 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
 /* ---------- khusus APK: notifikasi, tombol kembali, cek chapter sumber yang diblokir server ---------- */
 // Keyboard: bila WebView tidak menyusut saat keyboard muncul, angkat elemen bawah (kolom chat, dll.)
 // setinggi bagian keyboard yang belum "dimakan" oleh penyusutan layar.
-let kbBase = window.innerHeight, kbOpen = false;
-window.addEventListener("resize", () => { if (!kbOpen) kbBase = window.innerHeight; });
+// Dihitung ulang setiap kali layar berubah ukuran: di sebagian HP, keyboard dilaporkan "sudah muncul" sebelum
+// WebView menyusut. Dulu tingginya dihitung sekali saja → kolom chat terangkat 2× (melompat ke atas layar).
+let kbBase = window.innerHeight, kbOpen = false, kbH = 0;
+const applyKb = () => {
+  const extra = kbH - Math.max(0, kbBase - window.innerHeight);
+  document.documentElement.style.setProperty("--kb", (extra > 40 ? Math.round(extra) : 0) + "px");
+};
+window.addEventListener("resize", () => { if (!kbOpen) kbBase = window.innerHeight; else if (kbH) applyKb(); });
 function setKeyboard(h, phase) {
   const root = document.documentElement;
   if (h > 0) {
     kbOpen = true;
     if (phase !== "did") return;
-    const extra = h - Math.max(0, kbBase - window.innerHeight);
-    root.style.setProperty("--kb", (extra > 40 ? extra : 0) + "px");
+    kbH = h; applyKb();
     document.body.classList.add("kb-open");
     const ae = document.activeElement;
     if (ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName) && !ae.closest(".composer, .chbar")) setTimeout(() => ae.scrollIntoView({ block: "center", behavior: "smooth" }), 60);
   } else {
-    kbOpen = false;
+    kbOpen = false; kbH = 0;
     root.style.setProperty("--kb", "0px");
     document.body.classList.remove("kb-open");
   }

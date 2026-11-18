@@ -321,8 +321,10 @@ body[data-screen="reader"] { background: #0A0A0A; overflow: hidden; }
    --nw / --nwn = lebar bar (px / angka), diisi main.js. */
 #nav { position: fixed; z-index: 20; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom)); width: min(100% - 28px, 520px); height: 68px; display: flex; padding: 6px;
   --nw: 362px; --nwn: 362; --tw: calc((var(--nw) - 12px) / 4);
-  transform: translateX(-50%); transition: transform .35s cubic-bezier(.2, .8, .2, 1), opacity .3s; }
-body.nav-off #nav { transform: translate(-50%, 120px); opacity: 0; pointer-events: none; }
+  transform: translateX(-50%); transition: transform .35s cubic-bezier(.2, .8, .2, 1); }
+/* disembunyikan cukup digeser keluar layar, tanpa opacity: opacity < 1 pada #nav membuat efek kaca (backdrop-filter)
+   di dalamnya berhenti, sehingga saat kembali ke Beranda isi halaman sempat tembus tajam di balik bar */
+body.nav-off #nav { transform: translate(-50%, calc(100% + 24px + env(safe-area-inset-bottom))); pointer-events: none; }
 /* latar kaca: 1 elemen kosong di tengah; hanya lebarnya yang berubah (tanpa isi → hitungannya ringan, tanpa sambungan) */
 .nav-bg { position: absolute; top: 0; bottom: 0; left: 50%; width: 100%; transform: translateX(-50%); border-radius: 34px; pointer-events: none;
   background: var(--glass-bg); backdrop-filter: var(--glass); -webkit-backdrop-filter: var(--glass); border: 1px solid rgba(255, 255, 255, .13);
