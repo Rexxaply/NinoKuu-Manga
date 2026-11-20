@@ -182,12 +182,12 @@ jobs:
             s = s.replace(/(<style name="AppTheme.NoActionBar"[^>]*>)/, `$1\n        ${items}`);
             s = s.replace(/(<style name="AppTheme.NoActionBarLaunch"[^>]*>)/, `$1\n        <item name="windowSplashScreenBackground">@color/ninokuu_bg</item>\n        ${items}`);
             fs.writeFileSync(sf, s);
-            // izin notifikasi, ikon & channel default FCM, orientasi potret
+            // izin notifikasi, ikon & channel default FCM, orientasi potret (boleh terbalik atas-bawah bila putar otomatis HP menyala)
             const mf = "android/app/src/main/AndroidManifest.xml"; let m = fs.readFileSync(mf, "utf8");
             if (!m.includes("POST_NOTIFICATIONS")) m = m.replace("</manifest>", `    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n</manifest>`);
             m = m.replace("</application>", `    <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/ic_stat_ninokuu" />\n        <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="ninokuu" />\n        <meta-data android:name="com.google.firebase.messaging.default_notification_color" android:resource="@color/ninokuu_red" />\n    </application>`);
             // layar menyusut saat keyboard muncul (kolom chat tidak tertutup keyboard)
-            m = m.replace(/<activity\b/, `<activity\n            android:screenOrientation="portrait"` + (m.includes("windowSoftInputMode") ? "" : `\n            android:windowSoftInputMode="adjustResize"`));
+            m = m.replace(/<activity\b/, `<activity\n            android:screenOrientation="userPortrait"` + (m.includes("windowSoftInputMode") ? "" : `\n            android:windowSoftInputMode="adjustResize"`));
             // keamanan: token sesi di penyimpanan WebView tidak ikut cadangan otomatis Android
             m = m.replace(/android:allowBackup="true"/, `android:allowBackup="false"`);
             if (!m.includes("android:allowBackup")) m = m.replace(/<application\b/, `<application\n        android:allowBackup="false"`);

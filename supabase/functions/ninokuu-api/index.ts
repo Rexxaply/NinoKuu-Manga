@@ -11,7 +11,7 @@
 // kalau satu sumber rusak, isi secret KOMIKU_SITE / KIRYUU_SITE / SHNGM_SITE / WEST_SITE dengan domain barunya.
 import { createClient } from "npm:@supabase/supabase-js@2.76.1";
 
-const VERSION = "1.5.0";
+const VERSION = "1.6.0";
 const NAME = "ninokuu-api";
 const SOURCES = ["komiku", "kiryuu", "shinigami", "westmanga"] as const;
 type Source = typeof SOURCES[number];
@@ -261,7 +261,7 @@ type Sort = "update" | "popular" | "az" | "za" | "rating";
 const SORTS: Record<string, Sort[]> = { komiku: ["update", "popular"], kiryuu: ["update", "popular", "az", "za", "rating"], shinigami: ["update", "popular", "rating"], westmanga: ["update", "popular", "az", "za"] };
 type Opt = { sort: Sort; type: "" | "manga" | "manhwa" | "manhua"; limit: number; genres: string[]; status: Status };
 type Chapter = { id: string; ch: string | null; title: string; at: string | null; url: string };
-type Detail = { manga: { id: string; title: string; cover: string; desc: string; status: string; tags: string[]; author: string; url: string; views?: number | null; publisher?: string }; chapters: Chapter[]; more?: { offset: number } | null };
+type Detail = { manga: { id: string; title: string; cover: string; desc: string; status: string; tags: string[]; author: string; url: string; views?: number | null; score?: number | null; publisher?: string }; chapters: Chapter[]; more?: { offset: number } | null };
 // info tambahan (tiap sumber menamai field-nya berbeda; yang tidak ada dibiarkan kosong)
 const normStatus = (s: unknown): string => {
   const t = String(s ?? "").toLowerCase();
@@ -276,6 +276,24 @@ const toNum = (v: unknown): number | null => {
   const n = mul > 1 ? parseFloat(m[1].replace(",", ".")) : parseFloat(m[1].replace(/[.,](?=\d{3}(\D|$))/g, "").replace(",", "."));
   return Number.isFinite(n) ? Math.round(n * mul) : null;
 };
+// skor/rating komik dari sumber (skala 10). 0–10 apa adanya, 10–100 dibagi 10; selain itu dianggap tidak ada.
+const toScore = (v: unknown): number | null => {
+  if (v && typeof v === "object") v = (v as any).average ?? (v as any).avg ?? (v as any).value ?? (v as any).score;
+  const n = typeof v === "number" ? v : parseFloat(String(v ?? "").trim().replace(",", "."));
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const x = n <= 10 ? n : n <= 100 ? n / 10 : NaN;
+  return Number.isFinite(x) ? Math.round(x * 10) / 10 : null;
+};
+const SCORE_KEYS = ["user_rate", "rating", "score", "rate", "rating_avg", "avg_rating", "average_rating", "rating_value", "ratingValue", "star", "stars"];
+const pickScore = (...objs: any[]): number | null => {
+  for (const o of objs) if (o && typeof o === "object") for (const k of SCORE_KEYS) { const n = toScore(o[k]); if (n != null) return n; }
+  return null;
+};
+// skor dari HTML (schema.org ratingValue, tema MangaThemesia "num", JSON-LD)
+const scoreFromHtml = (h: string): number | null =>
+  toScore(h.match(/itemprop=["']ratingValue["'][^>]*content=["']([\d.,]+)/i)?.[1] || h.match(/content=["']([\d.,]+)["'][^>]*itemprop=["']ratingValue/i)?.[1]
+    || h.match(/itemprop=["']ratingValue["'][^>]*>\s*([\d.,]+)/i)?.[1] || h.match(/"ratingValue"\s*:\s*"?([\d.,]+)/i)?.[1]
+    || h.match(/rating[\s\S]{0,300}?class=["'][^"']*\bnum\b[^"']*["'][^>]*>\s*([\d.,]+)\s*</i)?.[1] || "");
 const VIEW_KEYS = ["view_count", "views_count", "total_views", "total_view", "views", "view", "viewer", "viewers", "read_count", "total_read", "readers", "post_views", "hits"];
 const pickViews = (...objs: any[]): number | null => {
   for (const o of objs) if (o && typeof o === "object") for (const k of VIEW_KEYS) { const n = toNum(o[k]); if (n != null && n > 0) return n; }
@@ -336,7 +354,7 @@ async function shngDetail(id: string): Promise<Detail> {
       id, title: String(d.title || ""), cover: await coverUrl(shngCover(d), SHNGM_SITE + "/"), desc: String(d.description || "").trim(),
       status: SHNG_STATUS[Number(d.status)] || normStatus(d.status_name || d.status_label || d.status), tags: [...(tax.Genre || []), ...(tax.Format || [])].map((x: any) => x?.name).filter(Boolean).slice(0, 8),
       author: (tax.Author || []).map((x: any) => x?.name).filter(Boolean).join(", "), url: `${SHNGM_SITE}/series/${id}`,
-      views: pickViews(d, d.stats, d.statistic), publisher: pickPublisher(tax) || pickPublisher(d),
+      views: pickViews(d, d.stats, d.statistic), score: pickScore(d, d.stats, d.statistic), publisher: pickPublisher(tax) || pickPublisher(d),
     },
     chapters,
   };
@@ -401,7 +419,8 @@ async function komikuDetail(id: string): Promise<Detail> {
     manga: { id: page.url, title, cover: await coverUrl(komikuCover(cover, 500), page.url), desc, tags: tags.slice(0, 8),
       status: normStatus(st), author: row("(?:Pengarang|Komikus|Author)"), url: page.url,
       publisher: row("(?:Penerbit|Publisher|Serialisasi|Serialization)").slice(0, 120),
-      views: toNum(row("(?:Pembaca|Dibaca|Dilihat|Views?)")) ?? toNum(stripTags(top).match(/([\d.,]+\s*(?:rb|ribu|jt|juta|k|m)?)\s*(?:x\s*)?(?:dibaca|pembaca|views?)\b/i)?.[1] || "") },
+      views: toNum(row("(?:Pembaca|Dibaca|Dilihat|Views?)")) ?? toNum(stripTags(top).match(/([\d.,]+\s*(?:rb|ribu|jt|juta|k|m)?)\s*(?:x\s*)?(?:dibaca|pembaca|views?)\b/i)?.[1] || ""),
+      score: toScore(row("(?:Skor|Score|Rating|Nilai)")) ?? scoreFromHtml(top) },
     chapters,
     more,
   };
@@ -542,7 +561,7 @@ async function kiryuuDetail(id: string): Promise<Detail> {
       desc: stripTags(String(m.content?.rendered || "").replace(/<\/p>\s*<p[^>]*>/gi, "\n\n")).trim(),
       tags: [...kiryuuTerms(m, "genre"), ...kiryuuTerms(m, "type")].slice(0, 8), status: kiryuuTerms(m, "status").map((s) => KIRYUU_STATUS[s] || normStatus(s)).find(Boolean) || "",
       author: kiryuuTerms(m, "series-author").join(", "), url: m.link || `${KIRYUU_SITE}/manga/${m.slug}/`,
-      views: pickViews(m, m.meta, m.acf),
+      views: pickViews(m, m.meta, m.acf), score: pickScore(m, m.meta, m.acf),
       publisher: ["series-publisher", "series-serialization", "serialization", "publisher"].map((t) => kiryuuTerms(m, t).join(", ")).find(Boolean) || pickPublisher(m.meta) || pickPublisher(m.acf),
     },
     chapters,
@@ -619,7 +638,7 @@ async function westDetail(id: string): Promise<Detail> {
       desc: stripTags(String(d.sinopsis || "").replace(/<\/p>\s*<p[^>]*>/gi, "\n\n").replace(/<br\s*\/?>/gi, "\n")).trim(),
       tags: [...(type ? [type[0].toUpperCase() + type.slice(1)] : []), ...((d.genres || []).map((g: any) => g?.name).filter(Boolean))].slice(0, 8),
       status: WEST_STATUS[String(d.status || "").toLowerCase()] || normStatus(d.status), author: String(d.author || ""), url: `${westBase}/comic/${d.slug}`,
-      views: pickViews(d, d.stats), publisher: pickPublisher(d),
+      views: pickViews(d, d.stats), score: pickScore(d, d.stats), publisher: pickPublisher(d),
     },
     chapters,
   };

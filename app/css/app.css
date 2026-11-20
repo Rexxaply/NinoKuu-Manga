@@ -276,14 +276,13 @@ body[data-screen="reader"] { background: #0A0A0A; overflow: hidden; }
 .r-main { flex: 1; min-width: 0; height: 54px; border-radius: 18px; background: var(--red); color: #fff; font-size: 15px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 8px 22px rgba(224, 36, 43, .38); white-space: nowrap; overflow: hidden; }
 .r-menu-bg { position: absolute; inset: 0; z-index: 7; background: rgba(0, 0, 0, .25); }
 .r-menu { position: absolute; right: 12px; top: calc(72px + var(--sat)); z-index: 8; width: 262px; padding: 14px; border-radius: 24px; display: flex; flex-direction: column; gap: 10px; animation: pop .18s ease-out; }
-.r-menu[hidden], .r-menu-bg[hidden], .r-zoom[hidden] { display: none; }
+.r-menu[hidden], .r-menu-bg[hidden] { display: none; }
 @keyframes pop { from { opacity: 0; transform: translateY(-6px) scale(.97); } }
 .r-menu .cap { padding: 0 4px; margin: 0; }
 .r-mode { display: flex; align-items: center; gap: 12px; min-height: 50px; padding: 0 12px; border-radius: 16px; border: 1px solid rgba(255, 255, 255, .1); text-align: left; }
 .r-mode.on { border-color: rgba(255, 107, 112, .5); background: rgba(224, 36, 43, .12); }
 .r-mode b { font-size: 14px; }
 .seg.s3 { background: rgba(255, 255, 255, .06); border: 0; border-radius: 14px; }
-.r-zoom { position: absolute; left: 50%; top: calc(84px + var(--sat)); transform: translateX(-50%); z-index: 6; padding: 6px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 700; display: flex; align-items: center; gap: 6px; pointer-events: none; white-space: nowrap; }
 
 /* ---------- favorit & lainnya ---------- */
 .note { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; margin-top: 14px; border-radius: 16px; background: rgba(242, 179, 61, .08); border: 1px solid rgba(242, 179, 61, .35); font-size: 13px; line-height: 1.55; color: var(--soft); }
@@ -992,6 +991,7 @@ body.nk-lite .rk-b.t6::before, body.nk-lite .rk-b.t7::before { display: none; }
 .inf-line svg { flex: none; opacity: .75; }
 .inf-st { font-weight: 700; } .inf-st::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; margin-right: 2px; }
 .inf-ok { color: var(--ok); } .inf-blue { color: #6FB3FF; } .inf-gold { color: var(--gold); } .inf-red { color: var(--redt); }
+.inf-score { color: var(--gold); font-weight: 800; } .inf-score svg { fill: currentColor; opacity: 1; }
 .inf-line i { font-style: normal; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* latar halaman komik: cover buram yang kalem + sedikit warna dominan cover, hanya sampai baris tombol "Mulai baca" */
 #view { position: relative; }
@@ -1443,3 +1443,15 @@ body[data-screen="reader"] .dl-pop { display: none; }
 .dl-mbar { height: 0; margin-top: 0; opacity: 0; transition: height .3s ease, margin-top .3s ease, opacity .3s; }
 .dl-mbar.on { height: 4px; margin-top: 7px; opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .dl-pop, .dl-pop .dp-ic svg { transition: opacity .2s; } .dl-pop[data-st="run"] .dp-bar i::after, .dl-mbar i::after, .dl-pop[data-st="run"] .dp-ic svg:first-child { animation: none; } }
+
+/* zoom: layar bersih & terkunci di halaman (tidak memantul keluar tepi gambar) */
+.reader.zoomed .r-scroll, .reader.zoomed .r-slide { overscroll-behavior: none; }
+
+/* tombol lanjut gulir otomatis (muncul saat gulir otomatis dihentikan dengan ketukan) */
+.r-as { align-self: center; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 999px; font-size: 13px; font-weight: 700; color: var(--tx); }
+.r-as[hidden] { display: none; }
+.r-as b { color: var(--redt); }
+
+/* Lainnya: kartu profil + pengaturan akun dalam satu panel "Akun" */
+.group > .me.in-group { width: 100%; margin: 0; border: 0; border-radius: 0; background: transparent; padding: 18px 16px 16px 18px; }
+.group > .me.in-group + .mrow { border-top: 1px solid var(--line); }

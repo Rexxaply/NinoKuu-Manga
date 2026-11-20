@@ -631,8 +631,9 @@ async function vDetail(src, id) {
     const heroCol = X.cachedCoverColor(m.cover);
     const ST = { ongoing: ["Berlangsung", "ok"], completed: ["Tamat", "blue"], hiatus: ["Hiatus", "gold"], dropped: ["Dihentikan", "red"] }[m.status];
     const views = Number(m.views) > 0 ? compactNum(m.views) : "";
+    const score = Number(m.score) > 0 ? (Math.round(Number(m.score) * 10) / 10).toFixed(1).replace(".", ",") : "";
     // satu baris info ringkas di bawah judul; yang tidak tersedia dari sumber tidak ditampilkan
-    const infoLine = [ST && `<span class="inf-st inf-${ST[1]}">${esc(ST[0])}</span>`, views && `<span title="Dilihat di situs sumber">${icon("eye", 14)}${esc(views)}</span>`,
+    const infoLine = [score && `<span class="inf-score" title="Skor di situs sumber (dari 10)">${icon("star", 14, 2)}<b>${esc(score)}</b></span>`, ST && `<span class="inf-st inf-${ST[1]}">${esc(ST[0])}</span>`, views && `<span title="Dilihat di situs sumber">${icon("eye", 14)}${esc(views)}</span>`,
       m.publisher && `<span>${icon("book", 13)}<i>${esc(m.publisher)}</i></span>`, m.author && `<span>${icon("user", 13)}<i>${esc(m.author)}</i></span>`].filter(Boolean).join("");
     view.innerHTML = `
 <div class="dbar" id="dbar"><button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 21, 2)}</button><span class="dbar-t">${esc(m.title)}</span>
@@ -918,7 +919,6 @@ async function vReader(src, id, chId) {
   view.innerHTML = `<div class="reader ui ${animIn ? "enter" : ""} ${slide ? "slide" : ""}" id="rd">
   ${slide ? `<div class="r-slides" id="rbox" dir="${rtl ? "rtl" : "ltr"}">${imgs.map((im) => `<div class="r-slide">${im}</div>`).join("")}<div class="r-slide r-endslide"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span>${next ? `<button class="r-next-hint" id="rnext" data-act="cancelNext" hidden><span class="r-nbar"></span><span class="r-ntx"></span></button>` : ""}${isLocal ? "" : `${chLike(null)}<a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini</a>`}</div></div>`
     : `<div class="r-scroll" id="rbox"><div class="r-pages" id="rpages">${imgs.join("")}<div class="r-endtxt"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span>${next ? `<button class="r-next-hint" id="rnext" data-act="cancelNext" hidden><span class="r-nbar"></span><span class="r-ntx"></span></button>` : ""}${isLocal ? "" : `${chLike(null)}<a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini<span class="cm-n" id="rcmn"></span></a>`}</div></div></div>`}
-  <div class="r-zoom glass" id="rzoom" hidden>${icon("zoom", 15)}<span id="rzt"></span> · geser untuk melihat, ketuk 2× untuk normal</div>
   <div class="r-top">
     <button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 22, 2)}</button>
     <button class="r-pill glass" data-act="chlist" aria-label="Daftar chapter"><b class="t1">${esc(d.manga.title)}</b><span class="mu xs row g4">Chapter ${esc(ch.ch)}${icon("chev", 12, 2.4)}</span></button>
@@ -938,6 +938,7 @@ async function vReader(src, id, chId) {
     <span class="cap mt4">Bacaan</span><div class="r-togs rq">${readPrefsCompact()}</div>
   </div>
   <div class="r-bottom">
+    ${slide ? "" : `<button class="r-as glass" data-act="asGo" hidden>${icon("play", 14, 2.4)}<span>Lanjut gulir</span> <b id="rasx"></b></button>`}
     <div class="r-seek glass"><span class="r-pn"><span id="rpg">1</span> / ${total}</span>
       <div class="r-track" id="rtrack" role="slider" aria-label="Posisi halaman" aria-valuemin="1" aria-valuemax="${total}" aria-valuenow="1" tabindex="0"><span class="r-rail"></span><span class="r-fill" id="rfill"></span><span class="r-knob" id="rknob"></span></div></div>
     <div class="r-btns">
@@ -1043,7 +1044,6 @@ async function vReader(src, id, chId) {
   }, { passive: true });
   // ketuk sekali: tampil/sembunyikan tombol; ketuk dua kali: perbesar 2,5× / kembali normal (mode gulir)
   let lastTap = null, tapT = null;
-  const showZoom = () => { const z = $("#rzoom"); z.hidden = zoom <= 1.02; $("#rzt").textContent = Math.round(zoom * 100) + "%"; };
   // Zoom memperbesar LEBAR gambar (bukan CSS zoom) → geser kiri-kanan & gulir tetap mulus untuk
   // manga, manhwa, maupun manhua (strip panjang). Mode gulir: seluruh halaman; mode slide: halaman yang tampil.
   // halaman panjang (manhwa/manhua) vs halaman pendek (manga): batas & tingkat zoom berbeda
@@ -1055,7 +1055,7 @@ async function vReader(src, id, chId) {
       zEl.style.width = zEl.style.maxWidth = zEl.style.maxHeight = zEl.style.height = "";
       if (slide) { sc.classList.remove("zoomed-slide"); sc.scrollLeft = 0; box.classList.remove("zlock"); }
     }
-    zoom = 1; zEl = null; rd.classList.remove("zoomed"); showZoom();
+    zoom = 1; zEl = null; rd.classList.remove("zoomed");
   }
   const applyZoom = (z, fx, fy) => {
     z = Math.max(1, Math.min(ZMAX, z));
@@ -1068,7 +1068,7 @@ async function vReader(src, id, chId) {
     el.style.width = zBase * zoom + "px"; el.style.maxWidth = "none";
     if (slide) { el.style.maxHeight = "none"; el.style.height = "auto"; sc.classList.add("zoomed-slide"); box.classList.add("zlock"); }
     sc.scrollLeft = (sl + x) * k - x; sc.scrollTop = (st + y) * k - y;
-    if (zoom <= 1.01) clearZoom(); else { rd.classList.add("zoomed"); showZoom(); }
+    if (zoom <= 1.01) clearZoom(); else rd.classList.add("zoomed");
   };
   // mode slide: halaman strip panjang (manhwa/manhua) dibuat selebar layar dan bisa digulir ke bawah
   if (slide) $$(".r-slide .r-img", box).forEach((im) => {
@@ -1080,6 +1080,7 @@ async function vReader(src, id, chId) {
   const setUi = (on) => (on ? showUi() : rd.classList.remove("ui"));
   box.addEventListener("click", (e) => {
     if (e.target.closest("a,button")) return;
+    if (asRun) { asPause(); showUi(); lastTap = null; return; }   // gulir otomatis berjalan: ketuk = berhenti
     const now = Date.now();
     if (lastTap && now - lastTap.t < 320 && Math.hypot(lastTap.x - e.clientX, lastTap.y - e.clientY) < 50) {
       clearTimeout(tapT); setUi(lastTap.was); lastTap = null; applyZoom(zoom > 1.05 ? 1 : ZTAP, e.clientX, e.clientY);
@@ -1098,8 +1099,15 @@ async function vReader(src, id, chId) {
   const pinchPaint = () => {
     if (!pinch) return;
     pinch.raf = 0;
+    // Kunci di dalam halaman: hasil perbesaran + geseran selalu menutupi layar baca, tidak pernah lewat dari tepi
+    // gambar (tidak ada celah hitam di samping/atas/bawah). Bila gambar lebih kecil dari layar, dijaga di dalamnya.
+    const { r, B, ox, oy } = pinch, s2 = pinch.s, cl = (v, a, b) => Math.min(Math.max(v, Math.min(a, b)), Math.max(a, b));
+    const base = (start, o) => start + o * (1 - s2);          // posisi tepi kiri/atas setelah diperbesar, sebelum digeser
+    const lim = (start, size, o, bStart, bSize) => { const w = size * s2, p0 = base(start, o);
+      return w >= bSize ? [bStart + bSize - w - p0, bStart - p0] : [bStart - p0, bStart + bSize - w - p0]; };
+    pinch.dx = cl(pinch.dx, ...lim(r.left, r.width, ox, B.left, B.width));
+    pinch.dy = cl(pinch.dy, ...lim(r.top, r.height, oy, B.top, B.height));
     pinch.el.style.transform = `translate3d(${pinch.dx}px, ${pinch.dy}px, 0) scale(${pinch.s})`;
-    $("#rzt").textContent = Math.round(pinch.z * pinch.s * 100) + "%"; $("#rzoom").hidden = pinch.z * pinch.s <= 1.02;
   };
   const pinchMove = (e) => {
     if (!pinch || e.touches.length !== 2) return;
@@ -1110,8 +1118,9 @@ async function vReader(src, id, chId) {
     if (!pinch.on) {
       pinch.on = true;
       const el = zTarget(); if (!el) { pinch = null; return; }
-      const r = el.getBoundingClientRect();
-      pinch.el = el; el.style.transformOrigin = `${pinch.x - r.left}px ${pinch.y - r.top}px`; el.style.willChange = "transform";
+      const r = el.getBoundingClientRect(), sc = slide ? el.parentElement : box;
+      pinch.el = el; pinch.r = r; pinch.B = sc.getBoundingClientRect(); pinch.ox = pinch.x - r.left; pinch.oy = pinch.y - r.top;
+      el.style.transformOrigin = `${pinch.ox}px ${pinch.oy}px`; el.style.willChange = "transform";
     }
     const z = Math.max(1, Math.min(ZMAX, pinch.z * (dd / pinch.d)));
     pinch.s = z / pinch.z;
@@ -1128,7 +1137,6 @@ async function vReader(src, id, chId) {
     applyZoom(p.z * p.s, p.x, p.y);
     const sc = slide ? zTarget()?.parentElement : box;
     if (sc && zoom > 1.01) { sc.scrollLeft -= p.dx; sc.scrollTop -= p.dy; }
-    showZoom();
   };
   box.addEventListener("touchstart", (e) => {
     if (e.touches.length !== 2 || pinch) return;
@@ -1138,6 +1146,34 @@ async function vReader(src, id, chId) {
   }, { passive: true });
   box.addEventListener("touchend", pinchEnd, { passive: true });
   box.addEventListener("touchcancel", pinchEnd, { passive: true });
+  // Gulir otomatis (mode Scroll): 1× / 2× / 3×. Ketuk halaman → berhenti (tombol ▶ Lanjut gulir muncul di bar bawah).
+  // Jari menempel (menggeser sendiri, mencubit) → ditahan sementara, lanjut lagi setelah jari dilepas.
+  // Berhenti sendiri di akhir chapter; lanjut otomatis ke chapter berikutnya tetap memakai pengaturannya sendiri.
+  const AS_PX = { 1: 50, 2: 100, 3: 160 };   // px per detik
+  let asRun = false, asHold = false, asRaf = 0, asLast = 0, asY = 0;
+  const asSpeed = () => (slide ? 0 : AS_PX[choiceVal("autoScroll")] || 0);
+  const asBtn = $(".r-as", rd);
+  const asPaint = () => { if (!asBtn) return; asBtn.hidden = asRun || !asSpeed(); const x = $("#rasx", rd); if (x) x.textContent = choiceVal("autoScroll") + "×"; };
+  const asTick = (t) => {
+    asRaf = 0;
+    if (!asRun || !rd.isConnected || parse().name !== "reader") { asRun = false; return; }
+    const v = asSpeed(); if (!v) { asPause(); return; }
+    const dt = Math.min(100, t - (asLast || t)); asLast = t;
+    if (!asHold && !pinch && zoom <= 1.01 && !menuOpen() && !seeking) {
+      if (Math.abs(box.scrollTop - asY) > 2) asY = box.scrollTop;            // digeser sendiri → lanjut dari posisi itu
+      const max = box.scrollHeight - box.clientHeight;
+      asY = Math.min(max, asY + (v * dt) / 1000); box.scrollTop = asY;
+      if (asY >= max - 1) { asPause(); return; }                           // sampai akhir chapter
+    }
+    asRaf = requestAnimationFrame(asTick);
+  };
+  const asStart = () => { if (!asSpeed() || asRun) return; asRun = true; asLast = 0; asY = box.scrollTop; asPaint(); if (!asRaf) asRaf = requestAnimationFrame(asTick); };
+  function asPause() { asRun = false; cancelAnimationFrame(asRaf); asRaf = 0; asPaint(); }
+  box.addEventListener("touchstart", () => { asHold = true; }, { passive: true });
+  const asUnhold = (e) => { if (!e.touches?.length) { asHold = false; if (asRun) asY = box.scrollTop; } };
+  box.addEventListener("touchend", asUnhold, { passive: true }); box.addEventListener("touchcancel", asUnhold, { passive: true });
+  // mulai sendiri saat chapter terbuka (pengaturan aktif), setelah pembaca sempat melihat posisinya
+  if (asSpeed()) setTimeout(() => { if (rd.isConnected && !atEnd) asStart(); else asPaint(); }, 1200);
   // geser slider halaman
   const track = $("#rtrack");
   const seekAt = (clientX) => { const r = track.getBoundingClientRect(); const f = Math.min(1, Math.max(0, (clientX - r.left) / r.width)); goPage(Math.round(f * (total - 1)) + 1); };
@@ -1174,8 +1210,14 @@ async function vReader(src, id, chId) {
       flipChoice(el);
       if (k === "screenMode") syncFs();
       if (k === "nextDelay") { autoNextStop(); if (v !== "off" && atEnd) autoNextStart(); }
+      if (k === "autoScroll") {
+        if (v === "off") asPause();
+        else if (slide) toast("Gulir otomatis hanya untuk mode Scroll");
+        else { menu(false); asRun ? asPaint() : asStart(); }
+      }
     },
     cancelNext: () => { autoNextStop(true); toast("Lanjut otomatis dibatalkan untuk chapter ini"); },
+    asGo: () => { if (atEnd) { toast("Sudah di akhir chapter"); return; } asStart(); },
     reimg: (el) => { const im = $(`.r-img[data-i="${el.dataset.i}"]`, rd); if (im) reloadImg(im); },
     reload: () => { menu(false); if (failed.size) { const n = failed.size; [...failed].forEach(reloadImg); toast(`Memuat ulang ${n} gambar yang gagal…`); } else { toast("Memuat ulang chapter…", 1500); vReader(src, id, chId); } },
     prev: () => prev && goReplace(readHref(src, id, prev.id)),
@@ -1577,6 +1619,7 @@ const READ_OPTS = [
 ];
 // pilihan dua mode (bawaan = yang pertama)
 const READ_CHOICES = [
+  ["autoScroll", "Gulir otomatis (mode Scroll)", [["off", "OFF", "Halaman hanya bergerak saat kamu menggulir."], ["1", "1×", "Gulir otomatis pelan. Ketuk halaman untuk berhenti, tombol ▶ untuk lanjut."], ["2", "2×", "Gulir otomatis sedang. Ketuk halaman untuk berhenti, tombol ▶ untuk lanjut."], ["3", "3×", "Gulir otomatis cepat. Ketuk halaman untuk berhenti, tombol ▶ untuk lanjut."]], "off"],
   ["screenMode", "Tampilan layar", [["standard", "Mode standar", "Bilah status HP tetap tampil saat membaca."], ["fullscreen", "Mode fullscreen", "Bilah status HP ikut menu bacaan: menu tampil → bilah tampil, menu hilang → bilah disembunyikan."]]],
   ["nextDelay", "Lanjut otomatis ke chapter berikutnya", [["off", "OFF", "Menu muncul di akhir chapter; pilih sendiri lanjut atau tidak."], ["1", "1 dtk", "Sampai di akhir chapter, chapter berikutnya terbuka setelah 1 detik (ketuk untuk batal)."], ["2", "2 dtk", "Sampai di akhir chapter, chapter berikutnya terbuka setelah 2 detik (ketuk untuk batal)."], ["3", "3 dtk", "Sampai di akhir chapter, chapter berikutnya terbuka setelah 3 detik (ketuk untuk batal)."], ["5", "5 dtk", "Sampai di akhir chapter, chapter berikutnya terbuka setelah 5 detik (ketuk untuk batal)."]], "3"],
 ];
@@ -1589,7 +1632,7 @@ const flipChoice = (el) => {
   const o = READ_CHOICES.find((x) => x[0] === k)[2].find((x) => x[0] === v); const d = box.querySelector(".lh"); if (o && d) d.textContent = o[2];
 };
 // versi ringkas untuk menu ⋯ pembaca: 1 baris per pilihan, tanpa keterangan panjang
-const SHORT = { autoHide: "Sembunyikan menu otomatis", screenMode: "Layar", nextDelay: "Lanjut otomatis", standard: "Standar", fullscreen: "Fullscreen" };
+const SHORT = { autoScroll: "Gulir otomatis", autoHide: "Sembunyikan menu otomatis", screenMode: "Layar", nextDelay: "Lanjut otomatis", standard: "Standar", fullscreen: "Fullscreen" };
 const readPrefsCompact = () => READ_OPTS.map(([k, t]) => { const on = !!S.state.settings[k]; return `<button class="mrow rq-tog" data-act="rtog" data-k="${k}" role="switch" aria-checked="${on}"><b>${SHORT[k] || t}</b><span class="switch ${on ? "on" : ""}"><span></span></span></button>`; }).join("")
   + READ_CHOICES.map(([k, t, opts]) => { const cur = choiceVal(k); return `<div class="ch-opt rq-row" data-ck="${k}"><b>${SHORT[k] || t}</b><div class="seg s2" role="tablist">${opts.map(([v, n]) => `<button role="tab" aria-selected="${v === cur}" data-act="rch" data-k="${k}" data-v="${v}" aria-label="${n}">${SHORT[v] || n}</button>`).join("")}</div></div>`; }).join("");
 const choiceRow = (k) => {
@@ -1629,11 +1672,10 @@ async function vMore() {
   view.innerHTML = `
 <div class="page-h"><h1>Lainnya</h1></div>
 ${!api.configured ? `<div class="note warn mx">${icon("info", 18)}<span>Aplikasi belum tersambung ke server (config.js kosong).</span></div>` : ""}
-${user ? `<button class="me mx" data-act="level">${avatarHtml(p, lv)}
+${user ? group("Akun", `<button class="me in-group" data-act="level">${avatarHtml(p, lv)}
     <span class="rc-mid g5"><span class="me-name"><b class="t1">${esc(p?.name || "Memuat…")}</b>${badges(p)}</span>
       <span class="row g8 mu sm">${rankPill(lv)}Lv ${lv.lv}${lv.max ? " · level maksimal" : ` · ${(lv.need - lv.cur).toLocaleString("id-ID")} EXP lagi ke Lv ${lv.lv + 1}`}</span>
-      <span class="prog"><span style="width:${lv.max ? 100 : pct(lv.cur, lv.need)}%"></span></span></span><span class="mu">${icon("chev", 18)}</span></button>
-  ${group("Akun", mrow("img", "Foto profil", p?.avatar_path ? "Ketuk untuk mengganti · maks 10 MB" : "Belum ada · ketuk untuk menambah (maks 10 MB)", "photo") + mrow("user", "Nama tampilan", esc(p?.name || ""), "goName") + mrow("msg", "Email", esc(user.email || ""), "goEmail") + mrow("key", "Ganti password", "", "goPass") + mrow("out", "Keluar", "", "logout", { danger: true }))}`
+      <span class="prog"><span style="width:${lv.max ? 100 : pct(lv.cur, lv.need)}%"></span></span></span><span class="mu">${icon("chev", 18)}</span></button>` + mrow("img", "Foto profil", p?.avatar_path ? "Ketuk untuk mengganti · maks 10 MB" : "Belum ada · ketuk untuk menambah (maks 10 MB)", "photo") + mrow("user", "Nama tampilan", esc(p?.name || ""), "goName") + mrow("msg", "Email", esc(user.email || ""), "goEmail") + mrow("key", "Ganti password", "", "goPass") + mrow("out", "Keluar", "", "logout", { danger: true }))
   : `<div class="guest mx">${avatarHtml(null, S.levelOf(null), 56, { ini: "T", noMedal: true })}<span class="rc-mid g4"><b class="b16">Tamu</b><span class="mu sm">Belum masuk · level, rank, dan koleksi belum tersimpan di akun</span></span></div>
   <div class="auth mx"><b class="b17">${authMode === "up" ? "Daftar akun Ninokuu" : authMode === "reset" ? "Lupa password" : "Masuk ke Ninokuu"}</b>
     <span class="mu sm">${authMode === "reset" ? "Kami kirim link ke emailmu untuk membuat password baru." : "Masuk agar koleksi, riwayat baca, dan pengaturan tersinkron di semua perangkatmu."}</span>

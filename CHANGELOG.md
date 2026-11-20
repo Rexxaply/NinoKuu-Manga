@@ -30,6 +30,12 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 - Bilah gulir bawaan Android di pembaca disembunyikan; yang tampil hanya indikator gulir tipis Ninokuu
 - Bar bawah yang mengecil terbuka penuh lagi sendiri setelah layar diam ±2,5 detik; gulir ke bawah lagi untuk mengecilkannya
 - Masuk pembaca dari info komik: bar atas & bawah baru meluncur masuk setelah halaman selesai dimuat (tidak terlihat macet); layar "Memuat…" tampil diam tanpa animasi; pindah chapter di dalam pembaca langsung tampil tanpa animasi bar
+- Gulir otomatis di pembaca (mode Scroll): 1×, 2×, 3× lewat menu ⋯ atau Pengaturan; ketuk halaman untuk berhenti, tombol "▶ Lanjut gulir" untuk meneruskan
+- HP boleh diputar terbalik (atas-bawah) dalam posisi potret, mengikuti pengaturan putar otomatis HP
+- Zoom: layar bersih tanpa label persen; perbesaran & geseran terkunci di dalam halaman (tidak ada celah hitam di tepi)
+- Skor komik dari situs sumber (★ dari 10) di info komik, bila sumbernya menyediakan
+- Lainnya: kartu profil dan pengaturan akun digabung dalam satu panel "Akun"
+- Edge Function ninokuu-api 1.6.0: kirim skor komik
 - Pindah ke Favorit tidak lagi tersendat saat aplikasi baru dibuka: Koleksi tidak digambar ulang belasan kali selama chapter terbaru dicek, cukup kartu yang berubah yang diperbarui (sampul tidak berkedip)
 
 ### Detail

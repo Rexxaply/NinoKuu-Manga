@@ -38,6 +38,16 @@ export const toNum = (v) => {
   const n = mul > 1 ? parseFloat(m[1].replace(",", ".")) : parseFloat(m[1].replace(/[.,](?=\d{3}(\D|$))/g, "").replace(",", "."));
   return Number.isFinite(n) ? Math.round(n * mul) : null;
 };
+// skor/rating komik dari sumber (skala 10); sama dengan Edge Function
+export const toScore = (v) => {
+  if (v && typeof v === "object") v = v.average ?? v.avg ?? v.value ?? v.score;
+  const n = typeof v === "number" ? v : parseFloat(String(v ?? "").trim().replace(",", "."));
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const x = n <= 10 ? n : n <= 100 ? n / 10 : NaN;
+  return Number.isFinite(x) ? Math.round(x * 10) / 10 : null;
+};
+const SCORE_KEYS = ["user_rate", "rating", "score", "rate", "rating_avg", "avg_rating", "average_rating", "rating_value", "ratingValue", "star", "stars"];
+const pickScore = (...objs) => { for (const o of objs) if (o && typeof o === "object") for (const k of SCORE_KEYS) { const n = toScore(o[k]); if (n != null) return n; } return null; };
 const VIEW_KEYS = ["view_count", "views_count", "total_views", "total_view", "views", "view", "viewer", "viewers", "read_count", "total_read", "readers", "post_views", "hits"];
 const pickViews = (...objs) => {
   for (const o of objs) if (o && typeof o === "object") for (const k of VIEW_KEYS) { const n = toNum(o[k]); if (n != null && n > 0) return n; }
@@ -162,7 +172,7 @@ const SHNG = (() => {
       return { ok: true, manga: { id, title: String(d.title || ""), cover: coverOf(d), desc: String(d.description || "").trim(), status: STATUS[Number(d.status)] || normStatus(d.status_name || d.status_label || d.status),
         tags: [...(tax.Genre || []), ...(tax.Format || [])].map((x) => x?.name).filter(Boolean).slice(0, 8),
         author: (tax.Author || []).map((x) => x?.name).filter(Boolean).join(", "), url: `${SITE}/series/${id}`,
-        views: pickViews(d, d.stats, d.statistic), publisher: pickPublisher(tax) || pickPublisher(d) }, chapters: chs };
+        views: pickViews(d, d.stats, d.statistic), score: pickScore(d, d.stats, d.statistic), publisher: pickPublisher(tax) || pickPublisher(d) }, chapters: chs };
     },
     async pages(b) {
       const d = (await get(`/v1/chapter/detail/${encodeURIComponent(b.chapter_id)}`))?.data;
@@ -227,7 +237,7 @@ const WEST = (() => {
       tmp.innerHTML = String(d.sinopsis || "").replace(/<\/p>\s*<p[^>]*>/gi, "\n\n").replace(/<br\s*\/?>/gi, "\n");
       return { ok: true, manga: { id: String(d.slug), title: String(d.title || d.slug), cover: abs(d.cover), desc: (tmp.textContent || "").trim(),
         tags: [...(type ? [type[0].toUpperCase() + type.slice(1)] : []), ...(d.genres || []).map((g) => g?.name).filter(Boolean)].slice(0, 8),
-        status: normStatus(d.status), views: pickViews(d, d.stats), publisher: pickPublisher(d),
+        status: normStatus(d.status), views: pickViews(d, d.stats), score: pickScore(d, d.stats), publisher: pickPublisher(d),
         author: String(d.author || ""), url: `${base}/comic/${d.slug}` }, chapters: (d.chapters || []).filter((c) => c?.slug).map(mapCh) };
     },
     async pages(b) {
