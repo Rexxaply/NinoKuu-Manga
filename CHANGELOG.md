@@ -35,6 +35,7 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 - Zoom: layar bersih tanpa label persen; perbesaran & geseran terkunci di dalam halaman (tidak ada celah hitam di tepi)
 - Skor komik dari situs sumber (★ dari 10) di info komik, bila sumbernya menyediakan
 - Lainnya: kartu profil dan pengaturan akun digabung dalam satu panel "Akun"
+- Pilihan mode baca (Scroll/Slide & arah geser) pindah dari Lainnya ke halaman Pengaturan
 - Edge Function ninokuu-api 1.6.0: kirim skor komik
 - Pindah ke Favorit tidak lagi tersendat saat aplikasi baru dibuka: Koleksi tidak digambar ulang belasan kali selama chapter terbaru dicek, cukup kartu yang berubah yang diperbarui (sampul tidak berkedip)
 
