@@ -136,20 +136,23 @@ view.addEventListener("animationend", (e) => { if (e.animationName === "fixUp") 
 // lebar bar untuk animasi berbasis transform (CSS tidak bisa memakai % induk di dalam transform)
 const navW = () => { const w = nav.offsetWidth; if (w) { nav.style.setProperty("--nw", w + "px"); nav.style.setProperty("--nwn", String(w)); } };
 navW(); if ("ResizeObserver" in window) new ResizeObserver(navW).observe(nav); else addEventListener("resize", navW);
-let navLastY = null, navAcc = 0;
+let navLastY = null, navAcc = 0, navIdle = 0;
 const setNavMin = (on) => {
   if (document.body.classList.contains("nav-min") === on) return;
   document.body.classList.toggle("nav-min", on);
   nav.setAttribute("aria-label", on ? "Buka menu utama" : "Menu utama");
 };
-const navReset = () => { navLastY = null; navAcc = 0; setNavMin(false); };
+const navReset = () => { navLastY = null; navAcc = 0; clearTimeout(navIdle); setNavMin(false); };
+// diam ±2,5 dtk setelah menggulir → bar terbuka penuh lagi; gulir ke bawah lagi → mengecil lagi
+const navIdleArm = () => { clearTimeout(navIdle); navIdle = setTimeout(() => { navAcc = 0; if (!document.body.classList.contains("nav-off")) setNavMin(false); }, 2500); };
 window.addEventListener("scroll", () => {
   const y = window.scrollY;
+  if (document.body.classList.contains("nav-min")) navIdleArm();
   if (navLastY == null || Math.abs(y - navLastY) > 400) { navLastY = y; navAcc = 0; return; }
   const d = y - navLastY; navLastY = y;
   if (document.body.classList.contains("nav-off")) return;
   if (y < 30) { navAcc = 0; setNavMin(false); return; }
-  if (d > 0) { navAcc += d; if (navAcc > 48) setNavMin(true); } else navAcc = 0;
+  if (d > 0) { navAcc += d; if (navAcc > 48) { setNavMin(true); navIdleArm(); } } else navAcc = 0;
 }, { passive: true });
 nav.addEventListener("click", (e) => {
   if (!document.body.classList.contains("nav-min")) return;
@@ -846,10 +849,15 @@ async function vReader(src, id, chId) {
   // Halaman sebelumnya tetap terlihat selama data chapter dimuat; layar "Memuat…" baru dipasang bila butuh > 0,65 dtk
   // (sebelumnya langsung tampil layar gelap kosong sekejap sebelum halaman komik → terlihat seperti kedipan)
   const myR = ++readerSeq;
+  // Animasi bar meluncur masuk HANYA saat masuk dari luar pembaca (mis. info komik), dan baru setelah halaman siap.
+  // Pindah chapter di dalam pembaca (lanjut/sebelumnya/daftar chapter/muat ulang) langsung tampil tanpa animasi.
+  const rd0 = $("#rd"), inReader = !!rd0 && !rd0.dataset.shell;
+  let shellShown = false;
   setTimeout(() => {
     if (myR !== readerSeq || parse().name !== "reader" || $("#rd")) return;
-    view.innerHTML = shell(`<div class="r-pages">${loading(3, "sk-page")}</div>`);
-    requestAnimationFrame(() => requestAnimationFrame(() => $("#rd")?.classList.remove("enter")));
+    // layar "Memuat…" tampil diam (tanpa bar meluncur) supaya tidak terlihat seperti macet
+    view.innerHTML = shell(`<div class="r-pages">${loading(3, "sk-page")}</div>`).replace('class="reader ui enter"', 'class="reader ui"');
+    shellShown = true;
   }, 650);
   const fail = (e) => {
     if (myR !== readerSeq || parse().name !== "reader") return;
@@ -906,7 +914,8 @@ async function vReader(src, id, chId) {
   if (parse().name !== "reader" || myR !== readerSeq) return;
   const imgs = p.images.map((im, i) => { const a = im.local ? `src="${esc(im.u)}"` : N.imgAttrs(im.u, { ref: p.ref || "", px: im.p ? api.pageUrl(im.p) : "" }); return `<img class="r-img wait" data-i="${i + 1}" ${i > 1 && !near(i) ? a.replace(/^src=/, "data-src=") : a} alt="" aria-label="Halaman ${i + 1}" decoding="async" referrerpolicy="no-referrer" draggable="false">`; });
 
-  view.innerHTML = `<div class="reader ui enter ${slide ? "slide" : ""}" id="rd">
+  const animIn = !inReader && !shellShown && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  view.innerHTML = `<div class="reader ui ${animIn ? "enter" : ""} ${slide ? "slide" : ""}" id="rd">
   ${slide ? `<div class="r-slides" id="rbox" dir="${rtl ? "rtl" : "ltr"}">${imgs.map((im) => `<div class="r-slide">${im}</div>`).join("")}<div class="r-slide r-endslide"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span>${next ? `<button class="r-next-hint" id="rnext" data-act="cancelNext" hidden><span class="r-nbar"></span><span class="r-ntx"></span></button>` : ""}${isLocal ? "" : `${chLike(null)}<a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini</a>`}</div></div>`
     : `<div class="r-scroll" id="rbox"><div class="r-pages" id="rpages">${imgs.join("")}<div class="r-endtxt"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span>${next ? `<button class="r-next-hint" id="rnext" data-act="cancelNext" hidden><span class="r-nbar"></span><span class="r-ntx"></span></button>` : ""}${isLocal ? "" : `${chLike(null)}<a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini<span class="cm-n" id="rcmn"></span></a>`}</div></div></div>`}
   <div class="r-zoom glass" id="rzoom" hidden>${icon("zoom", 15)}<span id="rzt"></span> · geser untuk melihat, ketuk 2× untuk normal</div>
@@ -938,8 +947,15 @@ async function vReader(src, id, chId) {
       <button class="r-sq glass" data-act="next" aria-label="${next ? "Chapter berikutnya" : "Kembali ke info komik"}">${next ? icon("chev", 22, 2.2) : icon("home", 21, 2)}</button>
     </div></div></div>`;
   const rd = $("#rd"), box = $("#rbox"), pages = $("#rpages");
-  // masuk pembaca: halaman langsung tampil (tanpa geser kiri-kanan), bar atas & bawah meluncur masuk dari tepi layar
-  requestAnimationFrame(() => requestAnimationFrame(() => rd.classList.remove("enter")));
+  // masuk pembaca dari info komik: halaman tampil dulu, bar atas & bawah baru meluncur masuk setelah gambar
+  // halaman tujuan selesai dimuat & digambar (maks 2,5 dtk), supaya animasi tidak berjalan bersamaan dengan pemuatan
+  if (animIn) {
+    const tgt = $$(".r-img", rd)[at0 - 1] || $(".r-img", rd);
+    // gambar yang ditolak situs dicoba ulang lewat jalur lain (ui.js), jadi tunggu "load" yang berhasil, bukan "error"
+    const ready = tgt && !(tgt.complete && tgt.naturalWidth) ? new Promise((r) => tgt.addEventListener("load", r, { once: true })) : Promise.resolve();
+    Promise.race([ready, new Promise((r) => setTimeout(r, 2500))]).then(() =>
+      requestAnimationFrame(() => requestAnimationFrame(() => { if (myR === readerSeq) rd.classList.remove("enter"); })));
+  }
   // halaman dimuat langsung dari situs aslinya (tidak memakai kuota Supabase); bila ditolak,
   // penangan error di ui.js mencoba jaringan HP (APK) lalu proxy sebagai cadangan terakhir
   const meta = { source: src, comic_id: id, title: d.manga.title, cover: d.manga.cover, chapter: ch.ch, chapter_id: ch.id, pages: total, type: typeFromTags(d.manga.tags) };

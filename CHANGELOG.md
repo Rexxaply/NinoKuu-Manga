@@ -28,6 +28,8 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 - Kartu unduhan melayang di kiri bawah (pasangan pil +EXP): sampul, judul, chapter & halaman yang sedang diunduh, persentase dan bar berkilau; berubah hijau dengan tanda centang saat selesai, abu-abu saat dijeda/gagal; ketuk untuk membuka Favorit › Unduhan
 - Baris Unduhan di Lainnya menampilkan bar progres yang terbuka pelan saat ada unduhan berjalan
 - Bilah gulir bawaan Android di pembaca disembunyikan; yang tampil hanya indikator gulir tipis Ninokuu
+- Bar bawah yang mengecil terbuka penuh lagi sendiri setelah layar diam ±2,5 detik; gulir ke bawah lagi untuk mengecilkannya
+- Masuk pembaca dari info komik: bar atas & bawah baru meluncur masuk setelah halaman selesai dimuat (tidak terlihat macet); layar "Memuat…" tampil diam tanpa animasi; pindah chapter di dalam pembaca langsung tampil tanpa animasi bar
 - Pindah ke Favorit tidak lagi tersendat saat aplikasi baru dibuka: Koleksi tidak digambar ulang belasan kali selama chapter terbaru dicek, cukup kartu yang berubah yang diperbarui (sampul tidak berkedip)
 
 ### Detail
