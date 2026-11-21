@@ -11,6 +11,16 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
+## 1.8.5 — 21 Nov 2026
+
+### Ringkasan
+- Kembali dari pembaca ke info komik: bar "Lanjut baca" langsung ada di tempatnya (tidak lagi hilang lalu meluncur naik terlambat)
+- Buka/pindah chapter tanpa layar hitam sekejap: halaman tujuan di situs yang menolak dimuat langsung (mis. Shinigami) diambil lewat jaringan HP sebelum pembaca digambar, lalu langsung digambar
+- Kartu profil di Lainnya kembali seperti semula; halaman baru "Akun" (Bacaanmu → Akun) berisi Foto profil, Nama tampilan, Email, Ganti password
+- Tombol Keluar pindah ke paling bawah Lainnya, setelah Ketentuan pengguna
+
+---
+
 ## 1.8.4 — 21 Nov 2026
 
 ### Ringkasan

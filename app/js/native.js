@@ -120,6 +120,7 @@ export async function imgFallback(im) {
 
 // gambar yang menolak dimuat langsung oleh WebView (mis. butuh Referer) → ambil lewat jaringan HP
 const blobUrls = new Map();
+export const blobFor = (u) => blobUrls.get(u) || "";
 export async function imageViaNative(url, referer) {
   if (blobUrls.has(url)) return blobUrls.get(url);
   const r = await nget(url, { type: "arraybuffer", headers: referer ? { Referer: referer } : {} });

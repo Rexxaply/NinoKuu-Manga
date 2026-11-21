@@ -101,6 +101,9 @@ async function render() {
   // animasi masuk dimulai setelah layar baru terisi, supaya layar lama tidak ikut "meluncur lagi"
   const my = ++renderSeq;
   view.classList.remove("in", "in-f", "in-b"); delete view.dataset.upDone;
+  // kembali ke halaman sebelumnya (mis. pembaca → info komik): bar "Lanjut baca" langsung ada di tempatnya, tidak meluncur
+  // naik terlambat (sebelumnya bar tidak terlihat ±0,5 dtk sehingga tampak hilang duluan)
+  if (!fwd) view.dataset.upDone = "1";
   // pembaca: halaman sebelumnya dibiarkan terlihat sampai pembaca siap (tanpa layar gelap kosong sekejap)
   const keepOld = route.name === "reader" && !!view.childElementCount;
   if (!keepOld) view.innerHTML = "";
@@ -910,10 +913,26 @@ async function vReader(src, id, chId) {
   let at0 = Number(pm0[pk0]) || (ph0?.chapter_id === chId ? Number(ph0.page) || 1 : 1);
   if (!(at0 > 1 && at0 < p.images.length)) at0 = 1;
   const near = (i) => i >= at0 - 5 && i <= at0;   // indeks 0-based: halaman tujuan & 4 sebelumnya (yang ikut termuat di dekat layar)
-  const pre = p.images.filter((_, i) => i < 2 || near(i)).slice(0, 8).map((im) => im.local ? im.u : N.imgParts(im.u).src).filter(Boolean);
-  if (pre.length) await Promise.race([Promise.all(pre.map((u) => { const im = new Image(); im.referrerPolicy = "no-referrer"; im.src = u; return im.decode().catch(() => {}); })), new Promise((r) => setTimeout(r, 600))]);
+  // Situs yang menolak dimuat langsung (mis. Shinigami butuh Referer) diambil lewat jaringan HP di sini juga, jadi gambar
+  // halaman tujuan sudah ada saat pembaca digambar (sebelumnya: layar hitam sampai jalur cadangan selesai).
+  const preOne = async (im) => {
+    if (im.local) { const x = new Image(); x.src = im.u; return x.decode().catch(() => {}); }
+    const { src: u, d } = N.imgParts(im.u), direct = d || (/^https:\/\//i.test(u) ? u : "");
+    if (direct && N.nativeFirst(direct)) return N.imageViaNative(direct, p.ref || "").catch(() => {});
+    const x = new Image(); x.referrerPolicy = "no-referrer"; x.src = u;
+    try { await x.decode(); } catch { if (N.isApp && direct) await N.imageViaNative(direct, p.ref || "").catch(() => {}); }
+  };
+  const preIdx = new Set(p.images.map((_, i) => i).filter((i) => i < 2 || near(i)).slice(0, 8));
+  if (preIdx.size) await Promise.race([Promise.all([...preIdx].map((i) => preOne(p.images[i]))), new Promise((r) => setTimeout(r, 1000))]);
   if (parse().name !== "reader" || myR !== readerSeq) return;
-  const imgs = p.images.map((im, i) => { const a = im.local ? `src="${esc(im.u)}"` : N.imgAttrs(im.u, { ref: p.ref || "", px: im.p ? api.pageUrl(im.p) : "" }); return `<img class="r-img wait" data-i="${i + 1}" ${i > 1 && !near(i) ? a.replace(/^src=/, "data-src=") : a} alt="" aria-label="Halaman ${i + 1}" decoding="async" referrerpolicy="no-referrer" draggable="false">`; });
+  const imgs = p.images.map((im, i) => {
+    let a = im.local ? `src="${esc(im.u)}"` : N.imgAttrs(im.u, { ref: p.ref || "", px: im.p ? api.pageUrl(im.p) : "" });
+    // sudah diambil lewat jaringan HP saat pra-muat → langsung pakai hasilnya (tanpa percobaan langsung yang gagal dulu)
+    const b = !im.local && N.blobFor(N.imgParts(im.u).d || N.imgParts(im.u).src);
+    if (b) a = a.replace(/^src="[^"]*"/, `src="${b}" data-fb="1"`);
+    // halaman yang sudah dipra-muat langsung digambar (decoding sync) supaya tidak berkedip hitam saat chapter dibuka
+    return `<img class="r-img wait" data-i="${i + 1}" ${i > 1 && !near(i) && !b ? a.replace(/^src=/, "data-src=") : a} alt="" aria-label="Halaman ${i + 1}" decoding="${preIdx.has(i) ? "sync" : "async"}" referrerpolicy="no-referrer" draggable="false">`;
+  });
 
   const animIn = !inReader && !shellShown && !matchMedia("(prefers-reduced-motion: reduce)").matches;
   view.innerHTML = `<div class="reader ui ${animIn ? "enter" : ""} ${slide ? "slide" : ""}" id="rd">
@@ -1668,10 +1687,10 @@ async function vMore() {
   view.innerHTML = `
 <div class="page-h"><h1>Lainnya</h1></div>
 ${!api.configured ? `<div class="note warn mx">${icon("info", 18)}<span>Aplikasi belum tersambung ke server (config.js kosong).</span></div>` : ""}
-${user ? group("Akun", `<button class="me in-group" data-act="level">${avatarHtml(p, lv)}
+${user ? `<button class="me mx" data-act="level">${avatarHtml(p, lv)}
     <span class="rc-mid g5"><span class="me-name"><b class="t1">${esc(p?.name || "Memuat…")}</b>${badges(p)}</span>
       <span class="row g8 mu sm">${rankPill(lv)}Lv ${lv.lv}${lv.max ? " · level maksimal" : ` · ${(lv.need - lv.cur).toLocaleString("id-ID")} EXP lagi ke Lv ${lv.lv + 1}`}</span>
-      <span class="prog"><span style="width:${lv.max ? 100 : pct(lv.cur, lv.need)}%"></span></span></span><span class="mu">${icon("chev", 18)}</span></button>` + mrow("img", "Foto profil", p?.avatar_path ? "Ketuk untuk mengganti · maks 10 MB" : "Belum ada · ketuk untuk menambah (maks 10 MB)", "photo") + mrow("user", "Nama tampilan", esc(p?.name || ""), "goName") + mrow("msg", "Email", esc(user.email || ""), "goEmail") + mrow("key", "Ganti password", "", "goPass") + mrow("out", "Keluar", "", "logout", { danger: true }))
+      <span class="prog"><span style="width:${lv.max ? 100 : pct(lv.cur, lv.need)}%"></span></span></span><span class="mu">${icon("chev", 18)}</span></button>`
   : `<div class="guest mx">${avatarHtml(null, S.levelOf(null), 56, { ini: "T", noMedal: true })}<span class="rc-mid g4"><b class="b16">Tamu</b><span class="mu sm">Belum masuk · level, rank, dan koleksi belum tersimpan di akun</span></span></div>
   <div class="auth mx"><b class="b17">${authMode === "up" ? "Daftar akun Ninokuu" : authMode === "reset" ? "Lupa password" : "Masuk ke Ninokuu"}</b>
     <span class="mu sm">${authMode === "reset" ? "Kami kirim link ke emailmu untuk membuat password baru." : "Masuk agar koleksi, riwayat baca, dan pengaturan tersinkron di semua perangkatmu."}</span>
@@ -1684,7 +1703,7 @@ ${user ? group("Akun", `<button class="me in-group" data-act="level">${avatarHtm
     </form>
     ${authMode === "in" ? `<button class="btn ghost" data-act="auth" data-v="up">Belum punya akun? Daftar</button><button class="link" data-act="auth" data-v="reset">Lupa password?</button>` : `<button class="btn ghost" data-act="auth" data-v="in">Sudah punya akun? Masuk</button>`}</div>`}
 ${["developer", "moderator"].includes(p?.role) ? group("Developer", mrow("dev", "Panel developer", p.role === "developer" ? "Moderasi, pengumuman, statistik" : "Moderasi chat", "dev")) : ""}
-${group("Bacaanmu", mrow("star", "Level &amp; Rank", user ? `${lv.rank} · Lv ${lv.lv}${X.cachedStatus() ? ` · 🔥 ${X.cachedStatus().streak} hari` : ""}` : "Masuk untuk mulai naik level", "level") + (user ? mrow("share", "Rekap bacaan", "7 & 30 hari · bagikan sebagai gambar", "recap") : "") + mrow("down", "Unduhan", DL.supported() ? `<span id="dlsub">${DL.savedCount()} file tersimpan${DL.progressLine() ? " · " + esc(DL.progressLine()) : ""}</span>${dlBar(DL.active())}` : "Baca offline di aplikasi APK", "dlrow") + mrow("clock", "Riwayat baca", `${S.history().length} judul`, "goHist") + mrow("sliders", "Pengaturan", "Mode baca · gulir otomatis · tampilan layar · efek avatar", "settings"))}
+${group("Bacaanmu", mrow("star", "Level &amp; Rank", user ? `${lv.rank} · Lv ${lv.lv}${X.cachedStatus() ? ` · 🔥 ${X.cachedStatus().streak} hari` : ""}` : "Masuk untuk mulai naik level", "level") + (user ? mrow("share", "Rekap bacaan", "7 & 30 hari · bagikan sebagai gambar", "recap") : "") + mrow("down", "Unduhan", DL.supported() ? `<span id="dlsub">${DL.savedCount()} file tersimpan${DL.progressLine() ? " · " + esc(DL.progressLine()) : ""}</span>${dlBar(DL.active())}` : "Baca offline di aplikasi APK", "dlrow") + mrow("clock", "Riwayat baca", `${S.history().length} judul`, "goHist") + (user ? mrow("user", "Akun", "Foto profil · nama tampilan · email · password", "akun") : "") + mrow("sliders", "Pengaturan", "Mode baca · gulir otomatis · tampilan layar · efek avatar", "settings"))}
 ${N.DEV ? group("Ninokuu Dev", mrow("bug", "Log error", `${N.devLog().length} catatan · salin & kirim ke developer`, "devlog") + mrow("info", "Build uji", `v${esc(VERSION)} · build ${esc(N.BUILD)} · function ${esc(api.FN.split("/").pop())}`, "")) : ""}
 ${N.isApp ? group("Aplikasi", `<span id="updrow"></span>` + (N.pushSupported() || !N.DEV ? mrow("bell", "Notifikasi HP", `<span id="pushst">Memeriksa…</span>`, "pushset") : mrow("bell", "Notifikasi HP", "Belum aktif di Ninokuu Dev (paket .dev belum didaftarkan di Firebase)", "")) + mrow("info", "Versi aplikasi", `v${esc(VERSION)}${N.DEV ? " Dev" : ""} · ketuk untuk cek pembaruan`, "checkupd"))
   : group("Aplikasi Android", mrow("down", "Pasang aplikasi Android (APK)", "Baca Shinigami &amp; WestManga, notifikasi chapter baru di HP", "getapk"))}
@@ -1693,7 +1712,7 @@ ${group("Data &amp; penyimpanan", mrow("cloud", "Backup data offline", "Simpan k
   <span class="tk-ic">${icon("gift", 26, 2)}</span>
   <span class="tk-t"><b>Traktir Ninokuu</b><span>Gratis &amp; tanpa iklan berkat dukunganmu. Kirim hadiah kecil lewat Trakteer.</span></span>
   <span class="tk-go">${icon("chev", 18, 2.4)}</span></button></section>
-${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord Ninokuu", "discord") + mrow("star", "Yang baru di versi ini", `Fitur baru &amp; panduan bergambar v${esc(VERSION)}`, "whatsnew") + mrow("info", "Tentang aplikasi", "Versi " + esc(VERSION), "about") + mrow("shield", "Kebijakan privasi", "", "privacy") + mrow("doc", "Ketentuan pengguna", "", "terms"))}
+${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord Ninokuu", "discord") + mrow("star", "Yang baru di versi ini", `Fitur baru &amp; panduan bergambar v${esc(VERSION)}`, "whatsnew") + mrow("info", "Tentang aplikasi", "Versi " + esc(VERSION), "about") + mrow("shield", "Kebijakan privasi", "", "privacy") + mrow("doc", "Ketentuan pengguna", "", "terms") + (user ? mrow("out", "Keluar", "", "logout", { danger: true }) : ""))}
 <p class="mu xs center mt18">Ninokuu versi ${esc(VERSION)}</p><div class="pad-nav"></div>`;
   if (N.isApp) {
     refreshPushStatus();
@@ -1727,7 +1746,7 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
     update: () => checkUpdate(true),
     checkupd: () => checkUpdate(true),
     devlog: () => openDevLog(),
-    settings: () => go("#/p/settings"),
+    settings: () => go("#/p/settings"), akun: () => go("#/p/akun"),
     pushset: async () => {
       if (!user) { toast("Masuk dulu supaya notifikasi bisa dikirim ke HP ini."); return; }
       try {
@@ -2003,6 +2022,16 @@ async function vPage(name) {
   } else if (name === "restore") {
     html = topbar("Pulihkan data") + `<div class="px col g14 mt6"><p class="mu sm lh m0">Pilih file backup (.json) dari HP. Data di file digabung dengan data yang sudah ada; judul yang sama tidak terduplikat.</p>
   <label class="btn primary">${icon("restore", 18, 2)}Pilih file backup<input type="file" accept="application/json,.json" id="rf" hidden></label><span class="err" id="perr"></span></div>`;
+  } else if (name === "akun") {
+    // Akun: foto profil, nama tampilan, email, password (sama seperti halaman Pengaturan)
+    const user = api.currentUser();
+    if (!user) { go("#/more"); return; }
+    const pr = S.state.profile;
+    view.innerHTML = topbar("Akun") + `<div class="px col g14 mt6">
+  <section class="sec"><h2 class="cap">Profil</h2><div class="group">${mrow("img", "Foto profil", pr?.avatar_path ? "Ketuk untuk mengganti · maks 10 MB" : "Belum ada · ketuk untuk menambah (maks 10 MB)", "photo") + mrow("user", "Nama tampilan", esc(pr?.name || ""), "goName")}</div></section>
+  <section class="sec"><h2 class="cap">Masuk &amp; keamanan</h2><div class="group">${mrow("msg", "Email", esc(user.email || ""), "goEmail") + mrow("key", "Ganti password", "", "goPass")}</div></section></div><div class="pad-nav"></div>`;
+    setActs({ back: () => back("#/more"), photo: () => openPhoto(), goName: () => go("#/p/name"), goEmail: () => go("#/p/email"), goPass: () => go("#/p/pass") });
+    return;
   } else if (name === "settings") {
     // Pengaturan: tampilan & perilaku saat membaca (pilihan bacaan juga ada di menu ⋯ pembaca)
     const draw = () => {
