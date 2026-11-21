@@ -203,8 +203,11 @@ jobs:
           # bilah gulir bawaan WebView (abu-abu di tepi kanan) dimatikan: pembaca memakai indikator gulir sendiri
           MA=$(find android/app/src/main/java -name MainActivity.java | head -1)
           PKG=$(grep -m1 '^package ' "$MA")
-          printf '%s\n\nimport android.os.Bundle;\nimport android.webkit.WebView;\nimport com.getcapacitor.BridgeActivity;\n\npublic class MainActivity extends BridgeActivity {\n    @Override\n    public void onCreate(Bundle savedInstanceState) {\n        super.onCreate(savedInstanceState);\n        WebView w = getBridge().getWebView();\n        w.setVerticalScrollBarEnabled(false);\n        w.setHorizontalScrollBarEnabled(false);\n    }\n}\n' "$PKG" > "$MA"
+          printf '%s\n\nimport android.os.Bundle;\nimport android.webkit.WebView;\nimport com.getcapacitor.BridgeActivity;\n\npublic class MainActivity extends BridgeActivity {\n    @Override\n    public void onCreate(Bundle savedInstanceState) {\n        registerPlugin(NinokuuCachePlugin.class);\n        super.onCreate(savedInstanceState);\n        WebView w = getBridge().getWebView();\n        w.setVerticalScrollBarEnabled(false);\n        w.setHorizontalScrollBarEnabled(false);\n    }\n}\n' "$PKG" > "$MA"
           grep -q "setVerticalScrollBarEnabled(false)" "$MA" || { echo "::error::Gagal mematikan bilah gulir WebView"; exit 1; }
+          # plugin cache Ninokuu (hitung & bersihkan cache di Lainnya → Bersihkan cache)
+          sed "s/^package __PKG__;/$PKG/" ../apk/native/NinokuuCachePlugin.java > "$(dirname "$MA")/NinokuuCachePlugin.java"
+          grep -q "registerPlugin(NinokuuCachePlugin.class)" "$MA" && grep -q '^package ' "$(dirname "$MA")/NinokuuCachePlugin.java" || { echo "::error::Plugin cache Ninokuu gagal dipasang"; exit 1; }
           cat "$MA"
           grep -q 'android:allowBackup="false"' android/app/src/main/AndroidManifest.xml || { echo "::error::allowBackup belum false"; exit 1; }
           grep -n "ninokuu_bg" android/app/src/main/res/values/styles.xml | head -3

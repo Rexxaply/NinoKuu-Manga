@@ -125,6 +125,7 @@ export async function imageViaNative(url, referer) {
   if (blobUrls.has(url)) return blobUrls.get(url);
   const r = await nget(url, { type: "arraybuffer", headers: referer ? { Referer: referer } : {} });
   const u = URL.createObjectURL(new Blob([r.bytes], { type: r.type }));
+  blobBytes += r.bytes?.byteLength || 0;
   if (blobUrls.size > 300) { const [k, v] = blobUrls.entries().next().value; URL.revokeObjectURL(v); blobUrls.delete(k); }
   blobUrls.set(url, u);
   return u;
@@ -451,3 +452,42 @@ export async function setFullscreen(on, overlay = on) {
     if (!on && document.fullscreenElement) await document.exitFullscreen();
   } catch { fsOn = false; }
 }
+
+/* ---------- cache aplikasi (Lainnya → Bersihkan cache) ---------- */
+// APK: plugin NinokuuCache (cache WebView: gambar sampul & halaman komik) + simpanan aplikasi sendiri.
+// Web: Cache Storage gambar (service worker) + simpanan sementara info komik.
+const cachePlugin = () => { const C = CAP(); if (!isApp || !C) return null; return C.Plugins?.NinokuuCache || (C.isPluginAvailable?.("NinokuuCache") ? C.registerPlugin?.("NinokuuCache") : null) || null; };
+async function webCacheBytes() {
+  let n = 0;
+  try { for (const k of Object.keys(sessionStorage)) if (k.startsWith("ninokuu:d:")) n += (sessionStorage.getItem(k) || "").length * 2; } catch {}
+  if ("caches" in window) {
+    try {
+      for (const name of (await caches.keys()).filter((k) => k.startsWith("ninokuu-img"))) {
+        const c = await caches.open(name);
+        for (const req of await c.keys()) { const r = await c.match(req); const len = Number(r?.headers.get("content-length")); n += len > 0 ? len : (await r.blob()).size; }
+      }
+    } catch {}
+  }
+  return n;
+}
+export async function cacheSize() {
+  const p = cachePlugin(); let nat = 0;
+  if (p) { try { nat = Number((await p.size())?.bytes) || 0; } catch {} }
+  return nat + (await webCacheBytes()) + blobBytes;
+}
+let blobBytes = 0;
+export async function cacheClear() {
+  const before = await cacheSize();
+  let freedNative = 0;
+  const p = cachePlugin();
+  if (p) { try { freedNative = Number((await p.clear())?.freed) || 0; } catch {} }
+  const web = await webCacheBytes();
+  if ("caches" in window) { try { for (const k of (await caches.keys()).filter((k) => k.startsWith("ninokuu-img"))) await caches.delete(k); } catch {} }
+  try { Object.keys(sessionStorage).filter((k) => k.startsWith("ninokuu:d:")).forEach((k) => sessionStorage.removeItem(k)); } catch {}
+  const mem = blobBytes;
+  for (const u of blobUrls.values()) URL.revokeObjectURL(u);
+  blobUrls.clear(); blobBytes = 0;
+  const after = await cacheSize();
+  return { before, after, freed: Math.max(freedNative + web + mem, before - after, 0) };
+}
+export const fmtBytes = (b) => { b = Number(b) || 0; if (b < 1024) return b + " B"; if (b < 1048576) return Math.round(b / 1024) + " KB"; const m = b / 1048576; return m >= 1024 ? (m / 1024).toFixed(1).replace(".", ",") + " GB" : (m < 10 ? m.toFixed(1).replace(".", ",") : Math.round(m)) + " MB"; };

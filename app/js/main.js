@@ -1726,7 +1726,7 @@ ${group("Bacaanmu", mrow("star", "Level &amp; Rank", user ? `${lv.rank} · Lv ${
 ${N.DEV ? group("Ninokuu Dev", mrow("bug", "Log error", `${N.devLog().length} catatan · salin & kirim ke developer`, "devlog") + mrow("info", "Build uji", `v${esc(VERSION)} · build ${esc(N.BUILD)} · function ${esc(api.FN.split("/").pop())}`, "")) : ""}
 ${N.isApp ? group("Aplikasi", `<span id="updrow"></span>` + (N.pushSupported() || !N.DEV ? mrow("bell", "Notifikasi HP", `<span id="pushst">Memeriksa…</span>`, "pushset") : mrow("bell", "Notifikasi HP", "Belum aktif di Ninokuu Dev (paket .dev belum didaftarkan di Firebase)", "")) + mrow("info", "Versi aplikasi", `v${esc(VERSION)}${N.DEV ? " Dev" : ""} · ketuk untuk cek pembaruan`, "checkupd"))
   : group("Aplikasi Android", mrow("down", "Pasang aplikasi Android (APK)", "Baca Shinigami &amp; WestManga, notifikasi chapter baru di HP", "getapk"))}
-${group("Data &amp; penyimpanan", mrow("cloud", "Backup data offline", "Simpan koleksi, riwayat, dan pengaturan ke file", "backup") + mrow("restore", "Pulihkan data", "Dari file backup", "restore") + mrow("trash", "Bersihkan cache", "Gambar sampul &amp; halaman yang tersimpan", "cache"))}
+${group("Data &amp; penyimpanan", mrow("cloud", "Backup data offline", "Simpan koleksi, riwayat, dan pengaturan ke file", "backup") + mrow("restore", "Pulihkan data", "Dari file backup", "restore") + mrow("trash", "Bersihkan cache", `<span id="cachesub">Menghitung cache di HP…</span>`, "cache"))}
 <section class="sec s20"><button class="tk-card" data-act="trakteer" aria-label="Dukung Ninokuu di Trakteer">
   <span class="tk-ic">${icon("gift", 26, 2)}</span>
   <span class="tk-t"><b>Traktir Ninokuu</b><span>Gratis &amp; tanpa iklan berkat dukunganmu. Kirim hadiah kecil lewat Trakteer.</span></span>
@@ -1753,6 +1753,7 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
       if (N.pushSupported()) N.pushEnable(api.rpc, true).then(() => { if (route.name === "more") vMore(); }).catch(() => {});
     } catch (ex) { err.textContent = ex.message; btn.disabled = false; }
   });
+  N.cacheSize().then((b) => { const el = $("#cachesub"); if (el && route.name === "more") el.textContent = `Total cache di HP: ${N.fmtBytes(b)} · gambar sampul & halaman`; }).catch(() => {});
   if (user && !X.cachedStatus()) X.loadStatus().then((ds) => { const el = $("button.mrow[data-act=level] .mu.sm"); if (ds && el && route.name === "more" && !el.textContent.includes("🔥")) el.textContent += ` · 🔥 ${ds.streak} hari`; });
   setActs({
     auth: (el) => { authMode = el.dataset.v; vMore(); },
@@ -1787,10 +1788,13 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
     discord: () => soon("Server Discord Ninokuu sedang disiapkan."), trakteer: () => openTrakteer(),
     logout: async () => { if (!(await ask("Keluar dari akun? Koleksi dan riwayatmu tetap aman di server.", { ok: "Keluar", danger: true }))) return; await S.flushHistory(); await api.signOut(); S.clearUserData(); toast("Kamu sudah keluar"); vMore(); },
     cache: async () => {
-      if ("caches" in window) { const keys = await caches.keys(); await Promise.all(keys.filter((k) => k.startsWith("ninokuu-img")).map((k) => caches.delete(k))); }
-      try { Object.keys(sessionStorage).filter((k) => k.startsWith("ninokuu:d:")).forEach((k) => sessionStorage.removeItem(k)); } catch {}
+      const total = await N.cacheSize().catch(() => 0);
+      if (!(await ask(`Bersihkan cache Ninokuu di HP ini?\n\nTotal cache saat ini: ${N.fmtBytes(total)} (gambar sampul & halaman yang tersimpan). Koleksi, riwayat, dan unduhan chapter tidak ikut terhapus.`, { title: "Bersihkan cache", ok: "Bersihkan", danger: true }))) return;
+      const sub = $("#cachesub"); if (sub) sub.textContent = "Membersihkan…";
+      const r = await N.cacheClear().catch(() => ({ freed: 0, after: 0 }));
       detailCache.clear(); browseCache.clear();
-      toast("Cache dibersihkan");
+      if (sub) sub.textContent = `Total cache di HP: ${N.fmtBytes(r.after)}`;
+      await ask(r.freed > 0 ? `${N.fmtBytes(r.freed)} cache berhasil dihapus dari HP.${r.after > 0 ? `\nSisa ${N.fmtBytes(r.after)} sedang dipakai aplikasi.` : ""}` : "Cache sudah bersih, tidak ada yang perlu dihapus.", { title: "Cache dibersihkan", ok: "Oke", cancel: "" });
     },
   });
 }

@@ -11,6 +11,17 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
+## 1.8.8 — 21 Nov 2026
+
+### Ringkasan
+- Bersihkan cache: baris di Lainnya menampilkan total cache Ninokuu di HP (gambar sampul & halaman), dialog konfirmasi menyebut ukurannya, dan setelah dibersihkan muncul pemberitahuan berapa yang terhapus
+
+### Detail
+- APK: plugin native kecil `NinokuuCache` (apk/native/NinokuuCachePlugin.java, dipasang oleh workflow) untuk menghitung & mengosongkan cache WebView/aplikasi; web: Cache Storage gambar & simpanan info komik
+- Dialog Ninokuu bisa dipakai sebagai pemberitahuan satu tombol (`cancel: ""`)
+
+---
+
 ## 1.8.7 — 21 Nov 2026
 
 ### Ringkasan
