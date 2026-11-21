@@ -47,6 +47,7 @@ html, body { overflow-x: clip; }
 /* mulai sedikit setelah halaman digambar: saat halaman baru sedang disusun, beberapa frame pertama terlewat dan
    bar tampak "meloncat" ke tempatnya; dengan jeda singkat seluruh gerakannya terlihat */
 #view .rfab-wrap, #view .chbar { animation: fixUp .46s cubic-bezier(.32, .72, 0, 1) .12s both; will-change: transform; }
+#view[data-up-fast] .rfab-wrap, #view[data-up-fast] .chbar { animation-delay: 0s; animation-duration: .36s; }
 #view[data-up-done] .rfab-wrap, #view[data-up-done] .chbar { animation: none; }
 @keyframes fixUp { from { transform: translateY(calc(100% + 40px)); } }
 /* tanpa opacity: opacity < 1 pada #view mematikan efek kaca (backdrop-filter) semua tombol/menu di dalamnya selama

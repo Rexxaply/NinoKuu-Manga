@@ -109,6 +109,7 @@ async function render() {
       document.body.append(g); g.addEventListener("animationend", () => g.remove(), { once: true }); setTimeout(() => g.remove(), 600);
     }
   }
+  const fromReader = prevName === "reader";
   prevName = route.name; if (tab) prevTab = tab;
   // animasi masuk dimulai setelah layar baru terisi, supaya layar lama tidak ikut "meluncur lagi"
   const my = ++renderSeq;
@@ -118,7 +119,9 @@ async function render() {
   // Bar "Lanjut baca" info komik: tetap diam saat masuk pembaca (halaman lama masih tampil selama chapter dimuat;
   // dulu animasinya terulang sehingga bar meluncur naik lagi), dan langsung di tempatnya saat kembali ke info komik.
   // Yang beranimasi di pembaca hanya bar/menu pembaca sendiri.
-  if (keepOld || !fwd) view.dataset.upDone = "1"; else delete view.dataset.upDone;
+  // Keluar dari pembaca ke info komik: bar meluncur naik lagi, langsung tanpa jeda (tidak tampak "hilang duluan").
+  if (keepOld || (!fwd && !fromReader)) view.dataset.upDone = "1"; else delete view.dataset.upDone;
+  if (fromReader && !keepOld) view.dataset.upFast = "1"; else delete view.dataset.upFast;
   if (!keepOld) view.innerHTML = "";
   fxIo?.disconnect(); fxVis.clear(); fxSprite();
   let animated = false;
