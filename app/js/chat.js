@@ -344,21 +344,53 @@ function annCard(a) {
 }
 
 /* ---------- Panel developer ---------- */
-// Panduan (khusus developer): domain situs sumber pindah → ganti alamat sampai jadi APK lagi.
+// Panduan (khusus developer): semua API/domain yang bisa diganti manual, cara mendapatkannya, sampai jadi APK lagi.
 const gh = (path, label) => `<a href="https://github.com/Rexxaply/NinoKuu-Manga/${path}" target="_blank" rel="noopener">${label}</a>`;
+const SB = (path, label) => `<a href="https://supabase.com/dashboard/project/ocersqyrztzegwzjvvoh/${path}" target="_blank" rel="noopener">${label}</a>`;
 const step = (n, t, hint = "") => `<li><span class="gs-n">${n}</span><span class="gs-t"><b>${t}</b>${hint ? `<span class="mu xs">${hint}</span>` : ""}</span></li>`;
-const SITE_GUIDE = `<section class="col g10"><h2 class="cap m0">Panduan</h2>
-<details class="card guide"><summary><b>Situs sumber pindah alamat</b><span class="mu xs">Komiku & Kiryuu: langkah 1–2 · Shinigami & WestManga: langkah 1, 3–6</span></summary>
-<ol class="gsteps">
-${step(1, "Cari alamat baru", "Buka situs lama di browser → salin alamat barunya, mis. <code>https://v8.kiryuu.to</code>")}
-${step(2, "Komiku / Kiryuu: ganti di Supabase → selesai", "Supabase → ninokuu → Edge Functions → Secrets → ubah <code>KOMIKU_SITE</code> atau <code>KIRYUU_SITE</code> → Save. Tidak perlu APK baru.")}
-${step(3, "Shinigami / WestManga: ganti di GitHub", `Buka ${gh("blob/main/app/js/native.js", "app/js/native.js")} → ✏️ Edit → ganti alamat di dalam tanda kutip (cari <code>shinigami</code> atau <code>westmanga</code>)`)}
-${step(4, "Naikkan versi", `Buka ${gh("blob/main/VERSION", "VERSION")} → ✏️ Edit. Ganti alamat situs = perbaikan → angka terakhir +1, mis. <code>1.8.0</code> → <code>1.8.1</code>`)}
-${step(5, "Commit, tunggu APK jadi", `Tekan <b>Commit changes</b> → ${gh("actions", "tab Actions")} → tunggu centang hijau (±5 menit)`)}
-${step(6, "Pasang APK baru → selesai", `Lainnya → Versi aplikasi → perbarui, atau unduh ${gh("releases/download/apk-terbaru/ninokuu.apk", "ninokuu.apk")}`)}
-</ol>
-<p class="mu xs gs-foot">Mau uji dulu? Di langkah 3–4 pilih branch <code>dev</code> → hasilnya ${gh("releases/download/apk-dev/ninokuu-dev.apk", "ninokuu-dev.apk")}. Masih gagal → Ninokuu Dev → Lainnya → Log error → salin.</p>
-</details></section>`;
+const card = (title, sub, inner, foot = "") => `<details class="card guide"><summary><b>${title}</b><span class="mu xs">${sub}</span></summary>${inner}${foot ? `<p class="mu xs gs-foot">${foot}</p>` : ""}</details>`;
+const row = (k, where, what) => `<li class="gmap-r"><code>${k}</code><span class="mu xs">${what}</span><span class="gmap-w ${where === "Supabase" ? "sb" : "apk"}">${where === "Supabase" ? "Supabase · tanpa APK" : "Kode · APK baru"}</span></li>`;
+const SITE_GUIDE = `<section class="col g10"><h2 class="cap m0">Panduan ganti API &amp; domain</h2>
+${card("1. Peta: apa saja yang bisa diganti", "Mana yang cukup di Supabase, mana yang harus jadi APK baru", `
+<ul class="gmap">
+${row("KOMIKU_SITE", "Supabase", "Alamat situs Komiku, mis. <code>https://komiku.org</code> (info komik & halaman chapter)")}
+${row("KOMIKU_API", "Supabase", "Alamat daftar/cari Komiku, mis. <code>https://api.komiku.org</code>")}
+${row("KIRYUU_SITE", "Supabase", "Alamat situs Kiryuu, mis. <code>https://v7.kiryuu.to</code> (dipakai untuk semua data Kiryuu)")}
+${row("SHNGM_API · SHNGM_SITE", "Supabase", "Shinigami untuk server (notifikasi & web). APK membaca Shinigami sendiri, lihat baris di bawah")}
+${row("WEST_SITE", "Supabase", "WestManga untuk server, boleh lebih dari satu dipisah koma: <code>https://v1.westmanga.my,https://v1.westmanga.top</code>")}
+${row("IMG_PROXY", "Supabase", "Rem darurat kuota: <code>on</code> (normal), <code>cover</code> (proxy hanya sampul), <code>off</code> (proxy mati)")}
+${row("Shinigami (API &amp; SITE)", "Kode", "<code>app/js/native.js</code> → baris <code>const API = …, SITE = …</code> di bagian Shinigami")}
+${row("WestManga (SITES)", "Kode", "<code>app/js/native.js</code> → baris <code>const SITES = [ … ]</code> di bagian WestManga")}
+${row("ninokuu.site", "Kode", "<code>app/js/native.js</code> (<code>SITE_URL</code>) dan <code>app/js/api.js</code> (<code>VERIFY_URL</code>, <code>RESET_URL</code>)")}
+${row("Supabase URL &amp; anon key", "Kode", "GitHub → Settings → Secrets → <code>SUPABASE_URL</code>, <code>SUPABASE_ANON_KEY</code> (dibaca saat APK dibangun)")}
+</ul>`, "Aturannya: yang dibaca <b>server</b> (Edge Function) cukup diganti di Supabase dan langsung berlaku untuk semua pengguna. Yang dibaca <b>aplikasi di HP</b> tertanam di APK, jadi harus dibangun APK baru lalu dipasang ulang.")}
+${card("2. Cara mendapatkan alamat baru", "Domain situs & alamat API", `<ol class="gsteps">
+${step(1, "Domain situs: buka alamat lama", "Biasanya otomatis dialihkan ke alamat baru. Salin alamat di bilah browser sampai tanda <code>/</code> pertama, mis. <code>https://v8.kiryuu.to</code> (tanpa garis miring di akhir).")}
+${step(2, "Tidak dialihkan? Cari pengumuman resmi", "Cari di Google “nama situs + domain baru”, atau buka Instagram/Discord/Telegram resmi situsnya. Hindari situs tiruan yang penuh iklan.")}
+${step(3, "Alamat API (Shinigami, WestManga, Komiku API)", "Di PC: buka situsnya di Chrome → tekan F12 → tab <b>Network</b> → pilih <b>Fetch/XHR</b> → muat ulang halaman. Lihat kolom nama/Domain: alamat yang memuat daftar komik itulah API-nya, mis. <code>https://api.shinigami.io</code>.")}
+${step(4, "Cek alamatnya benar", "Buka di browser: Kiryuu <code>…/wp-json/wp/v2/manga?per_page=1</code> · Shinigami <code>API/v1/manga/list?limit=1</code> · WestManga <code>SITE/api/contents?per_page=1</code>. Kalau muncul teks JSON (kurung kurawal), alamatnya benar.")}
+</ol>`, "Bingung mencari alamat API? Kirim nama situs & alamat barunya ke Claude, nanti dicarikan dan dicek.")}
+${card("3. Ganti di Supabase (tanpa APK baru)", "Komiku, Kiryuu, rem darurat IMG_PROXY, dan sisi server Shinigami/WestManga", `<ol class="gsteps">
+${step(1, "Buka Secrets Edge Function", `${SB("functions/secrets", "Supabase → Edge Functions → Secrets")} (login akun Supabase-mu)`)}
+${step(2, "Ubah atau tambah secret", "Cari namanya (mis. <code>KIRYUU_SITE</code>). Belum ada? Tekan <b>Add new secret</b>, isi Name persis sama dan Value alamat barunya.")}
+${step(3, "Simpan", "Tekan <b>Save</b>. Berlaku untuk function global & dev sekaligus dalam ±1 menit, tanpa deploy dan tanpa APK baru.")}
+${step(4, "Uji", "Buka Ninokuu → Beranda → pilih sumber itu → buka satu komik & satu chapter. Masih gagal → cek ejaan (<code>https://</code>, tanpa <code>/</code> di akhir).")}
+</ol>`, "Mengosongkan/menghapus secret = kembali ke alamat bawaan di kode.")}
+${card("4. Ganti di kode → jadi APK baru", "Shinigami & WestManga di HP, ninokuu.site", `<ol class="gsteps">
+${step(1, "Uji di Ninokuu Dev dulu", `Buka ${gh("tree/dev", "GitHub → branch dev")}. Semua langkah di bawah dikerjakan di branch <code>dev</code> dulu; setelah lancar, ulangi di <code>main</code> untuk versi global.`)}
+${step(2, "Edit file kodenya", `Buka ${gh("blob/dev/app/js/native.js", "app/js/native.js")} → ikon ✏️ (Edit) → tekan Ctrl+F / cari <code>shinigami</code> atau <code>westmanga</code> → ganti alamat <b>di dalam tanda kutip</b> saja, jangan hapus tanda kutip/koma.`)}
+${step(3, "Naikkan versi", `Buka ${gh("blob/dev/VERSION", "VERSION")} → ✏️. Ganti alamat = perbaikan, jadi angka terakhir +1, mis. <code>1.8.4</code> → <code>1.8.5</code>.`)}
+${step(4, "Commit", "Tekan <b>Commit changes…</b> → pilih <b>Commit directly to the dev branch</b> → <b>Commit changes</b>. Lakukan untuk kedua file.")}
+${step(5, "Tunggu APK selesai dibangun", `Buka ${gh("actions", "tab Actions")} → tunggu “Build Ninokuu Dev” (branch dev) atau “Build APK” (main) bercentang hijau (±5–8 menit). Versi global hanya dibangun bila VERSION naik. Silang merah = ada salah ketik; buka log-nya atau kirim ke Claude.`)}
+${step(6, "Pasang & cek", `Dev: Ninokuu Dev → Lainnya → Versi aplikasi, atau unduh ${gh("releases/download/apk-dev/ninokuu-dev.apk", "ninokuu-dev.apk")}. Global (setelah diulang di <code>main</code>): Ninokuu → Lainnya → Versi aplikasi → perbarui, atau ${gh("releases/download/apk-terbaru/ninokuu.apk", "ninokuu.apk")}.`)}
+</ol>`, "Jangan pernah mengubah secret GitHub <code>APK_KEYSTORE_PASSWORD</code> dan berkas keystore: APK baru tidak akan bisa dipasang di atas APK lama.")}
+${card("5. Ganti project Supabase / domain ninokuu.site", "Jarang dilakukan, perlu APK baru", `<ol class="gsteps">
+${step(1, "Supabase URL & anon key", `${SB("settings/api", "Supabase → Project Settings → API")}: salin Project URL dan kunci <b>anon/publishable</b> (BUKAN service_role/secret) → ${gh("settings/secrets/actions", "GitHub → Settings → Secrets → Actions")} → ubah <code>SUPABASE_URL</code> &amp; <code>SUPABASE_ANON_KEY</code> → naikkan VERSION → commit (langkah 4.3–4.6).`)}
+${step(2, "Domain ninokuu.site", "Repo <code>ninokuu-site</code> → berkas <code>CNAME</code> isi domain baru, lalu atur DNS di penyedia domain (A ke GitHub Pages, CNAME <code>www</code> ke <code>rexxaply.github.io</code>).")}
+${step(3, "Izinkan di Supabase Auth", `${SB("auth/url-configuration", "Supabase → Authentication → URL Configuration")} → tambah <code>https://domain-baru/verified/</code> dan <code>https://domain-baru/resetpassword/</code> di Redirect URLs.`)}
+${step(4, "Ubah alamat di kode → APK baru", "<code>app/js/native.js</code> (<code>SITE_URL</code>) dan <code>app/js/api.js</code> (<code>VERIFY_URL</code>, <code>RESET_URL</code>) → naikkan VERSION → commit (langkah 4.2–4.6).")}
+</ol>`, "Kunci rahasia (service_role, Firebase) hanya disimpan di Supabase Secrets, jangan pernah ditempel ke kode atau GitHub.")}
+</section>`;
 export async function vDev(view, ctx) {
   const { topbar, setActs, back, loading } = ctx;
   const p = S.state.profile, dev = p?.role === "developer", staff = dev || p?.role === "moderator";

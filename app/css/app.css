@@ -1447,11 +1447,11 @@ body[data-screen="reader"] .dl-pop { display: none; }
 /* zoom: layar bersih & terkunci di halaman (tidak memantul keluar tepi gambar) */
 .reader.zoomed .r-scroll, .reader.zoomed .r-slide { overscroll-behavior: none; }
 
-/* tombol lanjut gulir otomatis (muncul saat gulir otomatis dihentikan dengan ketukan) */
-.r-as { align-self: center; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 999px; font-size: 13px; font-weight: 700; color: var(--tx); }
-.r-as[hidden] { display: none; }
-.r-as b { color: var(--redt); }
-
-/* Lainnya: kartu profil + pengaturan akun dalam satu panel "Akun" */
-.group > .me.in-group { width: 100%; margin: 0; border: 0; border-radius: 0; background: transparent; padding: 18px 16px 16px 18px; }
-.group > .me.in-group + .mrow { border-top: 1px solid var(--line); }
+/* Panel developer: peta API/domain */
+.gmap { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.gmap-r { display: flex; flex-direction: column; gap: 4px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.gmap-r:last-child { border-bottom: 0; padding-bottom: 0; }
+.gmap-r > code { align-self: flex-start; font-size: 12.5px; font-weight: 700; }
+.gmap-w { align-self: flex-start; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; }
+.gmap-w.sb { background: rgba(62, 207, 142, .14); color: var(--ok); }
+.gmap-w.apk { background: rgba(255, 196, 0, .14); color: var(--gold); }

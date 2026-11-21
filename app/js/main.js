@@ -938,7 +938,6 @@ async function vReader(src, id, chId) {
     <span class="cap mt4">Bacaan</span><div class="r-togs rq">${readPrefsCompact()}</div>
   </div>
   <div class="r-bottom">
-    ${slide ? "" : `<button class="r-as glass" data-act="asGo" hidden>${icon("play", 14, 2.4)}<span>Lanjut gulir</span> <b id="rasx"></b></button>`}
     <div class="r-seek glass"><span class="r-pn"><span id="rpg">1</span> / ${total}</span>
       <div class="r-track" id="rtrack" role="slider" aria-label="Posisi halaman" aria-valuemin="1" aria-valuemax="${total}" aria-valuenow="1" tabindex="0"><span class="r-rail"></span><span class="r-fill" id="rfill"></span><span class="r-knob" id="rknob"></span></div></div>
     <div class="r-btns">
@@ -1080,7 +1079,6 @@ async function vReader(src, id, chId) {
   const setUi = (on) => (on ? showUi() : rd.classList.remove("ui"));
   box.addEventListener("click", (e) => {
     if (e.target.closest("a,button")) return;
-    if (asRun) { asPause(); showUi(); lastTap = null; return; }   // gulir otomatis berjalan: ketuk = berhenti
     const now = Date.now();
     if (lastTap && now - lastTap.t < 320 && Math.hypot(lastTap.x - e.clientX, lastTap.y - e.clientY) < 50) {
       clearTimeout(tapT); setUi(lastTap.was); lastTap = null; applyZoom(zoom > 1.05 ? 1 : ZTAP, e.clientX, e.clientY);
@@ -1146,14 +1144,12 @@ async function vReader(src, id, chId) {
   }, { passive: true });
   box.addEventListener("touchend", pinchEnd, { passive: true });
   box.addEventListener("touchcancel", pinchEnd, { passive: true });
-  // Gulir otomatis (mode Scroll): 1× / 2× / 3×. Ketuk halaman → berhenti (tombol ▶ Lanjut gulir muncul di bar bawah).
-  // Jari menempel (menggeser sendiri, mencubit) → ditahan sementara, lanjut lagi setelah jari dilepas.
+  // Gulir otomatis (mode Scroll): 1× / 2× / 3×. Selama jari menekan layar → berhenti; jari dilepas → lanjut lagi
+  // dari posisi itu (juga setelah menggeser sendiri). Dimatikan lewat pilihan OFF.
   // Berhenti sendiri di akhir chapter; lanjut otomatis ke chapter berikutnya tetap memakai pengaturannya sendiri.
   const AS_PX = { 1: 50, 2: 100, 3: 160 };   // px per detik
-  let asRun = false, asHold = false, asRaf = 0, asLast = 0, asY = 0;
+  let asRun = false, asHold = false, asRaf = 0, asLast = 0, asY = 0, asHoldT = 0;
   const asSpeed = () => (slide ? 0 : AS_PX[choiceVal("autoScroll")] || 0);
-  const asBtn = $(".r-as", rd);
-  const asPaint = () => { if (!asBtn) return; asBtn.hidden = asRun || !asSpeed(); const x = $("#rasx", rd); if (x) x.textContent = choiceVal("autoScroll") + "×"; };
   const asTick = (t) => {
     asRaf = 0;
     if (!asRun || !rd.isConnected || parse().name !== "reader") { asRun = false; return; }
@@ -1163,17 +1159,18 @@ async function vReader(src, id, chId) {
       if (Math.abs(box.scrollTop - asY) > 2) asY = box.scrollTop;            // digeser sendiri → lanjut dari posisi itu
       const max = box.scrollHeight - box.clientHeight;
       asY = Math.min(max, asY + (v * dt) / 1000); box.scrollTop = asY;
-      if (asY >= max - 1) { asPause(); return; }                           // sampai akhir chapter
+      if (asY >= max - 1) { asPause(); return; }                           // sampai akhir chapter → berhenti
     }
     asRaf = requestAnimationFrame(asTick);
   };
-  const asStart = () => { if (!asSpeed() || asRun) return; asRun = true; asLast = 0; asY = box.scrollTop; asPaint(); if (!asRaf) asRaf = requestAnimationFrame(asTick); };
-  function asPause() { asRun = false; cancelAnimationFrame(asRaf); asRaf = 0; asPaint(); }
-  box.addEventListener("touchstart", () => { asHold = true; }, { passive: true });
-  const asUnhold = (e) => { if (!e.touches?.length) { asHold = false; if (asRun) asY = box.scrollTop; } };
+  const asStart = () => { if (!asSpeed() || asRun) return; asRun = true; asLast = 0; asY = box.scrollTop; if (!asRaf) asRaf = requestAnimationFrame(asTick); };
+  function asPause() { asRun = false; cancelAnimationFrame(asRaf); asRaf = 0; }
+  box.addEventListener("touchstart", () => { asHold = true; clearTimeout(asHoldT); }, { passive: true });
+  // jari dilepas: lanjut lagi (gulir manual yang masih meluncur dibiarkan selesai dulu ±0,35 dtk)
+  const asUnhold = (e) => { if (e.touches?.length) return; clearTimeout(asHoldT); asHoldT = setTimeout(() => { asHold = false; asY = box.scrollTop; if (asSpeed() && !asRun && !atEnd) asStart(); }, 350); };
   box.addEventListener("touchend", asUnhold, { passive: true }); box.addEventListener("touchcancel", asUnhold, { passive: true });
   // mulai sendiri saat chapter terbuka (pengaturan aktif), setelah pembaca sempat melihat posisinya
-  if (asSpeed()) setTimeout(() => { if (rd.isConnected && !atEnd) asStart(); else asPaint(); }, 1200);
+  if (asSpeed()) setTimeout(() => { if (rd.isConnected && !atEnd) asStart(); }, 1200);
   // geser slider halaman
   const track = $("#rtrack");
   const seekAt = (clientX) => { const r = track.getBoundingClientRect(); const f = Math.min(1, Math.max(0, (clientX - r.left) / r.width)); goPage(Math.round(f * (total - 1)) + 1); };
@@ -1213,11 +1210,10 @@ async function vReader(src, id, chId) {
       if (k === "autoScroll") {
         if (v === "off") asPause();
         else if (slide) toast("Gulir otomatis hanya untuk mode Scroll");
-        else { menu(false); asRun ? asPaint() : asStart(); }
+        else { menu(false); asStart(); }
       }
     },
     cancelNext: () => { autoNextStop(true); toast("Lanjut otomatis dibatalkan untuk chapter ini"); },
-    asGo: () => { if (atEnd) { toast("Sudah di akhir chapter"); return; } asStart(); },
     reimg: (el) => { const im = $(`.r-img[data-i="${el.dataset.i}"]`, rd); if (im) reloadImg(im); },
     reload: () => { menu(false); if (failed.size) { const n = failed.size; [...failed].forEach(reloadImg); toast(`Memuat ulang ${n} gambar yang gagal…`); } else { toast("Memuat ulang chapter…", 1500); vReader(src, id, chId); } },
     prev: () => prev && goReplace(readHref(src, id, prev.id)),
@@ -1619,7 +1615,7 @@ const READ_OPTS = [
 ];
 // pilihan dua mode (bawaan = yang pertama)
 const READ_CHOICES = [
-  ["autoScroll", "Gulir otomatis (mode Scroll)", [["off", "OFF", "Halaman hanya bergerak saat kamu menggulir."], ["1", "1×", "Gulir otomatis pelan. Ketuk halaman untuk berhenti, tombol ▶ untuk lanjut."], ["2", "2×", "Gulir otomatis sedang. Ketuk halaman untuk berhenti, tombol ▶ untuk lanjut."], ["3", "3×", "Gulir otomatis cepat. Ketuk halaman untuk berhenti, tombol ▶ untuk lanjut."]], "off"],
+  ["autoScroll", "Gulir otomatis (mode Scroll)", [["off", "OFF", "Halaman hanya bergerak saat kamu menggulir."], ["1", "1×", "Gulir otomatis pelan. Tekan layar untuk berhenti, lepas untuk lanjut."], ["2", "2×", "Gulir otomatis sedang. Tekan layar untuk berhenti, lepas untuk lanjut."], ["3", "3×", "Gulir otomatis cepat. Tekan layar untuk berhenti, lepas untuk lanjut."]], "off"],
   ["screenMode", "Tampilan layar", [["standard", "Mode standar", "Bilah status HP tetap tampil saat membaca."], ["fullscreen", "Mode fullscreen", "Bilah status HP ikut menu bacaan: menu tampil → bilah tampil, menu hilang → bilah disembunyikan."]]],
   ["nextDelay", "Lanjut otomatis ke chapter berikutnya", [["off", "OFF", "Menu muncul di akhir chapter; pilih sendiri lanjut atau tidak."], ["1", "1 dtk", "Sampai di akhir chapter, chapter berikutnya terbuka setelah 1 detik (ketuk untuk batal)."], ["2", "2 dtk", "Sampai di akhir chapter, chapter berikutnya terbuka setelah 2 detik (ketuk untuk batal)."], ["3", "3 dtk", "Sampai di akhir chapter, chapter berikutnya terbuka setelah 3 detik (ketuk untuk batal)."], ["5", "5 dtk", "Sampai di akhir chapter, chapter berikutnya terbuka setelah 5 detik (ketuk untuk batal)."]], "3"],
 ];
