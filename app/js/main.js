@@ -80,6 +80,8 @@ const holdFx = (on) => { fxHold = on; $$(FX_SEL).forEach((el) => el.classList.to
 async function render() {
   trackNav();
   if (cleanup) { try { cleanup(); } catch {} cleanup = null; }
+  // keluar dari pembaca (juga saat chapter berikutnya belum sempat tampil): bilah status selalu dikembalikan
+  if (parse().name !== "reader") N.setFullscreen(false, false);
   closeNotif(); closeSheet();
   $$(".flt-host, .chs-host").forEach((x) => x.remove()); document.body.classList.remove("flt-open");
   scrollMem.set(route.key, window.scrollY);
@@ -850,7 +852,7 @@ const pagesMem = new Map();
 let readerSeq = 0;
 async function vReader(src, id, chId) {
   const shell = (inner) => `<div class="reader ui enter" id="rd" data-shell="1">${inner}<div class="r-top"><button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 22, 2)}</button><div class="r-pill glass"><b class="t1">Memuat…</b></div><span class="r-sp"></span></div></div>`;
-  // Halaman sebelumnya tetap terlihat selama data chapter dimuat; layar "Memuat…" baru dipasang bila butuh > 0,65 dtk
+  // Halaman sebelumnya tetap terlihat selama data chapter dimuat; layar "Memuat…" baru dipasang bila butuh > 1,2 dtk
   // (sebelumnya langsung tampil layar gelap kosong sekejap sebelum halaman komik → terlihat seperti kedipan)
   const myR = ++readerSeq;
   // Animasi bar meluncur masuk HANYA saat masuk dari luar pembaca (mis. info komik), dan baru setelah halaman siap.
@@ -862,7 +864,7 @@ async function vReader(src, id, chId) {
     // layar "Memuat…" tampil diam (tanpa bar meluncur) supaya tidak terlihat seperti macet
     view.innerHTML = shell(`<div class="r-pages">${loading(3, "sk-page")}</div>`).replace('class="reader ui enter"', 'class="reader ui"');
     shellShown = true;
-  }, 650);
+  }, 1200);
   const fail = (e) => {
     if (myR !== readerSeq || parse().name !== "reader") return;
     if (!$("#rd")) view.innerHTML = shell(`<div class="r-pages"></div>`);
@@ -872,7 +874,9 @@ async function vReader(src, id, chId) {
   const isLocal = src === "local";
   const toComic = () => (isLocal ? backTo("#/fav/dl") : backTo(comicHref(src, id), [chaptersHref(src, id)]));
   // tombol kembali: bar atas & bawah meluncur keluar dulu (±0,18 dtk), lalu pindah ke info komik yang meluncur masuk
-  const leave = () => { const r = $("#rd"); if (r && r.classList.contains("ui") && !r.dataset.shell && !matchMedia("(prefers-reduced-motion: reduce)").matches) { r.classList.remove("ui"); setTimeout(toComic, 180); } else toComic(); };
+  // (bilah status HP tidak ikut disembunyikan sesaat saat bar meluncur keluar: lihat "leaving" di syncFs)
+  let leaving = false;
+  const leave = () => { const r = $("#rd"); if (r && r.classList.contains("ui") && !r.dataset.shell && !matchMedia("(prefers-reduced-motion: reduce)").matches) { leaving = true; r.classList.remove("ui"); setTimeout(toComic, 180); } else toComic(); };
   setActs({ back: leave, retry: () => vReader(src, id, chId) });
   let d = isLocal ? DL.offlineDetail(src, id) : cachedDetail(src, id);
   try { if (!d) d = await getDetail(src, id); }
@@ -1289,7 +1293,7 @@ async function vReader(src, id, chId) {
   addEventListener("online", onOnline);
   // Mode fullscreen: bilah status HP mengikuti menu bacaan. Menu tampil → bilah tampil; menu hilang
   // (diketuk atau digulir) → bilah disembunyikan. Mode standar: bilah selalu tampil.
-  const syncFs = () => { const fs = choiceVal("screenMode") === "fullscreen"; N.setFullscreen(fs && !rd.classList.contains("ui"), fs); };
+  const syncFs = () => { if (leaving) return; const fs = choiceVal("screenMode") === "fullscreen"; N.setFullscreen(fs && !rd.classList.contains("ui"), fs); };
   const fsObs = new MutationObserver(syncFs);
   fsObs.observe(rd, { attributes: true, attributeFilter: ["class"] });
   syncFs();   // langsung saat pembaca dibuka (juga pindah chapter: overlay tetap, halaman tidak melompat)
@@ -1329,7 +1333,7 @@ async function vReader(src, id, chId) {
     if (!slide) $$(".r-img", rd).slice(0, resumeAt).forEach((im) => im.addEventListener("load", jump, { once: true }));   // semua halaman di atas tujuan: tingginya berubah saat termuat
     toast(`Lanjut dari halaman ${resumeAt}`, 1800);
   }
-  cleanup = () => { lazyIo.disconnect(); fsObs.disconnect(); clearTimeout(tapT); clearTimeout(nextT); cancelAnimationFrame(rafPos); endIo?.disconnect(); removeEventListener("online", onOnline); (parse().name === "reader" ? N.leaveFullscreen() : N.setFullscreen(false, false)); S.flushHistory(); };   // ke halaman lain: bilah status dikembalikan SEBELUM halaman baru digambar (tidak melompat setelahnya); pindah chapter: overlay tetap
+  cleanup = () => { lazyIo.disconnect(); fsObs.disconnect(); clearTimeout(tapT); clearTimeout(nextT); cancelAnimationFrame(rafPos); endIo?.disconnect(); removeEventListener("online", onOnline); (parse().name === "reader" ? 0 : N.setFullscreen(false, false)); S.flushHistory(); };   // ke halaman lain: bilah status dikembalikan SEBELUM halaman baru digambar (tidak melompat setelahnya); pindah chapter: status layar tidak disentuh sama sekali sampai chapter baru tampil (dulu dilepas setelah 0,3 dtk → seluruh layar bergeser naik-turun saat chapter lambat dimuat)
   // jenis belum diketahui dari tag: periksa bentuk beberapa gambar pertama. Kebanyakan sangat tinggi
   // (tinggi > 1,8× lebar) → strip panjang manhwa/manhua: diingat, dan mode slide dialihkan ke scroll.
   if (!kind && !longStrip) {

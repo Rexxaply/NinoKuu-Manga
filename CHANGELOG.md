@@ -11,6 +11,15 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
+## 1.8.6 — 21 Nov 2026
+
+### Ringkasan
+- Pindah chapter di mode layar penuh tidak lagi membuat seluruh layar bergeser naik-turun sesaat: status bilah status HP tidak disentuh sampai chapter baru tampil
+- Kembali dari pembaca ke info komik: bilah status tidak ikut disembunyikan sekejap saat bar meluncur keluar
+- Layar "Memuat…" baru muncul bila chapter butuh lebih dari 1,2 detik (sebelumnya 0,65 detik); sampai saat itu halaman sebelumnya tetap tampil
+
+---
+
 ## 1.8.5 — 21 Nov 2026
 
 ### Ringkasan
