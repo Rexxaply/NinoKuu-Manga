@@ -10,7 +10,7 @@ import * as X from "./exp.js";
 import * as DL from "./dl.js";
 import * as T from "./tour.js";
 import * as O from "./online.js";
-import { esc, icon, $, $$, toast, ago, SOURCES, srcName, TYPES, typeName, cover, comicHref, readHref, greeting, errBox, loading, rankBadge } from "./ui.js";
+import { esc, icon, $, $$, toast, ago, SOURCES, srcName, TYPES, typeName, cover, comicHref, readHref, greeting, errBox, loading, rankBadge, ask, closeAsk } from "./ui.js";
 
 const VERSION = window.NINOKUU_CONFIG?.VERSION || "1.0.0";
 const KIND_NAME = { mayor: "Pembaruan besar", minor: "Fitur baru", patch: "Perbaikan" };
@@ -102,12 +102,13 @@ async function render() {
   prevName = route.name; if (tab) prevTab = tab;
   // animasi masuk dimulai setelah layar baru terisi, supaya layar lama tidak ikut "meluncur lagi"
   const my = ++renderSeq;
-  view.classList.remove("in", "in-f", "in-b"); delete view.dataset.upDone;
-  // kembali ke halaman sebelumnya (mis. pembaca → info komik): bar "Lanjut baca" langsung ada di tempatnya, tidak meluncur
-  // naik terlambat (sebelumnya bar tidak terlihat ±0,5 dtk sehingga tampak hilang duluan)
-  if (!fwd) view.dataset.upDone = "1";
   // pembaca: halaman sebelumnya dibiarkan terlihat sampai pembaca siap (tanpa layar gelap kosong sekejap)
   const keepOld = route.name === "reader" && !!view.childElementCount;
+  view.classList.remove("in", "in-f", "in-b");
+  // Bar "Lanjut baca" info komik: tetap diam saat masuk pembaca (halaman lama masih tampil selama chapter dimuat;
+  // dulu animasinya terulang sehingga bar meluncur naik lagi), dan langsung di tempatnya saat kembali ke info komik.
+  // Yang beranimasi di pembaca hanya bar/menu pembaca sendiri.
+  if (keepOld || !fwd) view.dataset.upDone = "1"; else delete view.dataset.upDone;
   if (!keepOld) view.innerHTML = "";
   fxIo?.disconnect(); fxVis.clear(); fxSprite();
   let animated = false;
@@ -409,7 +410,7 @@ async function openNotif() {
       go(x.source && x.comic_id ? comicHref(x.source, x.comic_id) : "#/chat");
     }
     if (a === "clear") {
-      if (!confirm("Hapus semua notifikasi? Lonceng di tiap komik tetap menyala.")) return;
+      if (!(await ask("Hapus semua notifikasi? Lonceng di tiap komik tetap menyala.", { ok: "Hapus", danger: true }))) return;
       try { await api.rest("notifications?id=gt.0", { method: "DELETE" }); notifs = []; draw(); refreshBell(); toast("Notifikasi dihapus"); } catch (er) { toast(er.message); }
     }
   });
@@ -1436,7 +1437,7 @@ function openPhoto() {
     ${p?.avatar_path ? `<button class="sh-row red" data-s="rm">${icon("trash", 18)}Hapus foto profil</button>` : ""}
     <button class="sh-cancel" data-s="close">Batal</button>`, async (b) => {
     if (b.dataset.s !== "rm") return;
-    if (!confirm("Hapus foto profil? Avatar kembali memakai huruf awal nama.")) return;
+    if (!(await ask("Hapus foto profil? Avatar kembali memakai huruf awal nama.", { ok: "Hapus", danger: true }))) return;
     b.disabled = true;
     try { await setAvatar(null); closeSheet(); toast("Foto profil dihapus"); if (route.name === "more") vMore(); }
     catch (e) { b.disabled = false; toast(e.message, 4500); }
@@ -1617,7 +1618,7 @@ ${!S.loggedIn() && fav.tab !== "dl" ? `<div class="note mx">${icon("cloud", 18)}
     ff: (el) => { fav.filter = el.dataset.v; vFav(); },
     fview: () => S.setSetting("favView", grid ? "list" : "grid"),
     fsort: () => sortSheet("Urutkan koleksi", FAV_SORTS, fs, (v) => S.setSetting("favSort", v)),
-    clearHist: async () => { if (!confirm("Hapus semua riwayat baca?")) return; try { await S.clearHistory(); toast("Riwayat dibersihkan"); } catch (e) { toast(e.message); } },
+    clearHist: async () => { if (!(await ask("Hapus semua riwayat baca?", { ok: "Hapus", danger: true }))) return; try { await S.clearHistory(); toast("Riwayat dibersihkan"); } catch (e) { toast(e.message); } },
   });
   if (fav.tab === "lib" && libAll.length) refreshLatest(libAll);
   if (fav.tab === "dl") {
@@ -1771,7 +1772,7 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
       } catch (e) { showPush("error"); toast("Pendaftaran notifikasi gagal: " + e.message, 5000); }
     },
     discord: () => soon("Server Discord Ninokuu sedang disiapkan."), trakteer: () => openTrakteer(),
-    logout: async () => { if (!confirm("Keluar dari akun? Koleksi dan riwayatmu tetap aman di server.")) return; await S.flushHistory(); await api.signOut(); S.clearUserData(); toast("Kamu sudah keluar"); vMore(); },
+    logout: async () => { if (!(await ask("Keluar dari akun? Koleksi dan riwayatmu tetap aman di server.", { ok: "Keluar", danger: true }))) return; await S.flushHistory(); await api.signOut(); S.clearUserData(); toast("Kamu sudah keluar"); vMore(); },
     cache: async () => {
       if ("caches" in window) { const keys = await caches.keys(); await Promise.all(keys.filter((k) => k.startsWith("ninokuu-img")).map((k) => caches.delete(k))); }
       try { Object.keys(sessionStorage).filter((k) => k.startsWith("ninokuu:d:")).forEach((k) => sessionStorage.removeItem(k)); } catch {}
@@ -1945,6 +1946,7 @@ function startApp() {
   N.onBack((exit) => {
     const ae = document.activeElement;
     if (ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName) && document.body.classList.contains("chfoc")) { ae.blur(); return; }
+    if (closeAsk()) return;   // dialog konfirmasi terbuka → tombol kembali = Batal
     const flt = $(".flt-host [data-f=close]"); if (flt) { flt.click(); return; }
     if (sheetEl) { closeSheet(); return; }
     if (document.getElementById("notif")) { closeNotif(); return; }

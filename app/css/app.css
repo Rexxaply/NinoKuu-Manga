@@ -1455,3 +1455,23 @@ body[data-screen="reader"] .dl-pop { display: none; }
 .gmap-w { align-self: flex-start; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; }
 .gmap-w.sb { background: rgba(62, 207, 142, .14); color: var(--ok); }
 .gmap-w.apk { background: rgba(255, 196, 0, .14); color: var(--gold); }
+
+/* Dialog konfirmasi (pengganti confirm() bawaan): masuk membesar & memudar, keluar mengecil & memudar */
+.ask-host { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 24px; }
+.ask-bg { position: absolute; inset: 0; background: rgba(0, 0, 0, .55); opacity: 0; transition: opacity .2s ease; }
+.ask { position: relative; width: min(100%, 360px); padding: 22px 20px 14px; border-radius: 24px; display: flex; flex-direction: column; gap: 8px;
+  opacity: 0; transform: scale(.92); transition: transform .26s cubic-bezier(.32, .72, 0, 1), opacity .2s ease; box-shadow: 0 24px 60px rgba(0, 0, 0, .45); }
+.ask-host.on .ask-bg { opacity: 1; }
+.ask-host.on .ask { opacity: 1; transform: none; }
+.ask-host.off .ask-bg { opacity: 0; transition-duration: .16s; }
+.ask-host.off .ask { opacity: 0; transform: scale(.96); transition: transform .16s ease-in, opacity .16s ease-in; }
+.ask-ttl { font-size: 17px; font-weight: 800; padding: 0 4px; }
+.ask-msg { margin: 0; padding: 0 4px 8px; font-size: 15px; line-height: 1.5; color: var(--tx); }
+.ask-ttl + .ask-msg { color: var(--soft); font-size: 14px; }
+.ask-acts { display: flex; justify-content: flex-end; gap: 8px; }
+.ask-b { min-width: 84px; height: 44px; padding: 0 18px; border-radius: 14px; font-size: 14.5px; font-weight: 700; color: var(--tx); background: rgba(255, 255, 255, .07);
+  transition: transform .12s ease-out, background .12s; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+.ask-b:active { transform: scale(.96); }
+.ask-b.ok { background: var(--red); color: #fff; }
+.ask-b.danger { background: rgba(255, 77, 94, .16); color: var(--redt); }
+@media (prefers-reduced-motion: reduce) { .ask, .ask-host.off .ask { transform: none !important; } }

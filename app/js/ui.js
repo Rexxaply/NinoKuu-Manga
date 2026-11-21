@@ -247,3 +247,35 @@ document.addEventListener("click", (e) => {
   const el = e.target.closest?.(SEG_SEL); if (!el || !el._th) return;
   const k = segKey(el); if (k) segLast.set(k, { ...el._th, sl: el.scrollLeft, t: Date.now() });
 }, true);
+
+// Dialog konfirmasi bergaya Ninokuu (pengganti confirm() bawaan): kartu kaca di tengah, masuk membesar & memudar,
+// keluar mengecil & memudar. ask("Pesan?", { ok: "Hapus", danger: true }) → Promise<true|false>.
+// Batal: tombol Batal, ketuk latar, Esc, atau tombol kembali Android (lihat closeAsk di main.js).
+let askOpen = null;
+export const closeAsk = () => { if (!askOpen) return false; askOpen(false); return true; };
+export function ask(msg, { title = "", ok = "OK", cancel = "Batal", danger = false } = {}) {
+  closeAsk();
+  return new Promise((resolve) => {
+    const host = document.createElement("div");
+    host.className = "ask-host";
+    host.innerHTML = `<div class="ask-bg" data-a="no"></div><div class="ask glass" role="alertdialog" aria-modal="true" aria-labelledby="askT">
+      ${title ? `<b class="ask-ttl">${esc(title)}</b>` : ""}<p class="ask-msg" id="askT">${esc(msg).replace(/\n/g, "<br>")}</p>
+      <div class="ask-acts"><button class="ask-b" data-a="no">${esc(cancel)}</button><button class="ask-b ${danger ? "danger" : "ok"}" data-a="yes">${esc(ok)}</button></div></div>`;
+    document.body.append(host);
+    const prevFocus = document.activeElement;
+    requestAnimationFrame(() => { host.classList.add("on"); host.querySelector("[data-a=yes]").focus({ preventScroll: true }); });
+    let done = false;
+    const finish = (v) => {
+      if (done) return; done = true; askOpen = null;
+      document.removeEventListener("keydown", onKey, true);
+      host.classList.remove("on"); host.classList.add("off");
+      setTimeout(() => host.remove(), 180);
+      try { prevFocus?.focus?.({ preventScroll: true }); } catch {}
+      resolve(v);
+    };
+    const onKey = (e) => { if (e.key === "Escape") { e.preventDefault(); finish(false); } if (e.key === "Enter") { e.preventDefault(); finish(true); } };
+    document.addEventListener("keydown", onKey, true);
+    host.addEventListener("click", (e) => { const a = e.target.closest("[data-a]")?.dataset.a; if (a) finish(a === "yes"); });
+    askOpen = finish;
+  });
+}

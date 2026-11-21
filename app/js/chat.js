@@ -1,7 +1,7 @@
 // Chat publik + Panel developer (mengikuti prototipe desain).
 import * as api from "./api.js";
 import * as S from "./store.js";
-import { esc, icon, $, $$, toast, ago, rankBadge } from "./ui.js";
+import { esc, icon, $, $$, toast, ago, rankBadge, ask } from "./ui.js";
 import { frameImage } from "./exp.js";
 import * as O from "./online.js";
 
@@ -262,12 +262,12 @@ export async function vChat(view, ctx, opt = {}) {
     else if (a === "selcut") { const [i, s0, s1, t] = sel(); navigator.clipboard?.writeText(t).catch(() => {}); i.value = i.value.slice(0, s0) + i.value.slice(s1); i.setSelectionRange(s0, s0); i.dispatchEvent(new Event("input")); toast("Teks dipotong"); }
     else if (a === "mcopy") { const t = plain(m?.body); if (t) navigator.clipboard?.writeText(t).catch(() => {}); sheet(""); toast(t ? "Pesan disalin" : "Pesan ini hanya berisi gambar"); }
     else if (a === "mreport") run(() => api.rest("chat_reports", { method: "POST", body: { message_id: m.id }, prefer: "resolution=ignore-duplicates,return=minimal" }), "Pesan dilaporkan. Terima kasih, moderator akan meninjaunya.");
-    else if (a === "mdel") { if (!confirm("Hapus pesan ini?")) return; run(async () => { await api.rest(`chat_messages?id=eq.${m.id}`, { method: "DELETE" }); if (m.image_path && m.user_id === me) await api.removeFile("chat-images", m.image_path).catch(() => {}); }, "Pesan dihapus"); }
+    else if (a === "mdel") { if (!(await ask("Hapus pesan ini?", { ok: "Hapus", danger: true }))) return; run(async () => { await api.rest(`chat_messages?id=eq.${m.id}`, { method: "DELETE" }); if (m.image_path && m.user_id === me) await api.removeFile("chat-images", m.image_path).catch(() => {}); }, "Pesan dihapus"); }
     else if (a === "mhide") run(() => api.rpc("mod_set_hidden", { p_message: m.id, p_hidden: !m.hidden }), m.hidden ? "Pesan ditampilkan lagi" : "Pesan disembunyikan dari semua pengguna");
     else if (a === "mmute") run(() => api.rpc("mod_restrict", { p_user: m.user_id, p_mute_minutes: 60 }), `${m.name} dibisukan 1 jam`);
-    else if (a === "mban") { if (!confirm(`Blokir ${m.name}? Semua pesannya disembunyikan dan dia tidak bisa menulis di chat publik.`)) return; run(() => api.rpc("mod_restrict", { p_user: m.user_id, p_ban: true }), `${m.name} diblokir dari chat`); }
+    else if (a === "mban") { if (!(await ask(`Blokir ${m.name}? Semua pesannya disembunyikan dan dia tidak bisa menulis di chat publik.`, { ok: "Blokir", danger: true }))) return; run(() => api.rpc("mod_restrict", { p_user: m.user_id, p_ban: true }), `${m.name} diblokir dari chat`); }
     else if (a === "pinx") b.classList.toggle("open");
-    else if (a === "unpin") { if (!confirm("Lepas pengumuman ini dari chat publik untuk semua pengguna?")) return; run(() => api.rest(`announcements?id=eq.${pin.id}`, { method: "PATCH", body: { pinned: false }, prefer: "return=minimal" }), "Pengumuman dilepas dari chat untuk semua pengguna"); }
+    else if (a === "unpin") { if (!(await ask("Lepas pengumuman ini dari chat publik untuk semua pengguna?", { ok: "Lepas" }))) return; run(() => api.rest(`announcements?id=eq.${pin.id}`, { method: "PATCH", body: { pinned: false }, prefer: "return=minimal" }), "Pengumuman dilepas dari chat untuk semua pengguna"); }
     else if (a === "pinhide") { hidePin(pin.id); pin = null; draw(); toast("Pengumuman disembunyikan dari layarmu selama 24 jam", 3000); }
   });
   setActs({ back: () => back(opt.backHref || "#/home") });
@@ -474,7 +474,7 @@ export async function vDev(view, ctx) {
     }
     if (a === "ann") {
       const t = form.title.trim(); if (!t) return toast("Isi judul pengumuman dulu");
-      if (!confirm(`Kirim pengumuman “${t}”${form.push ? " ke semua pengguna" : ""}?`)) return;
+      if (!(await ask(`Kirim pengumuman “${t}”${form.push ? " ke semua pengguna" : ""}?`, { ok: "Kirim" }))) return;
       run(async () => {
         const body = { title: t, body: form.body.trim(), pinned: form.pin, push: form.push };
         if (form.pin && form.days) body.pinned_until = new Date(Date.now() + form.days * 864e5).toISOString();
@@ -487,13 +487,13 @@ export async function vDev(view, ctx) {
     if (a === "cron") run(async () => { b.disabled = true; await api.call("run_cron"); }, "Cron selesai dijalankan");
     if (a === "test") run(() => api.call("test_push"), "Tes notifikasi dikirim");
     if (a === "hide") run(() => api.rpc("mod_set_hidden", { p_message: Number(b.dataset.id), p_hidden: b.dataset.h !== "true" }), "Status pesan diperbarui");
-    if (a === "del") { if (!confirm("Hapus pesan ini untuk semua?")) return; run(() => api.rest(`chat_messages?id=eq.${b.dataset.id}`, { method: "DELETE" }), "Pesan dihapus"); }
+    if (a === "del") { if (!(await ask("Hapus pesan ini untuk semua?", { ok: "Hapus", danger: true }))) return; run(() => api.rest(`chat_messages?id=eq.${b.dataset.id}`, { method: "DELETE" }), "Pesan dihapus"); }
     if (a === "mute") run(() => api.rpc("mod_restrict", { p_user: b.dataset.u, p_mute_minutes: 60 }), `${b.dataset.n} dibisukan 1 jam`);
-    if (a === "ban") { if (!confirm(`Blokir ${b.dataset.n} dari chat?`)) return; run(() => api.rpc("mod_restrict", { p_user: b.dataset.u, p_ban: true }), `${b.dataset.n} diblokir`); }
+    if (a === "ban") { if (!(await ask(`Blokir ${b.dataset.n} dari chat?`, { ok: "Blokir", danger: true }))) return; run(() => api.rpc("mod_restrict", { p_user: b.dataset.u, p_ban: true }), `${b.dataset.n} diblokir`); }
     if (a === "clean") {
       const kind = b.dataset.k, sel = root.querySelector(`select[data-k="${kind}"]`), days = sel ? Number(sel.value) : 1;
       const item = CLEAN.find((c) => c[0] === kind);
-      if (!confirm(`${item[1]}${sel ? ` lebih dari ${days} hari` : ""} akan dihapus permanen. Lanjutkan?`)) return;
+      if (!(await ask(`${item[1]}${sel ? ` lebih dari ${days} hari` : ""} akan dihapus permanen. Lanjutkan?`, { ok: "Hapus", danger: true }))) return;
       b.disabled = true; b.textContent = "Membersihkan…";
       return run(async () => {
         const r = await api.rpc("dev_cleanup", { p_kind: kind, p_days: days });
@@ -508,7 +508,7 @@ export async function vDev(view, ctx) {
         on ? "Disematkan lagi selama 3 hari" : "Dilepas dari chat untuk semua pengguna");
     }
     if (a === "anndel") {
-      if (!confirm("Tarik pengumuman ini?\n\nPengumuman hilang dari Chat publik dan dari lonceng semua pengguna. Notifikasi yang sudah masuk ke HP tidak bisa ditarik.")) return;
+      if (!(await ask("Tarik pengumuman ini?\n\nPengumuman hilang dari Chat publik dan dari lonceng semua pengguna. Notifikasi yang sudah masuk ke HP tidak bisa ditarik.", { ok: "Tarik", danger: true }))) return;
       run(() => api.rest(`announcements?id=eq.${b.dataset.id}`, { method: "DELETE" }), "Pengumuman ditarik");
     }
     if (a === "bugok") run(() => api.rest(`bug_reports?id=eq.${b.dataset.id}`, { method: "PATCH", body: { resolved: true }, prefer: "return=minimal" }), "Laporan ditandai selesai");
