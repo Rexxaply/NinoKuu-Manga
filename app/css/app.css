@@ -1475,3 +1475,7 @@ body[data-screen="reader"] .dl-pop { display: none; }
 .ask-b.ok { background: var(--red); color: #fff; }
 .ask-b.danger { background: rgba(255, 77, 94, .16); color: var(--redt); }
 @media (prefers-reduced-motion: reduce) { .ask, .ask-host.off .ask { transform: none !important; } }
+
+/* bar "Lanjut baca" meluncur turun saat kembali ke Beranda/tab (salinan sementara di luar #view) */
+.rfab-wrap.rfab-out { pointer-events: none; animation: fixDown .3s cubic-bezier(.4, 0, 1, 1) both; }
+@keyframes fixDown { to { transform: translateY(calc(100% + 40px)); opacity: 0; } }

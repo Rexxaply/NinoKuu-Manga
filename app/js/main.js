@@ -99,6 +99,16 @@ async function render() {
   // arah animasi: masuk lebih dalam / tab di kanan = dari kanan; kembali = dari kiri
   const depth = DEPTH[route.name] ?? 0, prevDepth = DEPTH[prevName] ?? 0;
   const fwd = depth !== prevDepth ? depth > prevDepth : TABS.indexOf(route.name) >= TABS.indexOf(prevName);
+  // Bar "Lanjut baca": meluncur naik saat masuk info komik dari Beranda/tab, dan meluncur turun saat kembali ke
+  // Beranda/tab. Ke/dari pembaca (dan halaman dalam lainnya) tanpa animasi. Salinannya dipasang sebentar di luar
+  // #view supaya pindah halamannya tidak perlu menunggu animasi keluar.
+  if (depth === 0 && prevDepth > 0) {
+    const w = $(".rfab-wrap", view);
+    if (w && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const g = w.cloneNode(true); g.classList.add("rfab-out"); g.setAttribute("aria-hidden", "true"); g.inert = true;
+      document.body.append(g); g.addEventListener("animationend", () => g.remove(), { once: true }); setTimeout(() => g.remove(), 600);
+    }
+  }
   prevName = route.name; if (tab) prevTab = tab;
   // animasi masuk dimulai setelah layar baru terisi, supaya layar lama tidak ikut "meluncur lagi"
   const my = ++renderSeq;

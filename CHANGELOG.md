@@ -14,7 +14,7 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 ## 1.8.7 — 21 Nov 2026
 
 ### Ringkasan
-- Masuk pembaca dari info komik: bar "Lanjut baca" tidak lagi meluncur naik lagi selama chapter dimuat; yang beranimasi hanya bar/menu pembaca
+- Bar "Lanjut baca" info komik: meluncur naik saat masuk dari Beranda/tab dan meluncur turun saat kembali ke Beranda/tab; masuk/keluar pembaca tanpa animasi bar ini (yang beranimasi hanya bar/menu pembaca)
 - Semua dialog konfirmasi bawaan Android (hapus riwayat, hapus notifikasi, hapus foto profil, keluar, hapus/blokir pesan, pengumuman, pembersihan data) diganti dialog Ninokuu: kartu kaca di tengah, animasi masuk membesar-memudar & keluar mengecil-memudar, tombol berbahaya berwarna merah; tombol kembali HP = Batal
 
 ---
