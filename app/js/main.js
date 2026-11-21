@@ -1794,7 +1794,7 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
       const r = await N.cacheClear().catch(() => ({ freed: 0, after: 0 }));
       detailCache.clear(); browseCache.clear();
       if (sub) sub.textContent = `Total cache di HP: ${N.fmtBytes(r.after)}`;
-      await ask(r.freed > 0 ? `${N.fmtBytes(r.freed)} cache berhasil dihapus dari HP.${r.after > 0 ? `\nSisa ${N.fmtBytes(r.after)} sedang dipakai aplikasi.` : ""}` : "Cache sudah bersih, tidak ada yang perlu dihapus.", { title: "Cache dibersihkan", ok: "Oke", cancel: "" });
+      toast(r.freed > 0 ? `${N.fmtBytes(r.freed)} cache dihapus` : "Cache sudah bersih", 3000);
     },
   });
 }
