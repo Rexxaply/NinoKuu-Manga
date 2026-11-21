@@ -251,16 +251,16 @@ document.addEventListener("click", (e) => {
 // Dialog konfirmasi bergaya Ninokuu (pengganti confirm() bawaan): kartu kaca di tengah, masuk membesar & memudar,
 // keluar mengecil & memudar. ask("Pesan?", { ok: "Hapus", danger: true }) → Promise<true|false>.
 // Batal: tombol Batal, ketuk latar, Esc, atau tombol kembali Android (lihat closeAsk di main.js).
-// Pemberitahuan saja (satu tombol): ask("…", { title: "…", ok: "Oke", cancel: "" }).
+// Pemberitahuan saja (satu tombol): ask("…", { title: "…", ok: "Oke", cancel: "" }). Isi khusus: { html } (dari kode sendiri, sudah di-esc).
 let askOpen = null;
 export const closeAsk = () => { if (!askOpen) return false; askOpen(false); return true; };
-export function ask(msg, { title = "", ok = "OK", cancel = "Batal", danger = false } = {}) {
+export function ask(msg, { title = "", ok = "OK", cancel = "Batal", danger = false, html = "" } = {}) {
   closeAsk();
   return new Promise((resolve) => {
     const host = document.createElement("div");
     host.className = "ask-host";
     host.innerHTML = `<div class="ask-bg" data-a="no"></div><div class="ask glass" role="alertdialog" aria-modal="true" aria-labelledby="askT">
-      ${title ? `<b class="ask-ttl">${esc(title)}</b>` : ""}<p class="ask-msg" id="askT">${esc(msg).replace(/\n/g, "<br>")}</p>
+      ${title ? `<b class="ask-ttl">${esc(title)}</b>` : ""}${msg ? `<p class="ask-msg" id="askT">${esc(msg).replace(/\n/g, "<br>")}</p>` : ""}${html}
       <div class="ask-acts">${cancel ? `<button class="ask-b" data-a="no">${esc(cancel)}</button>` : ""}<button class="ask-b ${danger ? "danger" : "ok"}" data-a="yes">${esc(ok)}</button></div></div>`;
     document.body.append(host);
     const prevFocus = document.activeElement;

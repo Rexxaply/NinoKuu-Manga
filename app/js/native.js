@@ -457,9 +457,9 @@ export async function setFullscreen(on, overlay = on) {
 // APK: plugin NinokuuCache (cache WebView: gambar sampul & halaman komik) + simpanan aplikasi sendiri.
 // Web: Cache Storage gambar (service worker) + simpanan sementara info komik.
 const cachePlugin = () => { const C = CAP(); if (!isApp || !C) return null; return C.Plugins?.NinokuuCache || (C.isPluginAvailable?.("NinokuuCache") ? C.registerPlugin?.("NinokuuCache") : null) || null; };
+const dataBytes = () => { let n = 0; try { for (const k of Object.keys(sessionStorage)) if (k.startsWith("ninokuu:d:")) n += (sessionStorage.getItem(k) || "").length * 2; } catch {} return n; };
 async function webCacheBytes() {
-  let n = 0;
-  try { for (const k of Object.keys(sessionStorage)) if (k.startsWith("ninokuu:d:")) n += (sessionStorage.getItem(k) || "").length * 2; } catch {}
+  let n = dataBytes();
   if ("caches" in window) {
     try {
       for (const name of (await caches.keys()).filter((k) => k.startsWith("ninokuu-img"))) {
@@ -469,6 +469,13 @@ async function webCacheBytes() {
     } catch {}
   }
   return n;
+}
+// rincian perkiraan: gambar (cache WebView/Cache Storage/gambar di memori) & data info komik sementara
+export async function cacheParts() {
+  const p = cachePlugin(); let nat = 0;
+  if (p) { try { nat = Number((await p.size())?.bytes) || 0; } catch {} }
+  const web = await webCacheBytes(), data = dataBytes();
+  return { images: nat + (web - data) + blobBytes, data, total: nat + web + blobBytes };
 }
 export async function cacheSize() {
   const p = cachePlugin(); let nat = 0;

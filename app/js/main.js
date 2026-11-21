@@ -1753,7 +1753,7 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
       if (N.pushSupported()) N.pushEnable(api.rpc, true).then(() => { if (route.name === "more") vMore(); }).catch(() => {});
     } catch (ex) { err.textContent = ex.message; btn.disabled = false; }
   });
-  N.cacheSize().then((b) => { const el = $("#cachesub"); if (el && route.name === "more") el.textContent = `Total cache di HP: ${N.fmtBytes(b)} · gambar sampul & halaman`; }).catch(() => {});
+  N.cacheSize().then((b) => { const el = $("#cachesub"); if (el && route.name === "more") el.textContent = b ? `±${N.fmtBytes(b)} di HP · gambar sampul & halaman` : "Cache kosong"; }).catch(() => {});
   if (user && !X.cachedStatus()) X.loadStatus().then((ds) => { const el = $("button.mrow[data-act=level] .mu.sm"); if (ds && el && route.name === "more" && !el.textContent.includes("🔥")) el.textContent += ` · 🔥 ${ds.streak} hari`; });
   setActs({
     auth: (el) => { authMode = el.dataset.v; vMore(); },
@@ -1788,12 +1788,16 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
     discord: () => soon("Server Discord Ninokuu sedang disiapkan."), trakteer: () => openTrakteer(),
     logout: async () => { if (!(await ask("Keluar dari akun? Koleksi dan riwayatmu tetap aman di server.", { ok: "Keluar", danger: true }))) return; await S.flushHistory(); await api.signOut(); S.clearUserData(); toast("Kamu sudah keluar"); vMore(); },
     cache: async () => {
-      const total = await N.cacheSize().catch(() => 0);
-      if (!(await ask(`Bersihkan cache Ninokuu di HP ini?\n\nTotal cache saat ini: ${N.fmtBytes(total)} (gambar sampul & halaman yang tersimpan). Koleksi, riwayat, dan unduhan chapter tidak ikut terhapus.`, { title: "Bersihkan cache", ok: "Bersihkan", danger: true }))) return;
+      const c = await N.cacheParts().catch(() => ({ images: 0, data: 0, total: 0 }));
+      if (!c.total) { toast("Cache sudah bersih"); return; }
+      const html = `<div class="cc-big"><b>±${esc(N.fmtBytes(c.total))}</b><span>perkiraan cache di HP</span></div>
+        <div class="cc-rows"><span>${icon("img", 15)}Gambar sampul &amp; halaman<b>${esc(N.fmtBytes(c.images))}</b></span>${c.data ? `<span>${icon("doc", 15)}Data info komik<b>${esc(N.fmtBytes(c.data))}</b></span>` : ""}</div>
+        <span class="cc-note">${icon("shield", 14)}Koleksi, riwayat &amp; unduhan tetap aman</span>`;
+      if (!(await ask("", { title: "Bersihkan cache?", html, ok: "Bersihkan", danger: true }))) return;
       const sub = $("#cachesub"); if (sub) sub.textContent = "Membersihkan…";
       const r = await N.cacheClear().catch(() => ({ freed: 0, after: 0 }));
       detailCache.clear(); browseCache.clear();
-      if (sub) sub.textContent = `Total cache di HP: ${N.fmtBytes(r.after)}`;
+      if (sub) sub.textContent = r.after ? `±${N.fmtBytes(r.after)} di HP · gambar sampul & halaman` : "Cache kosong";
       toast(r.freed > 0 ? `${N.fmtBytes(r.freed)} cache dihapus` : "Cache sudah bersih", 3000);
     },
   });
