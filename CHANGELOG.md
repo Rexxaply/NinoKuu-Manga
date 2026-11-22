@@ -11,11 +11,11 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
-## 1.9.1 — 22 Nov 2026
+## 1.9.1 — 22 Nov 2026 (rilis global)
 
 ### Ringkasan
 - Notifikasi chapter baru Komiku jalan lagi walau situsnya menolak server: HP yang mengecek lalu melapor ke server (seperti Shinigami & WestManga)
-- Cek latar belakang (APK) di HP akun developer: semua komik Komiku berlonceng milik semua pengguna dicek ±tiap 30 menit walau aplikasi ditutup (maks. 60 komik per putaran, yang paling lama tidak dicek dulu), jadi notifikasi tidak menunggu ada pengguna yang membuka aplikasi
+- Cek latar belakang (APK) di HP akun developer: semua komik Komiku, Shinigami, dan WestManga berlonceng milik semua pengguna dicek ±tiap 30 menit walau aplikasi ditutup (maks. 60 komik per putaran, yang paling lama tidak dicek dulu), jadi notifikasi tidak menunggu ada pengguna yang membuka aplikasi
 - Pengguna lain tetap ikut melapor saat aplikasinya dibuka (cadangan bila HP developer sedang mati)
 
 ### Detail

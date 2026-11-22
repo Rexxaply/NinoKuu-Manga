@@ -1227,19 +1227,21 @@ Deno.serve(async (req) => {
 
     // Cek latar belakang dari HP (aplikasi ditutup): daftar komik berlonceng yang perlu dicek HP, lalu laporannya
     if (action === "bg_list" || action === "bg_report") {
-      // Hanya HP akun developer yang mengecek di latar belakang, untuk SEMUA komik Komiku berlonceng milik semua pengguna
-      // (pengguna lain cukup menerima notifikasi). Urutan: yang paling lama tidak dicek dulu, maks. 60 per putaran.
+      // Hanya HP akun developer yang mengecek di latar belakang, untuk SEMUA komik berlonceng milik semua pengguna dari
+      // sumber yang menolak server (Komiku, Shinigami, WestManga). Pengguna lain cukup menerima notifikasi.
+      // Urutan: yang paling lama tidak dicek dulu, maks. 60 per putaran.
       const uid = await bgUser(body.key);
       if (!uid) return json({ error: "kunci latar belakang tidak valid" }, 401);
       const { data: me } = await admin.from("profiles").select("role").eq("id", uid).maybeSingle();
       if (me?.role !== "developer") return json({ error: "kunci latar belakang tidak valid" }, 401);
       if (action === "bg_report") return await reportChapters(uid, body, true);
-      const { data } = await admin.from("library").select("source, comic_id").eq("notify", true).eq("source", "komiku").limit(5000);
-      const ids = [...new Set((data || []).map((r: any) => r.comic_id))];
-      const { data: st } = ids.length ? await admin.from("chapter_reports").select("comic_id, created_at").eq("source", "komiku").eq("user_id", uid).in("comic_id", ids.slice(0, 1000)) : { data: [] };
-      const last = new Map((st || []).map((r: any) => [r.comic_id, Date.parse(r.created_at) || 0]));
-      ids.sort((a, b) => (last.get(a) || 0) - (last.get(b) || 0));
-      return json({ ok: true, items: ids.slice(0, 60).map((comic_id) => ({ source: "komiku", comic_id })) });
+      const { data } = await admin.from("library").select("source, comic_id").eq("notify", true).in("source", REPORTABLE).limit(10000);
+      const all = new Map<string, { source: string; comic_id: string }>();
+      for (const r of (data || []) as any[]) all.set(r.source + "|" + r.comic_id, { source: r.source, comic_id: r.comic_id });
+      const { data: st } = await admin.from("chapter_reports").select("source, comic_id, created_at").eq("user_id", uid).in("source", REPORTABLE).limit(10000);
+      const last = new Map(((st || []) as any[]).map((r) => [r.source + "|" + r.comic_id, Date.parse(r.created_at) || 0]));
+      const items = [...all.entries()].sort((a, b) => (last.get(a[0]) || 0) - (last.get(b[0]) || 0)).slice(0, 60).map((x) => x[1]);
+      return json({ ok: true, items });
     }
 
     const user = await userOf(req);
