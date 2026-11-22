@@ -1543,6 +1543,27 @@ $$;
 revoke all on function public.cron_claim(text, interval) from public, anon, authenticated;
 grant execute on function public.cron_claim(text, interval) to service_role;
 
+-- Gambar chat yatim: berkas di bucket chat-images yang tidak dipakai pesan mana pun (pesan gagal terkirim, pesan
+-- dihapus lewat jalur lain, dll.). Cron Edge Function menghapusnya lewat Storage API (menghapus baris storage.objects
+-- langsung dari SQL tidak menghapus berkasnya). Berkas < 1 hari dibiarkan: unggahan dan pesannya tidak serentak.
+create or replace function public.chat_orphan_images(p_limit integer default 200)
+returns setof text
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select o.name
+  from storage.objects o
+  where o.bucket_id = 'chat-images'
+    and o.created_at < pg_catalog.now() - interval '1 day'
+    and not exists (select 1 from public.chat_messages m where m.image_path = o.name)
+  order by o.created_at
+  limit least(greatest(coalesce(p_limit, 200), 1), 1000);
+$$;
+revoke all on function public.chat_orphan_images(integer) from public, anon, authenticated;
+grant execute on function public.chat_orphan_images(integer) to service_role;
+
 -- =====================================================================
 -- 12. Kunci server (Edge Function: cron, notifikasi HP, pembersihan) butuh akses penuh.
 --     Proyek Supabase baru tidak lagi memberi izin ini otomatis untuk tabel buatan sendiri;
