@@ -1814,7 +1814,7 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
       } catch (e) { showPush("error"); toast("Pendaftaran notifikasi gagal: " + e.message, 5000); }
     },
     discord: () => soon("Server Discord Ninokuu sedang disiapkan."), trakteer: () => openTrakteer(),
-    logout: async () => { if (!(await ask("Keluar dari akun? Koleksi dan riwayatmu tetap aman di server.", { ok: "Keluar", danger: true }))) return; await S.flushHistory(); await N.pushRelease(api.rest).catch(() => {}); await api.signOut(); S.clearUserData(); toast("Kamu sudah keluar"); vMore(); },
+    logout: async () => { if (!(await ask("Keluar dari akun? Koleksi dan riwayatmu tetap aman di server.", { ok: "Keluar", danger: true }))) return; await S.flushHistory(); await N.pushRelease(api.rest).catch(() => {}); await N.bgStop(api.call); await api.signOut(); S.clearUserData(); toast("Kamu sudah keluar"); vMore(); },
     cache: async () => {
       const c = await N.cacheParts().catch(() => ({ images: 0, data: 0, total: 0 }));
       if (!c.total) { toast("Cache sudah bersih"); return; }
@@ -2013,7 +2013,12 @@ function startApp() {
     clearTimeout(exitT); exitT = setTimeout(() => { exitArmed = false; }, 2000);
   });
   const pushQuiet = () => { if (S.loggedIn()) N.pushEnable(api.rpc, false).catch(() => {}); };
-  const check = () => { if (S.loggedIn()) N.checkBlockedSources([...S.state.lib.values()], api.call).catch(() => {}); };
+  const check = () => {
+    if (!S.loggedIn()) return;
+    N.checkBlockedSources([...S.state.lib.values()], api.call).catch(() => {});
+    // cek latar belakang Komiku untuk semua pengguna: hanya dari HP akun developer
+    if (S.state.profile?.role === "developer") N.bgEnsure(api.currentUser()?.id, api.call, api.FN, api.SB_KEY).catch(() => {});
+  };
   setTimeout(pushQuiet, 3000);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { pushQuiet(); if (route.name === "more") refreshPushStatus(); } });
   setTimeout(check, 8000);

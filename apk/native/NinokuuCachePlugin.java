@@ -11,7 +11,14 @@ import android.view.Window;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
+import android.content.Context;
+import androidx.work.Constraints;
+import androidx.work.ExistingPeriodicWorkPolicy;
+import androidx.work.NetworkType;
+import androidx.work.PeriodicWorkRequest;
+import androidx.work.WorkManager;
 import java.io.File;
+import java.util.concurrent.TimeUnit;
 
 @CapacitorPlugin(name = "NinokuuCache")
 public class NinokuuCachePlugin extends Plugin {
@@ -83,5 +90,29 @@ public class NinokuuCachePlugin extends Plugin {
                 call.reject(e.getMessage());
             }
         });
+    }
+
+    // Cek chapter baru di latar belakang (lihat NinokuuBgWorker): simpan alamat server & kunci, lalu jadwalkan
+    // ±tiap 30 menit saat ada internet. Dipanggil ulang tidak menggandakan jadwal (KEEP).
+    @PluginMethod
+    public void bgSetup(PluginCall call) {
+        String url = call.getString("url", ""), key = call.getString("key", ""), apikey = call.getString("apikey", "");
+        if (url.isEmpty() || key.isEmpty()) { call.reject("url/key kosong"); return; }
+        Context ctx = getContext();
+        ctx.getSharedPreferences(NinokuuBgWorker.PREFS, Context.MODE_PRIVATE).edit()
+            .putString("url", url).putString("key", key).putString("apikey", apikey).apply();
+        Constraints cons = new Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build();
+        PeriodicWorkRequest req = new PeriodicWorkRequest.Builder(NinokuuBgWorker.class, 30, TimeUnit.MINUTES)
+            .setConstraints(cons).build();
+        WorkManager.getInstance(ctx).enqueueUniquePeriodicWork("ninokuu-bg", ExistingPeriodicWorkPolicy.KEEP, req);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void bgStop(PluginCall call) {
+        Context ctx = getContext();
+        WorkManager.getInstance(ctx).cancelUniqueWork("ninokuu-bg");
+        ctx.getSharedPreferences(NinokuuBgWorker.PREFS, Context.MODE_PRIVATE).edit().clear().apply();
+        call.resolve();
     }
 }
