@@ -1476,6 +1476,18 @@ create index if not exists chapter_reports_age_idx on public.chapter_reports (cr
 alter table public.chapter_reports enable row level security;
 revoke all on table public.chapter_reports from anon, authenticated;
 
+-- Kunci cek latar belakang per akun (APK mengecek komik berlonceng saat aplikasi ditutup, lalu melapor chapter).
+-- Hanya hash kuncinya yang disimpan. Hanya diakses server (tanpa policy).
+create table if not exists public.bg_keys (
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  key_hash text not null unique,
+  created_at timestamptz not null default now(),
+  used_at timestamptz,
+  constraint bg_keys_len check (char_length(key_hash) = 64)
+);
+alter table public.bg_keys enable row level security;
+revoke all on table public.bg_keys from anon, authenticated;
+
 -- Klaim chapter baru secara atomik. Dua cron / dua pelapor serentak tidak bisa sama-sama "menang":
 -- hanya satu yang mendapat claimed = true dan berhak mengirim notifikasi.
 --   first    = kunjungan pertama (hanya dicatat, tidak ada notifikasi)

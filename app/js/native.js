@@ -335,6 +335,7 @@ const KOMI = (() => {
       if (!images.length) throw new Error("Chapter ini tidak berisi gambar.");
       return { ok: true, ref: url, images };
     },
+    chapters: async (id) => (await KOMI.detail({ comic_id: id })).chapters,
     async latest(b) {
       const r = await this.detail(b);
       const top = r.chapters.reduce((x, c) => (!x || (parseFloat(c.ch) || -1) > (parseFloat(x.ch) || -1) ? c : x), null);
@@ -445,17 +446,41 @@ export function onBack(handler) {
 /* ---------- cek chapter baru untuk sumber yang menolak server ---------- */
 // Server tidak bisa membuka Shinigami/WestManga, jadi HP yang mengecek komik berlonceng lalu melapor ke server;
 // server yang mengirim notifikasi ke semua pengikut.
+// Komiku ikut dicek HP sejak situsnya menolak server (cron server tetap mencoba; klaim chapter di server atomik,
+// jadi laporan ganda tidak membuat notifikasi ganda).
 export async function checkBlockedSources(lib, call) {
-  const items = lib.filter((x) => x.notify && DIRECT[x.source]);
+  const via = (src) => DIRECT[src] || (src === "komiku" && canDirectFallback("komiku") ? KOMI : null);
+  const items = lib.filter((x) => x.notify && via(x.source));
   for (const it of items) {
     const k = "ninokuu:chk:" + it.source + "|" + it.comic_id;
     try { if (Date.now() - Number(localStorage.getItem(k) || 0) < 20 * 60e3) continue; } catch {}
     try {
-      const chs = await DIRECT[it.source].chapters(it.comic_id);
+      const chs = await via(it.source).chapters(it.comic_id);
       if (chs.length) await call("report_chapters", { source: it.source, comic_id: it.comic_id, chapters: chs.slice(-50).map((c) => ({ id: c.id, ch: c.ch })) });
       try { localStorage.setItem(k, String(Date.now())); } catch {}
     } catch {}
   }
+}
+
+/* ---------- cek chapter baru di latar belakang (aplikasi ditutup) ---------- */
+// APK: worker WorkManager (NinokuuBgWorker) mengecek komik berlonceng dari sumber yang menolak server ±tiap 30 menit
+// lewat jaringan HP, lalu melapor ke server. Memakai kunci latar belakang per akun (bukan token login).
+export async function bgEnsure(uid, call, url, apikey) {
+  const p = cachePlugin();
+  if (!p || !uid) return;
+  const k = "ninokuu:bgKey:" + uid;
+  try { if (localStorage.getItem(k) === url) return; } catch {}
+  const r = await call("bg_key", {});
+  if (!r?.key) return;
+  await p.bgSetup({ url, key: r.key, apikey });
+  try { localStorage.setItem(k, url); } catch {}
+  logDev("bg", "cek latar belakang aktif (±tiap 30 menit)");
+}
+export async function bgStop(call) {
+  const p = cachePlugin();
+  try { for (const k of Object.keys(localStorage)) if (k.startsWith("ninokuu:bgKey:")) localStorage.removeItem(k); } catch {}
+  await call?.("bg_key_drop", {}).catch(() => {});
+  if (p) await p.bgStop().catch(() => {});
 }
 
 /* ---------- versi APK terbaru (GitHub Release "apk-terbaru") ---------- */

@@ -11,12 +11,15 @@
 // kalau satu sumber rusak, isi secret KOMIKU_SITE / KIRYUU_SITE / SHNGM_SITE / WEST_SITE dengan domain barunya.
 import { createClient } from "npm:@supabase/supabase-js@2.76.1";
 
-const VERSION = "1.6.1";
+const VERSION = "1.7.0";
 const NAME = "ninokuu-api";
 const SOURCES = ["komiku", "kiryuu", "shinigami", "westmanga"] as const;
 type Source = typeof SOURCES[number];
 // sumber yang sering menolak server (Cloudflare); aplikasi APK boleh melaporkan chapter-nya sendiri
 const BLOCKED: Source[] = ["shinigami", "westmanga"];
+// sumber yang chapter-nya boleh dilaporkan HP (lewat aplikasi terbuka atau cek latar belakang): yang selalu menolak
+// server, plus Komiku (sejak Nov 2026 Cloudflare Komiku menolak server Supabase & Vercel; cron tetap mencoba)
+const REPORTABLE: Source[] = [...BLOCKED, "komiku"];
 const CRON_GAP = 10 * 60e3;   // cron dari luar paling cepat tiap 10 menit
 const CHECK_PER_RUN = 40;     // maks. komik dicek per jalan cron (sisanya giliran berikutnya)
 const CHECK_DELAY = 900;      // jeda antar komik (ms) agar tidak membebani situs
@@ -1115,6 +1118,42 @@ function cleanChapters(x: unknown): Chapter[] {
 /* ---------- router ---------- */
 const testPushAt = new Map<string, number>();
 const isSource = (s: unknown): s is Source => (SOURCES as readonly string[]).includes(String(s));
+// Laporan chapter dari HP (aplikasi terbuka atau cek latar belakang). Dipakai report_chapters & bg_report.
+async function reportChapters(uid: string, body: any): Promise<Response> {
+  const src = body.source, id = clip(body.comic_id, 600);
+  if (!isSource(src) || !REPORTABLE.includes(src)) return json({ error: "sumber ini dicek langsung oleh server" }, 400);
+  const { data: lib } = await admin.from("library").select("title, cover").eq("user_id", uid).eq("source", src).eq("comic_id", id).maybeSingle();
+  if (!lib) return json({ error: "Komik ini tidak ada di koleksimu" }, 404);
+  const { data: mine } = await admin.from("chapter_reports").select("created_at").eq("source", src).eq("comic_id", id).eq("user_id", uid).maybeSingle();
+  if (mine?.created_at && Date.now() - Date.parse(mine.created_at) < 5 * 60e3) return json({ ok: true, skipped: true });
+  const list = cleanChapters(body.chapters);
+  if (!list.length) return json({ ok: true, found: 0 });
+  const top = newestChapter(list), n = top ? safeNum(top.ch) : null;
+  if (!top || n == null) return json({ ok: true, found: list.length, newest: null });
+  const { error: upErr } = await admin.from("chapter_reports").upsert({ source: src, comic_id: id, user_id: uid, num: n, chapter: clip(top.ch, 40), created_at: new Date().toISOString() }, { onConflict: "source,comic_id,user_id" });
+  if (upErr) return json({ error: "chapter_reports: " + upErr.message + " — jalankan ulang ninokuu-schema.sql versi terbaru." }, 500);
+  const { count } = await admin.from("library").select("user_id", { count: "exact", head: true }).eq("source", src).eq("comic_id", id).eq("notify", true);
+  const need = Math.min(2, Math.max(1, count || 1));
+  const since = new Date(Date.now() - 24 * 3600e3).toISOString();
+  const { data: reps } = await admin.from("chapter_reports").select("num, chapter").eq("source", src).eq("comic_id", id).gte("created_at", since)
+    .order("num", { ascending: false }).limit(need);
+  if (!reps || reps.length < need) return json({ ok: true, pending: true, newest: top.ch });
+  const agreed = reps[need - 1];   // nomor tertinggi yang sudah dilaporkan setidaknya `need` orang berbeda
+  return json({ ok: true, ...(await claimAndNotify(src, id, { title: lib.title, cover: lib.cover || "" }, String(agreed.chapter), Number(agreed.num), 20)) });
+}
+// Kunci cek latar belakang (per akun): HP menyimpannya untuk melapor chapter saat aplikasi ditutup, tanpa token
+// login (token login kedaluwarsa & berganti; kunci ini hanya bisa membaca daftar komik berlonceng & melapor chapter).
+async function sha256hex(t: string) {
+  const d = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)));
+  return [...d].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function bgUser(key: unknown): Promise<string | null> {
+  const k = String(key || "");
+  if (!/^[0-9a-f]{64}$/.test(k)) return null;
+  const { data } = await admin.from("bg_keys").select("user_id").eq("key_hash", await sha256hex(k)).maybeSingle();
+  if (data?.user_id) admin.from("bg_keys").update({ used_at: new Date().toISOString() }).eq("user_id", data.user_id).then(() => {}, () => {});
+  return data?.user_id || null;
+}
 async function userOf(req: Request) {
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   if (!token) return null;
@@ -1182,8 +1221,26 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Cek latar belakang dari HP (aplikasi ditutup): daftar komik berlonceng yang perlu dicek HP, lalu laporannya
+    if (action === "bg_list" || action === "bg_report") {
+      const uid = await bgUser(body.key);
+      if (!uid) return json({ error: "kunci latar belakang tidak valid" }, 401);
+      if (action === "bg_report") return await reportChapters(uid, body);
+      const { data } = await admin.from("library").select("source, comic_id").eq("user_id", uid).eq("notify", true).in("source", REPORTABLE).limit(40);
+      return json({ ok: true, items: data || [] });
+    }
+
     const user = await userOf(req);
     if (!user) return json({ error: "Masuk dulu untuk memakai fitur ini." }, 401);
+
+    // buat (atau ganti) kunci cek latar belakang untuk HP ini; kunci lama otomatis tidak berlaku
+    if (action === "bg_key") {
+      const key = [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, "0")).join("");
+      const { error } = await admin.from("bg_keys").upsert({ user_id: user.id, key_hash: await sha256hex(key), created_at: new Date().toISOString() }, { onConflict: "user_id" });
+      if (error) return json({ error: "bg_keys: " + error.message + " — jalankan ulang ninokuu-schema.sql versi terbaru." }, 500);
+      return json({ ok: true, key });
+    }
+    if (action === "bg_key_drop") { await admin.from("bg_keys").delete().eq("user_id", user.id); return json({ ok: true }); }
 
     // Staf menghapus gambar chat dengan kunci server. Moderator tidak punya izin Storage atas folder orang lain, jadi tanpa
     // ini gambar pesan yang disembunyikan / dihapus / milik akun yang diblokir tetap bisa dibuka lewat alamat publiknya.
@@ -1235,28 +1292,7 @@ Deno.serve(async (req) => {
     // APK melaporkan daftar chapter dari sumber yang menolak server (Shinigami/WestManga).
     // Laporan satu orang bisa salah/dipalsukan, jadi chapter baru baru diumumkan ke banyak orang setelah DUA pelapor berbeda
     // (atau satu, bila hanya satu orang yang memantau komik itu: dampaknya hanya ke dirinya) melaporkan nomor setinggi itu.
-    if (action === "report_chapters") {
-      const src = body.source, id = clip(body.comic_id, 600);
-      if (!isSource(src) || !BLOCKED.includes(src)) return json({ error: "sumber ini dicek langsung oleh server" }, 400);
-      const { data: lib } = await admin.from("library").select("title, cover").eq("user_id", user.id).eq("source", src).eq("comic_id", id).maybeSingle();
-      if (!lib) return json({ error: "Komik ini tidak ada di koleksimu" }, 404);
-      const { data: mine } = await admin.from("chapter_reports").select("created_at").eq("source", src).eq("comic_id", id).eq("user_id", user.id).maybeSingle();
-      if (mine?.created_at && Date.now() - Date.parse(mine.created_at) < 5 * 60e3) return json({ ok: true, skipped: true });
-      const list = cleanChapters(body.chapters);
-      if (!list.length) return json({ ok: true, found: 0 });
-      const top = newestChapter(list), n = top ? safeNum(top.ch) : null;
-      if (!top || n == null) return json({ ok: true, found: list.length, newest: null });
-      const { error: upErr } = await admin.from("chapter_reports").upsert({ source: src, comic_id: id, user_id: user.id, num: n, chapter: clip(top.ch, 40), created_at: new Date().toISOString() }, { onConflict: "source,comic_id,user_id" });
-      if (upErr) return json({ error: "chapter_reports: " + upErr.message + " — jalankan ulang ninokuu-schema.sql versi terbaru." }, 500);
-      const { count } = await admin.from("library").select("user_id", { count: "exact", head: true }).eq("source", src).eq("comic_id", id).eq("notify", true);
-      const need = Math.min(2, Math.max(1, count || 1));
-      const since = new Date(Date.now() - 24 * 3600e3).toISOString();
-      const { data: reps } = await admin.from("chapter_reports").select("num, chapter").eq("source", src).eq("comic_id", id).gte("created_at", since)
-        .order("num", { ascending: false }).limit(need);
-      if (!reps || reps.length < need) return json({ ok: true, pending: true, newest: top.ch });
-      const agreed = reps[need - 1];   // nomor tertinggi yang sudah dilaporkan setidaknya `need` orang berbeda
-      return json({ ok: true, ...(await claimAndNotify(src, id, { title: lib.title, cover: lib.cover || "" }, String(agreed.chapter), Number(agreed.num), 20)) });
-    }
+    if (action === "report_chapters") return await reportChapters(user.id, body);
 
     // Tes notifikasi ke HP sendiri (Lainnya → Kirim tes / Panel developer)
     if (action === "test_push") {

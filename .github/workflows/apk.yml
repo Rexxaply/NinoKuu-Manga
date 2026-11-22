@@ -209,6 +209,10 @@ jobs:
           grep -q "setVerticalScrollBarEnabled(false)" "$MA" || { echo "::error::Gagal mematikan bilah gulir WebView"; exit 1; }
           # plugin cache Ninokuu (hitung & bersihkan cache di Lainnya → Bersihkan cache)
           sed "s/^package __PKG__;/$PKG/" ../apk/native/NinokuuCachePlugin.java > "$(dirname "$MA")/NinokuuCachePlugin.java"
+          # cek chapter baru di latar belakang (Komiku menolak server): worker + WorkManager
+          sed "s/^package __PKG__;/$PKG/" ../apk/native/NinokuuBgWorker.java > "$(dirname "$MA")/NinokuuBgWorker.java"
+          grep -q "androidx.work:work-runtime" android/app/build.gradle || sed -i '0,/^dependencies {/s//dependencies {\n    implementation "androidx.work:work-runtime:2.9.1"/' android/app/build.gradle
+          grep -q "androidx.work:work-runtime" android/app/build.gradle && grep -q '^package ' "$(dirname "$MA")/NinokuuBgWorker.java" || { echo "::error::Worker latar belakang gagal dipasang"; exit 1; }
           grep -q "registerPlugin(NinokuuCachePlugin.class)" "$MA" && grep -q '^package ' "$(dirname "$MA")/NinokuuCachePlugin.java" || { echo "::error::Plugin cache Ninokuu gagal dipasang"; exit 1; }
           cat "$MA"
           grep -q 'android:allowBackup="false"' android/app/src/main/AndroidManifest.xml || { echo "::error::allowBackup belum false"; exit 1; }

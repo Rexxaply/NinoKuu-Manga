@@ -11,6 +11,20 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
+## 1.9.1 — 22 Nov 2026
+
+### Ringkasan
+- Notifikasi chapter baru Komiku jalan lagi walau situsnya menolak server: HP yang mengecek lalu melapor ke server (seperti Shinigami & WestManga)
+- Cek latar belakang (APK): komik Komiku berlonceng dicek ±tiap 30 menit walau aplikasi ditutup, jadi notifikasi tidak menunggu ada pengguna yang membuka aplikasi. Cukup satu HP pengikut komik itu yang online
+
+### Detail
+- Edge Function ninokuu-api 1.7.0: Komiku boleh dilaporkan HP (`REPORTABLE`); action baru `bg_key`, `bg_key_drop` (login), `bg_list`, `bg_report` (kunci latar belakang per akun, hanya hash-nya yang disimpan)
+- Skema: tabel `bg_keys` (hanya server)
+- APK: `NinokuuBgWorker` (WorkManager, ±30 menit, butuh internet) + method `bgSetup`/`bgStop` di plugin NinokuuCache; kunci dibuat saat login, dihapus saat keluar
+- Diuji: Supabase dan Vercel sama-sama ditolak Cloudflare Komiku (403), jadi pengecekan memang harus lewat jaringan HP
+
+---
+
 ## 1.9.0 — 22 Nov 2026 (rilis global)
 
 ### Ringkasan
