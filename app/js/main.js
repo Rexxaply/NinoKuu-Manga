@@ -1068,7 +1068,7 @@ async function vReader(src, id, chId) {
   let zoom = 1, zEl = null, zBase = 0, rafPos = 0;
   // menu bacaan otomatis: hilang saat menggulir/menggeser, muncul sendiri di akhir chapter
   let atEnd = false, anchor = 0, quietUntil = 0, seeking = false;
-  const menuOpen = () => !$(".r-menu").hidden;
+  const menuOpen = () => { const m = $(".r-menu", rd); return !!m && !m.hidden; };   // rd sendiri: aman setelah pembaca ditutup
   const showUi = () => { rd.classList.add("ui"); anchor = slide ? Math.abs(box.scrollLeft) : box.scrollTop; };
   // Jarak dihitung dari posisi saat menu terakhir muncul (bukan per frame), jadi gulir pelan 40 px pun cukup.
   const autoHide = () => {
@@ -1093,6 +1093,9 @@ async function vReader(src, id, chId) {
     }, { passive: true });
   }
   box.addEventListener("scroll", () => {
+    // chapter lama yang sedang digeser keluar (salinan) / pembaca yang sudah ditutup: jangan ikut menyimpan posisi,
+    // riwayat, atau menggerakkan bilah halaman chapter baru
+    if (box.id !== "rbox" || !box.isConnected) return;
     if (rafPos) return;
     rafPos = requestAnimationFrame(() => {
       rafPos = 0;

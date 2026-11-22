@@ -11,6 +11,26 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
+## 1.9.0 — 22 Nov 2026 (rilis global)
+
+### Ringkasan
+Gabungan semua perubahan Dev 1.8.3 sampai 1.8.12 (rinciannya di bawah).
+- Gulir otomatis 1×/2×/3× dan lanjut otomatis ke chapter berikutnya (OFF · 1 · 2 · 3 · 5 detik)
+- Pindah chapter bergeser penuh sesuai arah (berikutnya dari kanan, sebelumnya dari kiri)
+- Skor komik ★ di info komik
+- Bersihkan cache di Lainnya, dengan perkiraan ukuran cache di HP
+- Layar penuh sampai ujung atas layar; bilah status yang ditarik muncul transparan lalu hilang sendiri
+- Komiku otomatis dibuka lewat jaringan HP saat situsnya menolak server
+- Panel Akun, Mode baca di Pengaturan, dialog gaya Ninokuu, kartu unduhan melayang
+- Perbaikan keamanan server (Edge Function ninokuu-api 1.6.1), database, unduhan, backup, dan chat
+- Perbaikan: pembaca lama (chapter yang sedang digeser keluar / pembaca yang sudah ditutup) tidak lagi ikut menyimpan posisi & riwayat
+
+### Detail
+- WHATS_NEW 1.9.0 dengan 4 slide baru: gulir, skor, cache, setelan (app/img/new/)
+- Edge Function global `ninokuu-api` diperbarui ke 1.6.1 (sama dengan dev)
+
+---
+
 ## 1.8.12 — 22 Nov 2026
 
 ### Ringkasan
