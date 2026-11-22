@@ -11,6 +11,142 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
+## 1.9.0 — 22 Nov 2026 (rilis global)
+
+### Ringkasan
+Gabungan semua perubahan Dev 1.8.3 sampai 1.8.12 (rinciannya di bawah).
+- Gulir otomatis 1×/2×/3× dan lanjut otomatis ke chapter berikutnya (OFF · 1 · 2 · 3 · 5 detik)
+- Pindah chapter bergeser penuh sesuai arah (berikutnya dari kanan, sebelumnya dari kiri)
+- Skor komik ★ di info komik
+- Bersihkan cache di Lainnya, dengan perkiraan ukuran cache di HP
+- Layar penuh sampai ujung atas layar; bilah status yang ditarik muncul transparan lalu hilang sendiri
+- Komiku otomatis dibuka lewat jaringan HP saat situsnya menolak server
+- Panel Akun, Mode baca di Pengaturan, dialog gaya Ninokuu, kartu unduhan melayang
+- Perbaikan keamanan server (Edge Function ninokuu-api 1.6.1), database, unduhan, backup, dan chat
+- Perbaikan: pembaca lama (chapter yang sedang digeser keluar / pembaca yang sudah ditutup) tidak lagi ikut menyimpan posisi & riwayat
+
+### Detail
+- WHATS_NEW 1.9.0 dengan 4 slide baru: gulir, skor, cache, setelan (app/img/new/)
+- Edge Function global `ninokuu-api` diperbarui ke 1.6.1 (sama dengan dev)
+
+---
+
+## 1.8.12 — 22 Nov 2026
+
+### Ringkasan
+- Perbaikan: setelah pindah chapter, halaman ke-3 dan seterusnya kosong (hitam) sampai digulir turun lalu naik lagi (sejak animasi geser 1.8.10)
+
+---
+
+## 1.8.11 — 22 Nov 2026
+
+### Ringkasan
+- Perbaikan: "Lanjut otomatis" ke chapter berikutnya tidak berjalan setelah pindah chapter (sejak animasi geser 1.8.10)
+
+---
+
+## 1.8.10 — 22 Nov 2026
+
+### Ringkasan
+- Pindah chapter di pembaca tidak lagi tampak meloncat: halaman chapter lama digeser keluar sementara chapter baru masuk dari sisi lain (berikutnya dari kanan, sebelumnya dari kiri)
+- Komiku: situsnya mulai menolak server Ninokuu (Cloudflare). Di APK, Komiku kini otomatis diambil langsung lewat jaringan HP selama server ditolak (daftar, info komik, halaman chapter), lalu dicoba lewat server lagi setiap 30 menit
+
+---
+
+## 1.8.9 — 22 Nov 2026
+
+### Ringkasan
+- Layar penuh di pembaca (APK): bilah status yang ditarik dari atas kini muncul transparan di atas halaman lalu hilang sendiri setelah beberapa detik, tanpa perlu mengetuk halaman dua kali
+- Animasi pindah chapter mengikuti arah: chapter berikutnya masuk dari kanan, chapter sebelumnya dari kiri
+- Menu bacaan: tombol "Chapter" menampilkan nomor chapter yang sedang dibaca (bukan jumlah chapter)
+- Perbaikan keamanan dari audit: server (Edge Function 1.6.1: SSRF & proxy gambar, notifikasi atomik), skema database (hierarki moderasi, batas baris, nama aman), unduhan, restore backup, gambar chat (EXIF dibuang, gambar yatim dibersihkan), dan data lokal saat akun berganti
+
+---
+
+## 1.8.8 — 21 Nov 2026
+
+### Ringkasan
+- Bersihkan cache: baris di Lainnya menampilkan perkiraan cache Ninokuu di HP; dialog ringkas berisi angka besar perkiraan cache, rincian (gambar sampul & halaman, data info komik), dan catatan bahwa koleksi, riwayat & unduhan aman; hasilnya cukup pesan kecil di bawah
+- Dialog konfirmasi lebih pekat (tidak tembus pandang) dengan tombol selebar kartu
+
+### Detail
+- APK: plugin native kecil `NinokuuCache` (apk/native/NinokuuCachePlugin.java, dipasang oleh workflow) untuk menghitung & mengosongkan cache WebView/aplikasi; web: Cache Storage gambar & simpanan info komik
+- Dialog Ninokuu bisa dipakai sebagai pemberitahuan satu tombol (`cancel: ""`)
+
+---
+
+## 1.8.7 — 21 Nov 2026
+
+### Ringkasan
+- Bar "Lanjut baca" info komik: meluncur naik saat masuk dari Beranda/tab dan meluncur turun saat kembali ke Beranda/tab, meluncur naik lagi (tanpa jeda) saat keluar dari pembaca; saat masuk pembaca bar ini diam (yang beranimasi hanya bar/menu pembaca)
+- Semua dialog konfirmasi bawaan Android (hapus riwayat, hapus notifikasi, hapus foto profil, keluar, hapus/blokir pesan, pengumuman, pembersihan data) diganti dialog Ninokuu: kartu kaca di tengah, animasi masuk membesar-memudar & keluar mengecil-memudar, tombol berbahaya berwarna merah; tombol kembali HP = Batal
+
+---
+
+## 1.8.6 — 21 Nov 2026
+
+### Ringkasan
+- Pindah chapter di mode layar penuh tidak lagi membuat seluruh layar bergeser naik-turun sesaat: status bilah status HP tidak disentuh sampai chapter baru tampil
+- Kembali dari pembaca ke info komik: bilah status tidak ikut disembunyikan sekejap saat bar meluncur keluar
+- Layar "Memuat…" baru muncul bila chapter butuh lebih dari 1,2 detik (sebelumnya 0,65 detik); sampai saat itu halaman sebelumnya tetap tampil
+
+---
+
+## 1.8.5 — 21 Nov 2026
+
+### Ringkasan
+- Kembali dari pembaca ke info komik: bar "Lanjut baca" langsung ada di tempatnya (tidak lagi hilang lalu meluncur naik terlambat)
+- Buka/pindah chapter tanpa layar hitam sekejap: halaman tujuan di situs yang menolak dimuat langsung (mis. Shinigami) diambil lewat jaringan HP sebelum pembaca digambar, lalu langsung digambar
+- Kartu profil di Lainnya kembali seperti semula; kartu baru "Akun" di bawah kartu profil yang membuka halaman Akun, berisi Foto profil, Nama tampilan, Email, Ganti password
+- Tombol Keluar pindah ke paling bawah Lainnya, setelah Ketentuan pengguna
+
+---
+
+## 1.8.4 — 21 Nov 2026
+
+### Ringkasan
+- Bar bawah yang mengecil terbuka penuh lagi sendiri setelah layar diam ±2,5 detik; gulir ke bawah lagi untuk mengecilkannya
+- Masuk pembaca dari info komik: bar atas & bawah baru meluncur masuk setelah halaman selesai dimuat (tidak terlihat macet); layar "Memuat…" tampil diam tanpa animasi; pindah chapter di dalam pembaca langsung tampil tanpa animasi bar
+- Gulir otomatis di pembaca (mode Scroll): 1×, 2×, 3× lewat menu ⋯ atau Pengaturan; tekan layar untuk berhenti, lepas untuk lanjut
+- HP boleh diputar terbalik (atas-bawah) dalam posisi potret, mengikuti pengaturan putar otomatis HP
+- Zoom: layar bersih tanpa label persen; perbesaran & geseran terkunci di dalam halaman (tidak ada celah hitam di tepi)
+- Skor komik dari situs sumber (★ dari 10) di info komik, bila sumbernya menyediakan
+- Lainnya: kartu profil dan pengaturan akun digabung dalam satu panel "Akun"
+- Pilihan mode baca (Scroll/Slide & arah geser) pindah dari Lainnya ke halaman Pengaturan
+- Panel developer: panduan lengkap ganti API & domain (peta Supabase vs APK, cara mendapatkan alamat baru, ganti di Supabase, ganti di kode sampai jadi APK, ganti project Supabase / ninokuu.site, menambah changelog & "Yang baru")
+- Edge Function ninokuu-api 1.6.0: kirim skor komik
+
+### Detail
+- Edge Function ninokuu-api-dev 1.6.0: info komik membawa `score` (skala 10) dari Shinigami, WestManga, Kiryuu, dan Komiku bila sumbernya menyediakan
+- APK: orientasi `userPortrait` (potret & potret terbalik, mengikuti kunci putar HP)
+
+---
+
+## 1.8.3 — 18 Nov 2026
+
+### Ringkasan
+- Mode baca layar penuh kini sampai ujung atas layar (termasuk sekitar lubang kamera), tanpa pita hitam
+- Gradasi hitam di atas (di belakang bilah status & bar atas) dan di bawah (di belakang bar halaman & tombol) pembaca; bar dan gradasi meluncur mulus keluar layar saat disembunyikan (tanpa memudar)
+- Pembaruan langsung terdeteksi saat aplikasi dibuka ulang (simpanan 10 menit hanya untuk cek berkala & halaman Lainnya)
+- Pengaturan baru "Lanjut otomatis ke chapter berikutnya": OFF · 1 · 2 · 3 · 5 detik (bawaan 3 detik), di Lainnya → Pengaturan dan menu ⋯ pembaca; menggantikan pilihan "Di akhir chapter"
+- Tanpa pita hitam di sisi kanan (bilah gulir disembunyikan di HP); kembali ke chapter yang sama dari info komik langsung tampil tanpa "Memuat…"; bar Lanjut baca naik utuh tanpa meloncat
+- Lanjut dari halaman terakhir tanpa lompatan dan tanpa layar hitam sekejap: halaman sebelumnya tetap tampil sampai gambar halaman tujuan siap (maks 0,6 dtk)
+- Info komik ⇄ pembaca dengan animasi yang sama seperti Beranda → info komik: isi halaman meluncur dari samping, bar meluncur dari tepi layar; tombol kembali (juga tombol kembali Android) menurunkan/menaikkan bar dulu sebelum info komik meluncur masuk
+- Masuk ke pembaca lebih mulus: halaman langsung tampil tanpa bergeser ke samping, bar atas & bawah meluncur masuk dari tepi layar
+- Review desain (Apple HIG): label badge minimal 11 px; Top 10 tanpa celah antara judul & jenis; dukungan "Kurangi transparansi" dan "Tingkatkan kontras"
+- Indikator gulir tipis gaya iOS di tepi kanan pembaca: muncul saat halaman bergerak, menghilang sendiri saat berhenti
+- Posisi baca dikirim ke server paling sering 1× per 20 detik (sebelumnya setiap ganti halaman); tetap tersimpan di HP seketika
+- Kartu unduhan melayang di kiri bawah (pasangan pil +EXP): sampul, judul, chapter & halaman yang sedang diunduh, persentase dan bar berkilau; berubah hijau dengan tanda centang saat selesai, abu-abu saat dijeda/gagal; ketuk untuk membuka Favorit › Unduhan
+- Baris Unduhan di Lainnya menampilkan bar progres yang terbuka pelan saat ada unduhan berjalan
+- Bilah gulir bawaan Android di pembaca disembunyikan; yang tampil hanya indikator gulir tipis Ninokuu
+- Pindah ke Favorit tidak lagi tersendat saat aplikasi baru dibuka: Koleksi tidak digambar ulang belasan kali selama chapter terbaru dicek, cukup kartu yang berubah yang diperbarui (sampul tidak berkedip)
+
+### Detail
+- Selama di pembaca mode layar penuh, `StatusBar.setOverlaysWebView({ overlay: true })` tetap menyala; ketukan hanya menyembunyikan/memunculkan bilah status (halaman tidak melompat). Overlay dimatikan sebelum halaman berikutnya digambar saat keluar dari pembaca (info komik tidak melompat turun); pindah chapter tetap memakai overlay. 1.8.2 (shortEdges saja) belum cukup karena jendela masih menyisakan jarak untuk bilah status
+- Tidak ada perubahan server
+
+---
+
 ## 1.8.2 — 18 Nov 2026
 
 ### Ringkasan

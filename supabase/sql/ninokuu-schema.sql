@@ -78,16 +78,56 @@ revoke all on function public.is_dev() from public;
 grant execute on function public.is_staff() to anon, authenticated;
 grant execute on function public.is_dev() to anon, authenticated;
 
+-- Hierarki moderasi: siapa boleh menindak siapa. Pengguna biasa → moderator & developer;
+-- moderator → developer saja; developer tidak bisa ditindak oleh siapa pun. Menindak diri sendiri
+-- tidak termasuk (lihat mod_set_hidden untuk pesan milik sendiri).
+create or replace function public.can_moderate_user(p_target uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1
+    from public.profiles me, public.profiles t
+    where me.id = auth.uid() and me.role in ('moderator', 'developer') and not me.banned
+      and t.id = p_target and t.id <> me.id
+      and (t.role = 'user' or (t.role = 'moderator' and me.role = 'developer'))
+  );
+$$;
+revoke all on function public.can_moderate_user(uuid) from public, anon;
+grant execute on function public.can_moderate_user(uuid) to authenticated;
+
 -- Nama yang dicadangkan untuk akun resmi, agar tidak ada yang menyamar.
+-- Nama dilipat dulu supaya tipuan tidak lolos: NFKD (huruf lebar penuh/berstyle jadi biasa, aksen dilepas),
+-- huruf Cyrillic/Yunani yang mirip Latin, @ dan $, angka pengganti huruf (0=o, 3=e, 4=a, 5=s, 7=t, 1=i atau l),
+-- lalu semua karakter selain a-z0-9 (spasi, titik, karakter lebar nol) dibuang.
+create or replace function public.name_fold(p_name text, p_one text)
+returns text
+language sql
+immutable
+set search_path = ''
+as $$
+  select pg_catalog.translate(
+    pg_catalog.regexp_replace(
+      pg_catalog.translate(
+        pg_catalog.regexp_replace(pg_catalog.lower(normalize(coalesce(p_name, ''), NFKD)), '[\u0300-\u036f]', '', 'g'),
+        'аеорсхуіјѕһԁɡοαεινρτ@$', 'aeopcxyijshdgoaeivptas'),
+      '[^a-z0-9]', '', 'g'),
+    '013457', 'o' || p_one || 'east');
+$$;
+revoke all on function public.name_fold(text, text) from public, anon, authenticated;
+
 create or replace function public.name_is_reserved(p_name text)
 returns boolean
 language sql
 immutable
 set search_path = ''
 as $$
-  select k ~ '(rexxa|ninokuu|admin|developer|moderator|official|resmi)'
-      or k in ('dev', 'mod', 'staff', 'cs', 'support')
-  from (select pg_catalog.lower(pg_catalog.regexp_replace(coalesce(p_name, ''), '[^a-zA-Z0-9]', '', 'g')) as k) x;
+  select coalesce(pg_catalog.bool_or(k ~ '(rexxa|ninokuu|admin|developer|moderator|official|resmi)'
+                                     or k in ('dev', 'mod', 'staff', 'cs', 'support')), false)
+  from unnest(array[public.name_fold(p_name, 'i'), public.name_fold(p_name, 'l')]) as t(k);
 $$;
 
 create or replace function public.profiles_guard()
@@ -120,9 +160,10 @@ security definer
 set search_path = ''
 as $$
 declare
-  nm text := btrim(coalesce(new.raw_user_meta_data ->> 'name', split_part(coalesce(new.email, ''), '@', 1)));
+  -- Nama tidak pernah diambil dari email: nama tampil bersifat publik (chat, profil).
+  nm text := btrim(coalesce(new.raw_user_meta_data ->> 'name', ''));
 begin
-  if nm is null or nm = '' then nm := 'Pembaca'; end if;
+  if nm = '' then nm := 'Pembaca'; end if;
   insert into public.profiles (id, name) values (new.id, left(nm, 30)) on conflict (id) do nothing;
   return new;
 end;
@@ -133,9 +174,13 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- Pengguna yang sudah terdaftar sebelum skema ini dipasang juga dibuatkan profil.
+-- Pengguna yang sudah terdaftar sebelum skema ini dipasang juga dibuatkan profil (nama netral, bukan dari email).
+-- Profil lama yang namanya terlanjur sama dengan bagian depan emailnya TIDAK diubah otomatis. Bila ingin
+-- mengembalikannya ke nama netral, jalankan manual (hapus tanda komentar) setelah memeriksa hasilnya:
+--   update public.profiles p set name = 'Pembaca' from auth.users u
+--   where u.id = p.id and p.role = 'user' and lower(p.name) = lower(split_part(coalesce(u.email, ''), '@', 1));
 insert into public.profiles (id, name)
-select u.id, left(coalesce(nullif(btrim(split_part(coalesce(u.email, ''), '@', 1)), ''), 'Pembaca'), 30)
+select u.id, 'Pembaca'
 from auth.users u
 on conflict (id) do nothing;
 
@@ -278,6 +323,37 @@ drop policy if exists "perangkat milik sendiri" on public.devices;
 create policy "perangkat milik sendiri" on public.devices for all to authenticated
   using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 
+-- Maksimal 10 perangkat per akun; yang paling lama tidak dipakai disingkirkan (juga untuk insert langsung lewat API).
+create or replace function public.devices_trim(p_uid uuid)
+returns void
+language sql
+security definer
+set search_path = ''
+as $$
+  delete from public.devices d
+  where d.user_id = p_uid
+    and d.token not in (select x.token from public.devices x where x.user_id = p_uid
+                        order by x.updated_at desc, x.token limit 10);
+$$;
+revoke all on function public.devices_trim(uuid) from public, anon, authenticated;
+
+create or replace function public.devices_cap()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('dev:' || new.user_id::text, 0));
+  perform public.devices_trim(new.user_id);
+  return null;
+end;
+$$;
+revoke all on function public.devices_cap() from public, anon, authenticated;
+drop trigger if exists devices_cap on public.devices;
+create trigger devices_cap after insert on public.devices
+  for each row execute function public.devices_cap();
+
 -- Token yang pindah akun (logout lalu login akun lain di HP yang sama) diklaim lewat fungsi ini,
 -- karena RLS tidak mengizinkan menimpa baris milik akun lain secara langsung.
 create or replace function public.register_device(p_token text, p_platform text default 'android')
@@ -288,9 +364,12 @@ set search_path = ''
 as $$
 begin
   if auth.uid() is null then raise exception 'not authenticated' using errcode = '28000'; end if;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('dev:' || auth.uid()::text, 0));
   insert into public.devices (token, user_id, platform, updated_at)
   values (p_token, auth.uid(), coalesce(p_platform, 'android'), pg_catalog.now())
   on conflict (token) do update set user_id = excluded.user_id, platform = excluded.platform, updated_at = excluded.updated_at;
+  -- token yang pindah akun menambah jumlah perangkat akun ini: sisakan 10 yang terbaru
+  perform public.devices_trim(auth.uid());
 end;
 $$;
 revoke all on function public.register_device(text, text) from public, anon;
@@ -365,6 +444,8 @@ create table if not exists public.chat_messages (
 );
 -- pembaruan dari versi sebelum ada komentar komik/chapter
 alter table public.chat_messages add column if not exists room text not null default 'public';
+-- reviewed: staf pernah menayangkan ulang pesan ini → laporan massal tidak menyembunyikannya lagi
+alter table public.chat_messages add column if not exists reviewed boolean not null default false;
 alter table public.chat_messages drop constraint if exists chat_room_fmt;
 alter table public.chat_messages add constraint chat_room_fmt
   check (room = 'public' or (char_length(room) <= 300 and room ~ '^(c|ch):[a-z0-9]+:.+'));
@@ -388,9 +469,10 @@ create policy "chat ditulis yang login" on public.chat_messages for insert to au
     -- gambar hanya boleh dari folder milik pengirim sendiri: <user_id>/<nama-file>
     and (image_path is null or split_part(image_path, '/', 1) = (select auth.uid())::text)
   );
+-- Staf hanya bisa menghapus pesan pengguna di bawah levelnya (lihat can_moderate_user).
 drop policy if exists "chat dihapus pengirimnya" on public.chat_messages;
 create policy "chat dihapus pengirimnya" on public.chat_messages for delete to authenticated
-  using ((select auth.uid()) = user_id or (select public.is_staff()));
+  using ((select auth.uid()) = user_id or (select public.can_moderate_user(user_id)));
 
 create or replace function public.chat_guard()
 returns trigger
@@ -404,7 +486,10 @@ declare
 begin
   new.created_at := pg_catalog.now();
   new.hidden := false;
+  new.reviewed := false;
   new.body := btrim(new.body);
+  -- satu pengirim = satu antrean: dua kiriman serentak tidak bisa sama-sama lolos jeda
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('chat:' || new.user_id::text, 0));
   select * into me from public.profiles p where p.id = new.user_id;
   if me.banned then
     raise exception 'Akunmu diblokir dari chat publik' using errcode = 'P0001', hint = 'banned';
@@ -448,6 +533,47 @@ drop policy if exists "laporan dibuat pelapor" on public.chat_reports;
 create policy "laporan dibuat pelapor" on public.chat_reports for insert to authenticated
   with check ((select auth.uid()) = reporter);
 
+-- Penjaga laporan: tidak boleh melapor pesan sendiri, pesan staf, atau pesan yang sudah ditinjau staf;
+-- pelapor harus berakun minimal 1 hari, tidak diblokir, dan maks. 20 laporan per hari.
+create or replace function public.chat_report_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  m record;
+  me record;
+begin
+  new.created_at := pg_catalog.now();
+  new.reason := pg_catalog.left(btrim(new.reason), 200);
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('report:' || new.reporter::text, 0));
+  select c.user_id, c.reviewed, p.role into m
+    from public.chat_messages c join public.profiles p on p.id = c.user_id where c.id = new.message_id;
+  if not found then raise exception 'Pesan tidak ditemukan' using errcode = 'P0002'; end if;
+  if m.user_id = new.reporter then
+    raise exception 'Tidak bisa melaporkan pesanmu sendiri' using errcode = 'P0001', hint = 'self';
+  end if;
+  if m.role <> 'user' or m.reviewed then
+    raise exception 'Pesan ini tidak bisa dilaporkan' using errcode = 'P0001', hint = 'not_reportable';
+  end if;
+  select p.created_at, p.banned into me from public.profiles p where p.id = new.reporter;
+  if me.banned then raise exception 'Akunmu diblokir' using errcode = 'P0001', hint = 'banned'; end if;
+  if me.created_at > pg_catalog.now() - interval '1 day' then
+    raise exception 'Akun baru belum bisa melaporkan, coba lagi besok' using errcode = 'P0001', hint = 'too_new';
+  end if;
+  if (select count(*) from public.chat_reports r where r.reporter = new.reporter
+      and r.created_at > pg_catalog.now() - interval '1 day') >= 20 then
+    raise exception 'Batas laporan hari ini sudah tercapai' using errcode = 'P0001', hint = 'limit';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.chat_report_guard() from public, anon, authenticated;
+drop trigger if exists chat_reports_guard on public.chat_reports;
+create trigger chat_reports_guard before insert on public.chat_reports
+  for each row execute function public.chat_report_guard();
+
 create or replace function public.chat_report_hide()
 returns trigger
 language plpgsql
@@ -456,7 +582,10 @@ set search_path = ''
 as $$
 begin
   if (select count(*) from public.chat_reports r where r.message_id = new.message_id) >= 3 then
-    update public.chat_messages set hidden = true where id = new.message_id;
+    -- pesan staf / yang sudah ditinjau staf tidak disembunyikan otomatis
+    update public.chat_messages c set hidden = true
+    where c.id = new.message_id and not c.reviewed
+      and exists (select 1 from public.profiles p where p.id = c.user_id and p.role = 'user');
   end if;
   return null;
 end;
@@ -490,6 +619,10 @@ begin
   if pg_catalog.to_regclass('public.exp_log') is not null then
     delete from public.exp_log where created_at < pg_catalog.now() - interval '30 days';
   end if;
+  -- log baca (pencegah EXP ganda) disimpan 1 tahun; HP yang tidak pernah membuka aplikasi 90 hari dilepas
+  -- (aplikasi mendaftarkan ulang tokennya setiap dibuka)
+  delete from public.read_log where read_at < pg_catalog.now() - interval '365 days';
+  delete from public.devices where updated_at < pg_catalog.now() - interval '90 days';
   return query
   delete from public.chat_messages
   where (room = 'public' and created_at < pg_catalog.now() - older_than)
@@ -510,9 +643,16 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
+declare author uuid;
 begin
   if not public.is_staff() then raise exception 'khusus moderator' using errcode = '42501'; end if;
-  update public.chat_messages set hidden = p_hidden where id = p_message;
+  select c.user_id into author from public.chat_messages c where c.id = p_message;
+  if author is null then raise exception 'pesan tidak ditemukan' using errcode = 'P0002'; end if;
+  -- pesan sendiri boleh diatur; pesan orang lain hanya bila akunnya di bawah level penindak
+  if author <> auth.uid() and not public.can_moderate_user(author) then
+    raise exception 'tidak boleh menindak akun ini' using errcode = '42501';
+  end if;
+  update public.chat_messages set hidden = p_hidden, reviewed = (reviewed or not p_hidden) where id = p_message;
   if not p_hidden then delete from public.chat_reports where message_id = p_message; end if;
 end;
 $$;
@@ -656,6 +796,8 @@ begin
   new.created_at := pg_catalog.now();
   new.resolved := false;
   new.note := btrim(new.note);
+  -- serialkan per pengguna: kiriman serentak tidak bisa melewati batas harian / cek duplikat
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('bug:' || coalesce(new.user_id::text, ''), 0));
   if (select count(*) from public.bug_reports b where b.user_id = new.user_id
       and b.created_at > pg_catalog.now() - interval '1 day') >= 10 then
     raise exception 'Batas laporan hari ini sudah tercapai, coba lagi besok' using errcode = 'P0001', hint = 'limit';
@@ -752,6 +894,10 @@ drop policy if exists "chat-images hapus milik sendiri" on storage.objects;
 create policy "chat-images hapus milik sendiri" on storage.objects for delete to authenticated
   using (bucket_id = 'chat-images' and (storage.foldername(name))[1] = (select auth.uid())::text);
 -- developer boleh menghapus gambar siapa pun (dipakai pembersih penyimpanan di Panel developer)
+-- Hapus lewat Storage API butuh izin SELECT juga (DELETE ... RETURNING); tanpa ini file tidak ikut terhapus.
+drop policy if exists "chat-images dibaca pemilik/developer" on storage.objects;
+create policy "chat-images dibaca pemilik/developer" on storage.objects for select to authenticated
+  using (bucket_id = 'chat-images' and ((storage.foldername(name))[1] = (select auth.uid())::text or (select public.is_dev())));
 drop policy if exists "chat-images dihapus developer" on storage.objects;
 create policy "chat-images dihapus developer" on storage.objects for delete to authenticated
   using (bucket_id = 'chat-images' and (select public.is_dev()));
@@ -892,6 +1038,9 @@ on conflict (id) do update set public = excluded.public, file_size_limit = exclu
 drop policy if exists "avatars unggah ke folder sendiri" on storage.objects;
 create policy "avatars unggah ke folder sendiri" on storage.objects for insert to authenticated
   with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text);
+drop policy if exists "avatars dibaca pemilik" on storage.objects;
+create policy "avatars dibaca pemilik" on storage.objects for select to authenticated
+  using (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text);
 drop policy if exists "avatars hapus milik sendiri" on storage.objects;
 create policy "avatars hapus milik sendiri" on storage.objects for delete to authenticated
   using (bucket_id = 'avatars' and ((storage.foldername(name))[1] = (select auth.uid())::text or (select public.is_dev())));
@@ -1203,6 +1352,217 @@ end;
 $$;
 revoke all on function public.my_recap(integer) from public, anon;
 grant execute on function public.my_recap(integer) to authenticated;
+
+-- =====================================================================
+-- 11a. Batas baris per pengguna (cegah satu akun memenuhi database) dan klaim atomik untuk Edge Function.
+--      Pemeriksaan memakai kunci per pengguna supaya permintaan serentak tidak bisa melewati batas.
+-- =====================================================================
+-- Koleksi: maks. 2000 komik (sama dengan batas baca di aplikasi), lonceng notifikasi maks. 100 komik.
+-- Format sumber dibatasi huruf kecil/angka agar tidak ada nilai aneh yang ikut dicek server.
+alter table public.library drop constraint if exists library_source_ok;
+alter table public.library add constraint library_source_ok check (source ~ '^[a-z0-9_-]+$') not valid;
+
+create or replace function public.library_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare n integer;
+begin
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('lib:' || new.user_id::text, 0));
+  if tg_op = 'INSERT' then
+    if not exists (select 1 from public.library l where l.user_id = new.user_id and l.source = new.source and l.comic_id = new.comic_id) then
+      select pg_catalog.count(*) into n from public.library l where l.user_id = new.user_id;
+      if n >= 2000 then
+        raise exception 'Koleksi penuh (maksimal 2000 komik)' using errcode = 'P0001', hint = 'row_cap';
+      end if;
+    end if;
+    if new.notify then
+      select pg_catalog.count(*) into n from public.library l
+        where l.user_id = new.user_id and l.notify and not (l.source = new.source and l.comic_id = new.comic_id);
+      if n >= 100 then new.notify := false; end if; -- unggahan massal: komik tetap masuk, loncengnya saja yang mati
+    end if;
+  elsif new.notify and not old.notify then
+    select pg_catalog.count(*) into n from public.library l where l.user_id = new.user_id and l.notify;
+    if n >= 100 then
+      raise exception 'Lonceng notifikasi maksimal untuk 100 komik' using errcode = 'P0001', hint = 'notify_cap';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.library_guard() from public, anon, authenticated;
+drop trigger if exists library_guard on public.library;
+create trigger library_guard before insert or update of notify on public.library
+  for each row execute function public.library_guard();
+
+-- Riwayat: simpan 500 komik terbaru per pengguna (aplikasi hanya memakai 300). Tidak pernah menolak
+-- simpan posisi baca; yang paling lama dibuang.
+create or replace function public.history_trim()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('hist:' || new.user_id::text, 0));
+  delete from public.history h
+  where h.user_id = new.user_id
+    and (h.source, h.comic_id) not in (select x.source, x.comic_id from public.history x
+                                       where x.user_id = new.user_id order by x.read_at desc limit 500);
+  return null;
+end;
+$$;
+revoke all on function public.history_trim() from public, anon, authenticated;
+drop trigger if exists history_trim on public.history;
+create trigger history_trim after insert on public.history
+  for each row execute function public.history_trim();
+
+-- Like: maks. 5000 per pengguna. Log baca: maks. 20000 per pengguna.
+create or replace function public.likes_cap()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('like:' || new.user_id::text, 0));
+  if (select pg_catalog.count(*) from public.likes l where l.user_id = new.user_id) >= 5000
+     and not exists (select 1 from public.likes l where l.user_id = new.user_id and l.source = new.source
+                     and l.comic_id = new.comic_id and l.chapter = new.chapter) then
+    raise exception 'Batas like tercapai' using errcode = 'P0001', hint = 'row_cap';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.likes_cap() from public, anon, authenticated;
+drop trigger if exists likes_cap on public.likes;
+create trigger likes_cap before insert on public.likes
+  for each row execute function public.likes_cap();
+
+create or replace function public.read_log_cap()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('rlog:' || new.user_id::text, 0));
+  if (select pg_catalog.count(*) from (select 1 from public.read_log r where r.user_id = new.user_id limit 20000) t) >= 20000 then
+    raise exception 'Batas log baca tercapai' using errcode = 'P0001', hint = 'row_cap';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.read_log_cap() from public, anon, authenticated;
+drop trigger if exists read_log_cap on public.read_log;
+create trigger read_log_cap before insert on public.read_log
+  for each row execute function public.read_log_cap();
+
+-- Laporan chapter dari aplikasi (sumber yang memblokir server). Edge Function menunggu dua pelapor berbeda
+-- sebelum mengumumkan chapter baru ke banyak orang. Hanya diakses server (tanpa policy).
+create table if not exists public.chapter_reports (
+  source text not null,
+  comic_id text not null,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  num numeric not null,
+  chapter text not null,
+  created_at timestamptz not null default now(),
+  primary key (source, comic_id, user_id),
+  constraint chapter_reports_len check (char_length(source) <= 40 and char_length(comic_id) <= 600 and char_length(chapter) <= 40)
+);
+create index if not exists chapter_reports_age_idx on public.chapter_reports (created_at);
+alter table public.chapter_reports enable row level security;
+revoke all on table public.chapter_reports from anon, authenticated;
+
+-- Klaim chapter baru secara atomik. Dua cron / dua pelapor serentak tidak bisa sama-sama "menang":
+-- hanya satu yang mendapat claimed = true dan berhak mengirim notifikasi.
+--   first    = kunjungan pertama (hanya dicatat, tidak ada notifikasi)
+--   rejected = lompatan nomor melebihi p_max_jump (dicatat sebagai galat, tidak diklaim)
+-- Judul & sampul di comic_state hanya diisi sekali (tidak ditimpa kiriman berikutnya).
+create or replace function public.claim_chapter(p_source text, p_comic text, p_title text, p_cover text,
+                                                p_chapter text, p_num numeric, p_max_jump numeric default null)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare st public.comic_state%rowtype;
+begin
+  insert into public.comic_state (source, comic_id, title, cover, checked_at)
+  values (p_source, p_comic, pg_catalog.left(coalesce(p_title, ''), 300), pg_catalog.left(p_cover, 1000), pg_catalog.now())
+  on conflict (source, comic_id) do nothing;
+  select * into st from public.comic_state c where c.source = p_source and c.comic_id = p_comic for update;
+
+  if p_num is null then
+    update public.comic_state c set checked_at = pg_catalog.now(), last_error = null where c.source = p_source and c.comic_id = p_comic;
+    return pg_catalog.jsonb_build_object('claimed', false);
+  end if;
+  if st.last_num is null then
+    update public.comic_state c set last_chapter = p_chapter, last_num = p_num, checked_at = pg_catalog.now(), last_error = null
+      where c.source = p_source and c.comic_id = p_comic;
+    return pg_catalog.jsonb_build_object('claimed', false, 'first', true);
+  end if;
+  if p_num <= st.last_num then
+    update public.comic_state c set checked_at = pg_catalog.now(), last_error = null where c.source = p_source and c.comic_id = p_comic;
+    return pg_catalog.jsonb_build_object('claimed', false);
+  end if;
+  if p_max_jump is not null and p_num - st.last_num > p_max_jump then
+    update public.comic_state c set checked_at = pg_catalog.now(),
+      last_error = pg_catalog.format('lompatan chapter mencurigakan (%s → %s), diabaikan', st.last_num, p_num)
+      where c.source = p_source and c.comic_id = p_comic;
+    return pg_catalog.jsonb_build_object('claimed', false, 'rejected', true);
+  end if;
+  update public.comic_state c set last_chapter = p_chapter, last_num = p_num, checked_at = pg_catalog.now(), last_error = null
+    where c.source = p_source and c.comic_id = p_comic;
+  return pg_catalog.jsonb_build_object('claimed', true, 'prev', st.last_num);
+end;
+$$;
+revoke all on function public.claim_chapter(text, text, text, text, text, numeric, numeric) from public, anon, authenticated;
+grant execute on function public.claim_chapter(text, text, text, text, text, numeric, numeric) to service_role;
+
+-- Klaim giliran cron secara atomik: true bila sudah lewat p_gap sejak jalan terakhir (dan langsung ditandai berjalan).
+create or replace function public.cron_claim(p_key text, p_gap interval)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare ok boolean;
+begin
+  insert into public.server_state as s (k, v, updated_at)
+  values (p_key, pg_catalog.jsonb_build_object('at', pg_catalog.now(), 'running', true), pg_catalog.now())
+  on conflict (k) do update
+    set v = pg_catalog.jsonb_build_object('at', pg_catalog.now(), 'running', true), updated_at = pg_catalog.now()
+    where coalesce((s.v ->> 'at')::timestamptz, '-infinity'::timestamptz) < pg_catalog.now() - p_gap
+  returning true into ok;
+  return coalesce(ok, false);
+end;
+$$;
+revoke all on function public.cron_claim(text, interval) from public, anon, authenticated;
+grant execute on function public.cron_claim(text, interval) to service_role;
+
+-- Gambar chat yatim: berkas di bucket chat-images yang tidak dipakai pesan mana pun (pesan gagal terkirim, pesan
+-- dihapus lewat jalur lain, dll.). Cron Edge Function menghapusnya lewat Storage API (menghapus baris storage.objects
+-- langsung dari SQL tidak menghapus berkasnya). Berkas < 1 hari dibiarkan: unggahan dan pesannya tidak serentak.
+create or replace function public.chat_orphan_images(p_limit integer default 200)
+returns setof text
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select o.name
+  from storage.objects o
+  where o.bucket_id = 'chat-images'
+    and o.created_at < pg_catalog.now() - interval '1 day'
+    and not exists (select 1 from public.chat_messages m where m.image_path = o.name)
+  order by o.created_at
+  limit least(greatest(coalesce(p_limit, 200), 1), 1000);
+$$;
+revoke all on function public.chat_orphan_images(integer) from public, anon, authenticated;
+grant execute on function public.chat_orphan_images(integer) to service_role;
 
 -- =====================================================================
 -- 12. Kunci server (Edge Function: cron, notifikasi HP, pembersihan) butuh akses penuh.

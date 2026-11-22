@@ -10,7 +10,7 @@ import * as X from "./exp.js";
 import * as DL from "./dl.js";
 import * as T from "./tour.js";
 import * as O from "./online.js";
-import { esc, icon, $, $$, toast, ago, SOURCES, srcName, TYPES, typeName, cover, comicHref, readHref, greeting, errBox, loading, rankBadge } from "./ui.js";
+import { esc, icon, $, $$, toast, ago, SOURCES, srcName, TYPES, typeName, cover, comicHref, readHref, greeting, errBox, loading, rankBadge, ask, closeAsk } from "./ui.js";
 
 const VERSION = window.NINOKUU_CONFIG?.VERSION || "1.0.0";
 const KIND_NAME = { mayor: "Pembaruan besar", minor: "Fitur baru", patch: "Perbaikan" };
@@ -80,6 +80,8 @@ const holdFx = (on) => { fxHold = on; $$(FX_SEL).forEach((el) => el.classList.to
 async function render() {
   trackNav();
   if (cleanup) { try { cleanup(); } catch {} cleanup = null; }
+  // keluar dari pembaca (juga saat chapter berikutnya belum sempat tampil): bilah status selalu dikembalikan
+  if (parse().name !== "reader") N.setFullscreen(false, false);
   closeNotif(); closeSheet();
   $$(".flt-host, .chs-host").forEach((x) => x.remove()); document.body.classList.remove("flt-open");
   scrollMem.set(route.key, window.scrollY);
@@ -97,11 +99,31 @@ async function render() {
   // arah animasi: masuk lebih dalam / tab di kanan = dari kanan; kembali = dari kiri
   const depth = DEPTH[route.name] ?? 0, prevDepth = DEPTH[prevName] ?? 0;
   const fwd = depth !== prevDepth ? depth > prevDepth : TABS.indexOf(route.name) >= TABS.indexOf(prevName);
+  // Bar "Lanjut baca": meluncur naik saat masuk info komik dari Beranda/tab, dan meluncur turun saat kembali ke
+  // Beranda/tab. Ke/dari pembaca (dan halaman dalam lainnya) tanpa animasi. Salinannya dipasang sebentar di luar
+  // #view supaya pindah halamannya tidak perlu menunggu animasi keluar.
+  if (depth === 0 && prevDepth > 0) {
+    const w = $(".rfab-wrap", view);
+    if (w && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const g = w.cloneNode(true); g.classList.add("rfab-out"); g.setAttribute("aria-hidden", "true"); g.inert = true;
+      document.body.append(g); g.addEventListener("animationend", () => g.remove(), { once: true }); setTimeout(() => g.remove(), 600);
+    }
+  }
+  const fromReader = prevName === "reader";
   prevName = route.name; if (tab) prevTab = tab;
   // animasi masuk dimulai setelah layar baru terisi, supaya layar lama tidak ikut "meluncur lagi"
   const my = ++renderSeq;
-  view.classList.remove("in", "in-f", "in-b"); delete view.dataset.upDone;
-  view.innerHTML = ""; fxIo?.disconnect(); fxVis.clear(); fxSprite();
+  // pembaca: halaman sebelumnya dibiarkan terlihat sampai pembaca siap (tanpa layar gelap kosong sekejap)
+  const keepOld = route.name === "reader" && !!view.childElementCount;
+  view.classList.remove("in", "in-f", "in-b");
+  // Bar "Lanjut baca" info komik: tetap diam saat masuk pembaca (halaman lama masih tampil selama chapter dimuat;
+  // dulu animasinya terulang sehingga bar meluncur naik lagi), dan langsung di tempatnya saat kembali ke info komik.
+  // Yang beranimasi di pembaca hanya bar/menu pembaca sendiri.
+  // Keluar dari pembaca ke info komik: bar meluncur naik lagi, langsung tanpa jeda (tidak tampak "hilang duluan").
+  if (keepOld || (!fwd && !fromReader)) view.dataset.upDone = "1"; else delete view.dataset.upDone;
+  if (fromReader && !keepOld) view.dataset.upFast = "1"; else delete view.dataset.upFast;
+  if (!keepOld) view.innerHTML = "";
+  fxIo?.disconnect(); fxVis.clear(); fxSprite();
   let animated = false;
   // Selama layar baru meluncur masuk, animasi hiasan (bingkai avatar kosmik, kilau rank) dijeda: SVG beranimasi
   // menggambar ulang dirinya tiap frame dan bersaing dengan animasi pindah layar (terasa tersendat di Lainnya).
@@ -111,10 +133,13 @@ async function render() {
     // kelas animasi dilepas setelah selesai: halaman yang digambar ulang (data datang) tidak ikut meluncur lagi
     movingT = setTimeout(() => { holdFx(false); watchFx(); if (my === renderSeq) view.classList.remove("in", "in-f", "in-b"); }, 420);
     for (const c of view.children) c.classList.toggle("vfix", getComputedStyle(c).position === "fixed");
+    // pindah chapter di pembaca: chapter berikutnya masuk dari kanan, chapter sebelumnya dari kiri
+    // pindah chapter di pembaca: digeser oleh vReader sendiri (halaman lama keluar, chapter baru masuk)
+    if (route.name === "reader" && fromReader) return;
     void view.offsetWidth; view.classList.add("in", fwd ? "in-f" : "in-b");
   };
   const job = (VIEWS[route.name] || VIEWS.home)(...route.params);
-  if (view.childElementCount) animate();
+  if (view.childElementCount && !keepOld) animate();
   await job;
   animate();
   if (my === renderSeq && !fxHold) watchFx();
@@ -133,20 +158,23 @@ view.addEventListener("animationend", (e) => { if (e.animationName === "fixUp") 
 // lebar bar untuk animasi berbasis transform (CSS tidak bisa memakai % induk di dalam transform)
 const navW = () => { const w = nav.offsetWidth; if (w) { nav.style.setProperty("--nw", w + "px"); nav.style.setProperty("--nwn", String(w)); } };
 navW(); if ("ResizeObserver" in window) new ResizeObserver(navW).observe(nav); else addEventListener("resize", navW);
-let navLastY = null, navAcc = 0;
+let navLastY = null, navAcc = 0, navIdle = 0;
 const setNavMin = (on) => {
   if (document.body.classList.contains("nav-min") === on) return;
   document.body.classList.toggle("nav-min", on);
   nav.setAttribute("aria-label", on ? "Buka menu utama" : "Menu utama");
 };
-const navReset = () => { navLastY = null; navAcc = 0; setNavMin(false); };
+const navReset = () => { navLastY = null; navAcc = 0; clearTimeout(navIdle); setNavMin(false); };
+// diam ±2,5 dtk setelah menggulir → bar terbuka penuh lagi; gulir ke bawah lagi → mengecil lagi
+const navIdleArm = () => { clearTimeout(navIdle); navIdle = setTimeout(() => { navAcc = 0; if (!document.body.classList.contains("nav-off")) setNavMin(false); }, 2500); };
 window.addEventListener("scroll", () => {
   const y = window.scrollY;
+  if (document.body.classList.contains("nav-min")) navIdleArm();
   if (navLastY == null || Math.abs(y - navLastY) > 400) { navLastY = y; navAcc = 0; return; }
   const d = y - navLastY; navLastY = y;
   if (document.body.classList.contains("nav-off")) return;
   if (y < 30) { navAcc = 0; setNavMin(false); return; }
-  if (d > 0) { navAcc += d; if (navAcc > 48) setNavMin(true); } else navAcc = 0;
+  if (d > 0) { navAcc += d; if (navAcc > 48) { setNavMin(true); navIdleArm(); } } else navAcc = 0;
 }, { passive: true });
 nav.addEventListener("click", (e) => {
   if (!document.body.classList.contains("nav-min")) return;
@@ -154,6 +182,7 @@ nav.addEventListener("click", (e) => {
   navAcc = 0; setNavMin(false);
 }, true);
 const go = (h) => { location.hash = h; };
+let rdLast = null, rdBack = false;   // chapter terakhir yang dibuka di pembaca (arah animasi pindah chapter)
 // ganti halaman tanpa menambah riwayat (dipakai saat pindah chapter)
 const goReplace = (h) => { if (h === location.hash) return; replacing = true; location.replace(h); };
 const back = (fallback = "#/home") => (navIdx > 0 ? history.back() : goReplace(fallback));
@@ -268,7 +297,7 @@ ${last ? `<section class="sec s16"><h2 class="cap">Lanjut baca</h2>
   <a class="resume" href="${last.chapter_id ? readHref(last.source, last.comic_id, last.chapter_id) : comicHref(last.source, last.comic_id)}">${cover(last.cover, last.title, "rs")}
     <span class="rc-mid g6"><span class="meta"><span class="tag-s">${esc(srcName(last.source))}</span>${last.type ? `<span>${esc(typeName(last.type))}</span>` : ""}</span>
       <span class="rs-t">${esc(last.title)}</span>
-      <span class="mu sm">Chapter ${esc(last.chapter)}${last.pages ? ` · halaman ${last.page || 1} dari ${last.pages}` : ""}</span>
+      <span class="mu sm">Chapter ${esc(last.chapter)}${last.pages ? ` · halaman ${Number(last.page) || 1} dari ${Number(last.pages) || 0}` : ""}</span>
       <span class="prog"><span style="width:${pct(last.page || 1, last.pages || 0) || 6}%"></span></span></span>
     <span class="play">${icon("play", 19, 2)}</span></a></section>` : ""}
 <section class="sec s26 nox"><div class="sec-h px"><h2>Top 10 populer</h2><span class="mu sm">${esc(srcName(homeSrc))}</span></div><div class="hs" id="pop">${loading(3, "sk-top")}</div></section>
@@ -398,7 +427,7 @@ async function openNotif() {
       go(x.source && x.comic_id ? comicHref(x.source, x.comic_id) : "#/chat");
     }
     if (a === "clear") {
-      if (!confirm("Hapus semua notifikasi? Lonceng di tiap komik tetap menyala.")) return;
+      if (!(await ask("Hapus semua notifikasi? Lonceng di tiap komik tetap menyala.", { ok: "Hapus", danger: true }))) return;
       try { await api.rest("notifications?id=gt.0", { method: "DELETE" }); notifs = []; draw(); refreshBell(); toast("Notifikasi dihapus"); } catch (er) { toast(er.message); }
     }
   });
@@ -625,8 +654,9 @@ async function vDetail(src, id) {
     const heroCol = X.cachedCoverColor(m.cover);
     const ST = { ongoing: ["Berlangsung", "ok"], completed: ["Tamat", "blue"], hiatus: ["Hiatus", "gold"], dropped: ["Dihentikan", "red"] }[m.status];
     const views = Number(m.views) > 0 ? compactNum(m.views) : "";
+    const score = Number(m.score) > 0 ? (Math.round(Number(m.score) * 10) / 10).toFixed(1).replace(".", ",") : "";
     // satu baris info ringkas di bawah judul; yang tidak tersedia dari sumber tidak ditampilkan
-    const infoLine = [ST && `<span class="inf-st inf-${ST[1]}">${esc(ST[0])}</span>`, views && `<span title="Dilihat di situs sumber">${icon("eye", 14)}${esc(views)}</span>`,
+    const infoLine = [score && `<span class="inf-score" title="Skor di situs sumber (dari 10)">${icon("star", 14, 2)}<b>${esc(score)}</b></span>`, ST && `<span class="inf-st inf-${ST[1]}">${esc(ST[0])}</span>`, views && `<span title="Dilihat di situs sumber">${icon("eye", 14)}${esc(views)}</span>`,
       m.publisher && `<span>${icon("book", 13)}<i>${esc(m.publisher)}</i></span>`, m.author && `<span>${icon("user", 13)}<i>${esc(m.author)}</i></span>`].filter(Boolean).join("");
     view.innerHTML = `
 <div class="dbar" id="dbar"><button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 21, 2)}</button><span class="dbar-t">${esc(m.title)}</span>
@@ -836,29 +866,60 @@ async function vChapters(src, id) {
 }
 
 /* ---------- Pembaca (gulir atau slide), tampilan sama seperti prototipe ---------- */
+const pagesMem = new Map();
+let readerSeq = 0;
 async function vReader(src, id, chId) {
-  const shell = (inner) => `<div class="reader ui" id="rd">${inner}<div class="r-top"><button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 22, 2)}</button><div class="r-pill glass"><b class="t1">Memuat…</b></div><span class="r-sp"></span></div></div>`;
-  view.innerHTML = shell(`<div class="r-pages">${loading(3, "sk-page")}</div>`);
+  const shell = (inner) => `<div class="reader ui enter" id="rd" data-shell="1">${inner}<div class="r-top"><button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 22, 2)}</button><div class="r-pill glass"><b class="t1">Memuat…</b></div><span class="r-sp"></span></div></div>`;
+  // Halaman sebelumnya tetap terlihat selama data chapter dimuat; layar "Memuat…" baru dipasang bila butuh > 1,2 dtk
+  // (sebelumnya langsung tampil layar gelap kosong sekejap sebelum halaman komik → terlihat seperti kedipan)
+  const myR = ++readerSeq;
+  // Animasi bar meluncur masuk HANYA saat masuk dari luar pembaca (mis. info komik), dan baru setelah halaman siap.
+  // Pindah chapter di dalam pembaca (lanjut/sebelumnya/daftar chapter/muat ulang) langsung tampil tanpa animasi.
+  const rd0 = $("#rd"), inReader = !!rd0 && !rd0.dataset.shell;
+  let shellShown = false;
+  setTimeout(() => {
+    if (myR !== readerSeq || parse().name !== "reader" || $("#rd")) return;
+    // layar "Memuat…" tampil diam (tanpa bar meluncur) supaya tidak terlihat seperti macet
+    view.innerHTML = shell(`<div class="r-pages">${loading(3, "sk-page")}</div>`).replace('class="reader ui enter"', 'class="reader ui"');
+    shellShown = true;
+  }, 1200);
+  const fail = (e) => {
+    if (myR !== readerSeq || parse().name !== "reader") return;
+    if (!$("#rd")) view.innerHTML = shell(`<div class="r-pages"></div>`);
+    $("#rd").classList.remove("enter"); $(".r-pages").innerHTML = errBox(e);
+  };
   // file impor dari HP (src "local") tidak punya halaman info komik, kembali ke Favorit → Unduhan
   const isLocal = src === "local";
   const toComic = () => (isLocal ? backTo("#/fav/dl") : backTo(comicHref(src, id), [chaptersHref(src, id)]));
-  setActs({ back: toComic, retry: () => vReader(src, id, chId) });
+  // tombol kembali: bar atas & bawah meluncur keluar dulu (±0,18 dtk), lalu pindah ke info komik yang meluncur masuk
+  // (bilah status HP tidak ikut disembunyikan sesaat saat bar meluncur keluar: lihat "leaving" di syncFs)
+  let leaving = false;
+  const leave = () => { const r = $("#rd"); if (r && r.classList.contains("ui") && !r.dataset.shell && !matchMedia("(prefers-reduced-motion: reduce)").matches) { leaving = true; r.classList.remove("ui"); setTimeout(toComic, 180); } else toComic(); };
+  setActs({ back: leave, retry: () => vReader(src, id, chId) });
   let d = isLocal ? DL.offlineDetail(src, id) : cachedDetail(src, id);
   try { if (!d) d = await getDetail(src, id); }
-  catch (e) { d = DL.offlineDetail(src, id); if (!d) { $(".r-pages").innerHTML = errBox(e); return; } }   // offline: info dari unduhan
-  if (!d) { $(".r-pages").innerHTML = errBox(new Error("File unduhan tidak ditemukan di HP.")); return; }
+  catch (e) { d = DL.offlineDetail(src, id); if (!d) { fail(e); return; } }   // offline: info dari unduhan
+  if (!d) { fail(new Error("File unduhan tidak ditemukan di HP.")); return; }
   const idx = d.chapters.findIndex((c) => c.id === chId);
+  // arah animasi pindah chapter (lihat render): mundur bila urutan chapter baru lebih kecil dari yang tadi dibaca
+  rdBack = !!rdLast && rdLast.k === src + "|" + id && idx >= 0 && idx < rdLast.i; rdLast = { k: src + "|" + id, i: idx };
   const ch = d.chapters[idx] || { id: chId, ch: "?" };
   const prev = d.chapters[idx - 1], next = d.chapters[idx + 1];
   // chapter yang sudah diunduh dibaca dari file di HP (tanpa kuota, bisa offline)
   let p;
   try { p = await DL.localPages(src, id, chId); }
-  catch (e) { if (e?.localRead) { $(".r-pages").innerHTML = errBox(e); return; } p = null; }
+  catch (e) { if (e?.localRead) { fail(e); return; } p = null; }
   if (!p) {
-    if (isLocal) { $(".r-pages").innerHTML = errBox(new Error("File unduhan tidak ditemukan di HP.")); return; }
-    try { p = await api.call("pages", { source: src, chapter_id: chId }); } catch (e) { $(".r-pages").innerHTML = errBox(e); return; }
+    if (isLocal) { fail(new Error("File unduhan tidak ditemukan di HP.")); return; }
+    // daftar halaman disimpan sebentar di memori: kembali ke chapter yang sama (mis. dari info komik) langsung tampil
+    const pk = src + "|" + chId, pc = pagesMem.get(pk);
+    if (pc && Date.now() - pc.t < 30 * 60e3) p = pc.p;
+    else {
+      try { p = await api.call("pages", { source: src, chapter_id: chId }); } catch (e) { fail(e); return; }
+      pagesMem.set(pk, { p, t: Date.now() }); if (pagesMem.size > 12) pagesMem.delete(pagesMem.keys().next().value);
+    }
   }
-  if (parse().name !== "reader") return;
+  if (parse().name !== "reader" || myR !== readerSeq) return;
   const st = S.state.settings, total = p.images.length;
   // manga: boleh scroll & slide. manhwa/manhua (strip panjang): hanya scroll. Jenis dari tag sumber;
   // bila tag tidak menyebut jenisnya, dari bentuk gambar (lihat cekStrip di bawah), diingat per komik.
@@ -870,12 +931,51 @@ async function vReader(src, id, chId) {
   // Hemat kuota: hanya 2 halaman pertama yang langsung diunduh. Halaman lain memakai data-src dan baru diunduh
   // saat mendekati layar (lihat lazyIo). Sebelumnya semua gambar belum bertinggi (0 px) sehingga "lazy" bawaan
   // browser menganggap semuanya dekat layar dan seluruh chapter langsung diunduh.
-  const imgs = p.images.map((im, i) => { const a = im.local ? `src="${esc(im.u)}"` : N.imgAttrs(im.u, { ref: p.ref || "", px: im.p ? api.pageUrl(im.p) : "" }); return `<img class="r-img wait" data-i="${i + 1}" ${i > 1 ? a.replace(/^src=/, "data-src=") : a} alt="Halaman ${i + 1}" decoding="async" referrerpolicy="no-referrer" draggable="false">`; });
+  // halaman tujuan (lanjut baca) dimuat & di-decode dulu selagi halaman sebelumnya masih tampil (maks 0,6 dtk),
+  // supaya pembaca langsung muncul berisi gambar, bukan layar hitam kosong sekejap
+  const pk0 = `${src}|${id}|${chId}`, pm0 = api.lsGet("readPos", {}) || {}, ph0 = S.histItem(src, id);
+  let at0 = Number(pm0[pk0]) || (ph0?.chapter_id === chId ? Number(ph0.page) || 1 : 1);
+  if (!(at0 > 1 && at0 < p.images.length)) at0 = 1;
+  const near = (i) => i >= at0 - 5 && i <= at0;   // indeks 0-based: halaman tujuan & 4 sebelumnya (yang ikut termuat di dekat layar)
+  // Situs yang menolak dimuat langsung (mis. Shinigami butuh Referer) diambil lewat jaringan HP di sini juga, jadi gambar
+  // halaman tujuan sudah ada saat pembaca digambar (sebelumnya: layar hitam sampai jalur cadangan selesai).
+  const preOne = async (im) => {
+    if (im.local) { const x = new Image(); x.src = im.u; return x.decode().catch(() => {}); }
+    const { src: u, d } = N.imgParts(im.u), direct = d || (/^https:\/\//i.test(u) ? u : "");
+    if (direct && N.nativeFirst(direct)) return N.imageViaNative(direct, p.ref || "").catch(() => {});
+    const x = new Image(); x.referrerPolicy = "no-referrer"; x.src = u;
+    try { await x.decode(); } catch { if (N.isApp && direct) await N.imageViaNative(direct, p.ref || "").catch(() => {}); }
+  };
+  const preIdx = new Set(p.images.map((_, i) => i).filter((i) => i < 2 || near(i)).slice(0, 8));
+  if (preIdx.size) await Promise.race([Promise.all([...preIdx].map((i) => preOne(p.images[i]))), new Promise((r) => setTimeout(r, 1000))]);
+  if (parse().name !== "reader" || myR !== readerSeq) return;
+  const imgs = p.images.map((im, i) => {
+    let a = im.local ? `src="${esc(im.u)}"` : N.imgAttrs(im.u, { ref: p.ref || "", px: im.p ? api.pageUrl(im.p) : "" });
+    // sudah diambil lewat jaringan HP saat pra-muat → langsung pakai hasilnya (tanpa percobaan langsung yang gagal dulu)
+    const b = !im.local && N.blobFor(N.imgParts(im.u).d || N.imgParts(im.u).src);
+    if (b) a = a.replace(/^src="[^"]*"/, `src="${b}" data-fb="1"`);
+    // halaman yang sudah dipra-muat langsung digambar (decoding sync) supaya tidak berkedip hitam saat chapter dibuka
+    return `<img class="r-img wait" data-i="${i + 1}" ${i > 1 && !near(i) && !b ? a.replace(/^src=/, "data-src=") : a} alt="" aria-label="Halaman ${i + 1}" decoding="${preIdx.has(i) ? "sync" : "async"}" referrerpolicy="no-referrer" draggable="false">`;
+  });
 
-  view.innerHTML = `<div class="reader ui ${slide ? "slide" : ""}" id="rd">
+  const animIn = !inReader && !shellShown && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // Pindah chapter: halaman chapter lama digeser keluar penuh sementara chapter baru masuk dari sisi lain (seperti
+  // membalik halaman). Dulu halaman lama langsung hilang lalu halaman baru meloncat 44px → terlihat seperti glitch.
+  let ghost = null;
+  const swap = inReader && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (swap) {
+    const ob = $("#rbox");
+    if (ob) {
+      const st = ob.scrollTop, sl = ob.scrollLeft;
+      ob.removeAttribute("id"); ob.querySelectorAll("[id]").forEach((x) => x.removeAttribute("id"));
+      ghost = document.createElement("div"); ghost.className = `r-ghost ${rdBack ? "gb" : "gf"}`;
+      ghost.setAttribute("aria-hidden", "true"); ghost.inert = true; ghost.append(ob);
+      ghost._pos = [st, sl];
+    }
+  }
+  view.innerHTML = `<div class="reader ui ${animIn ? "enter" : ""} ${slide ? "slide" : ""} ${ghost ? (rdBack ? "swap-b" : "swap-f") : ""}" id="rd">
   ${slide ? `<div class="r-slides" id="rbox" dir="${rtl ? "rtl" : "ltr"}">${imgs.map((im) => `<div class="r-slide">${im}</div>`).join("")}<div class="r-slide r-endslide"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span>${next ? `<button class="r-next-hint" id="rnext" data-act="cancelNext" hidden><span class="r-nbar"></span><span class="r-ntx"></span></button>` : ""}${isLocal ? "" : `${chLike(null)}<a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini</a>`}</div></div>`
     : `<div class="r-scroll" id="rbox"><div class="r-pages" id="rpages">${imgs.join("")}<div class="r-endtxt"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span>${next ? `<button class="r-next-hint" id="rnext" data-act="cancelNext" hidden><span class="r-nbar"></span><span class="r-ntx"></span></button>` : ""}${isLocal ? "" : `${chLike(null)}<a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini<span class="cm-n" id="rcmn"></span></a>`}</div></div></div>`}
-  <div class="r-zoom glass" id="rzoom" hidden>${icon("zoom", 15)}<span id="rzt"></span> · geser untuk melihat, ketuk 2× untuk normal</div>
   <div class="r-top">
     <button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 22, 2)}</button>
     <button class="r-pill glass" data-act="chlist" aria-label="Daftar chapter"><b class="t1">${esc(d.manga.title)}</b><span class="mu xs row g4">Chapter ${esc(ch.ch)}${icon("chev", 12, 2.4)}</span></button>
@@ -891,7 +991,7 @@ async function vReader(src, id, chId) {
       return `<button role="radio" aria-selected="${on}" aria-checked="${on}" data-act="rmode" data-v="${k}" ${off ? "disabled" : ""}>${icon(ic, 16)}${n}</button>`; }).join("")}</div>
     ${longStrip ? `<span class="mu xs rm-note">Slide tak tersedia untuk manhwa/manhua.</span>` : ""}
     ${slide ? `<div class="rq-row"><span>Arah geser</span><div class="seg s2">${[["rtl", "Ka → Ki"], ["ltr", "Ki → Ka"]].map(([k, n]) => `<button role="tab" aria-selected="${(rtl ? "rtl" : "ltr") === k}" data-act="rdir" data-v="${k}" aria-label="${k === "rtl" ? "Kanan ke kiri" : "Kiri ke kanan"}">${n}</button>`).join("")}</div></div>` : ""}
-    <div class="rq-acts"><button class="rq-act" data-act="chlist"><span class="gold">${icon("list", 18)}</span>Chapter <span class="mu">${d.chapters.length}</span></button><button class="rq-act" data-act="rreport"><span class="redt">${icon("bug", 18)}</span>Laporkan</button></div>
+    <div class="rq-acts"><button class="rq-act" data-act="chlist"><span class="gold">${icon("list", 18)}</span>Chapter <span class="mu">${esc(ch.ch)}</span></button><button class="rq-act" data-act="rreport"><span class="redt">${icon("bug", 18)}</span>Laporkan</button></div>
     <span class="cap mt4">Bacaan</span><div class="r-togs rq">${readPrefsCompact()}</div>
   </div>
   <div class="r-bottom">
@@ -904,6 +1004,20 @@ async function vReader(src, id, chId) {
       <button class="r-sq glass" data-act="next" aria-label="${next ? "Chapter berikutnya" : "Kembali ke info komik"}">${next ? icon("chev", 22, 2.2) : icon("home", 21, 2)}</button>
     </div></div></div>`;
   const rd = $("#rd"), box = $("#rbox"), pages = $("#rpages");
+  if (ghost) {
+    rd.prepend(ghost); const [st, sl] = ghost._pos; ghost.firstChild.scrollTop = st; ghost.firstChild.scrollLeft = sl;
+    const g = ghost, end = () => { g.remove(); rd.classList.remove("swap-f", "swap-b"); };
+    g.addEventListener("animationend", end, { once: true }); setTimeout(end, 700);
+  }
+  // masuk pembaca dari info komik: halaman tampil dulu, bar atas & bawah baru meluncur masuk setelah gambar
+  // halaman tujuan selesai dimuat & digambar (maks 2,5 dtk), supaya animasi tidak berjalan bersamaan dengan pemuatan
+  if (animIn) {
+    const tgt = $$(".r-img", box)[at0 - 1] || $(".r-img", box);
+    // gambar yang ditolak situs dicoba ulang lewat jalur lain (ui.js), jadi tunggu "load" yang berhasil, bukan "error"
+    const ready = tgt && !(tgt.complete && tgt.naturalWidth) ? new Promise((r) => tgt.addEventListener("load", r, { once: true })) : Promise.resolve();
+    Promise.race([ready, new Promise((r) => setTimeout(r, 2500))]).then(() =>
+      requestAnimationFrame(() => requestAnimationFrame(() => { if (myR === readerSeq) rd.classList.remove("enter"); })));
+  }
   // halaman dimuat langsung dari situs aslinya (tidak memakai kuota Supabase); bila ditolak,
   // penangan error di ui.js mencoba jaringan HP (APK) lalu proxy sebagai cadangan terakhir
   const meta = { source: src, comic_id: id, title: d.manga.title, cover: d.manga.cover, chapter: ch.ch, chapter_id: ch.id, pages: total, type: typeFromTags(d.manga.tags) };
@@ -921,7 +1035,7 @@ async function vReader(src, id, chId) {
   // EXP baca: hanya setelah chapter dibaca sampai habis (akhir chapter terlihat)
   let awarded = false;
   const finish = () => { if (awarded) return; awarded = true; DL.markRead(src, id, ch.id); if (!isLocal) S.awardRead(src, id, ch.ch); };
-  const endEl = $(".r-endtxt, .r-endslide", rd);
+  const endEl = $(".r-endtxt, .r-endslide", box);   // (box, bukan rd: rd sesaat juga berisi salinan chapter lama yang sedang digeser keluar)
   let endIo = null;
   if (endEl && "IntersectionObserver" in window) {
     endIo = new IntersectionObserver((es) => {
@@ -944,7 +1058,7 @@ async function vReader(src, id, chId) {
     if (i !== curPage) { curPage = i; $("#rpg").textContent = i; savePos(i); if (!isLocal) S.saveHistory({ ...meta, page: i }); }
   };
   const goPage = (i, smooth = false) => {
-    const el = $(`.r-img[data-i="${i}"]`); if (!el) return;
+    const el = $(`.r-img[data-i="${i}"]`, box); if (!el) return;
     quietUntil = Date.now() + (smooth ? 900 : 400);
     if (slide) { clearZoom(); const w = box.clientWidth; box.scrollTo({ left: (rtl ? -1 : 1) * (i - 1) * w, behavior: smooth ? "smooth" : "auto" }); }
     else box.scrollTo({ top: el.offsetTop, behavior: smooth ? "smooth" : "auto" });
@@ -954,7 +1068,7 @@ async function vReader(src, id, chId) {
   let zoom = 1, zEl = null, zBase = 0, rafPos = 0;
   // menu bacaan otomatis: hilang saat menggulir/menggeser, muncul sendiri di akhir chapter
   let atEnd = false, anchor = 0, quietUntil = 0, seeking = false;
-  const menuOpen = () => !$(".r-menu").hidden;
+  const menuOpen = () => { const m = $(".r-menu", rd); return !!m && !m.hidden; };   // rd sendiri: aman setelah pembaca ditutup
   const showUi = () => { rd.classList.add("ui"); anchor = slide ? Math.abs(box.scrollLeft) : box.scrollTop; };
   // Jarak dihitung dari posisi saat menu terakhir muncul (bukan per frame), jadi gulir pelan 40 px pun cukup.
   const autoHide = () => {
@@ -962,7 +1076,26 @@ async function vReader(src, id, chId) {
     if (!S.state.settings.autoHide || atEnd || seeking || menuOpen() || Date.now() < quietUntil || pinch || !rd.classList.contains("ui")) { anchor = pos; return; }
     if (Math.abs(pos - anchor) > (slide ? 30 : 40)) { rd.classList.remove("ui"); anchor = pos; }
   };
+  // indikator gulir tipis di tepi kanan (gaya iOS): muncul saat halaman bergerak, menghilang ±0,9 dtk setelah berhenti
+  if (!slide) {
+    const sb = document.createElement("div"); sb.className = "r-sb"; sb.setAttribute("aria-hidden", "true"); sb.innerHTML = "<i></i>";
+    rd.append(sb);
+    const th = sb.firstChild; let sbT = 0, sbRaf = 0;
+    const sbDraw = () => {
+      sbRaf = 0;
+      const H = box.clientHeight, S2 = box.scrollHeight, track = sb.clientHeight; if (S2 <= H + 4 || !track) return;
+      const len = Math.max(36, Math.round(track * H / S2)), y = Math.round((track - len) * Math.min(1, box.scrollTop / (S2 - H)));
+      th.style.height = len + "px"; th.style.transform = `translate3d(0, ${y}px, 0)`;
+    };
+    box.addEventListener("scroll", () => {
+      if (!sbRaf) sbRaf = requestAnimationFrame(sbDraw);
+      sb.classList.add("on"); clearTimeout(sbT); sbT = setTimeout(() => sb.classList.remove("on"), 900);
+    }, { passive: true });
+  }
   box.addEventListener("scroll", () => {
+    // chapter lama yang sedang digeser keluar (salinan) / pembaca yang sudah ditutup: jangan ikut menyimpan posisi,
+    // riwayat, atau menggerakkan bilah halaman chapter baru
+    if (box.id !== "rbox" || !box.isConnected) return;
     if (rafPos) return;
     rafPos = requestAnimationFrame(() => {
       rafPos = 0;
@@ -975,7 +1108,6 @@ async function vReader(src, id, chId) {
   }, { passive: true });
   // ketuk sekali: tampil/sembunyikan tombol; ketuk dua kali: perbesar 2,5× / kembali normal (mode gulir)
   let lastTap = null, tapT = null;
-  const showZoom = () => { const z = $("#rzoom"); z.hidden = zoom <= 1.02; $("#rzt").textContent = Math.round(zoom * 100) + "%"; };
   // Zoom memperbesar LEBAR gambar (bukan CSS zoom) → geser kiri-kanan & gulir tetap mulus untuk
   // manga, manhwa, maupun manhua (strip panjang). Mode gulir: seluruh halaman; mode slide: halaman yang tampil.
   // halaman panjang (manhwa/manhua) vs halaman pendek (manga): batas & tingkat zoom berbeda
@@ -987,7 +1119,7 @@ async function vReader(src, id, chId) {
       zEl.style.width = zEl.style.maxWidth = zEl.style.maxHeight = zEl.style.height = "";
       if (slide) { sc.classList.remove("zoomed-slide"); sc.scrollLeft = 0; box.classList.remove("zlock"); }
     }
-    zoom = 1; zEl = null; rd.classList.remove("zoomed"); showZoom();
+    zoom = 1; zEl = null; rd.classList.remove("zoomed");
   }
   const applyZoom = (z, fx, fy) => {
     z = Math.max(1, Math.min(ZMAX, z));
@@ -1000,7 +1132,7 @@ async function vReader(src, id, chId) {
     el.style.width = zBase * zoom + "px"; el.style.maxWidth = "none";
     if (slide) { el.style.maxHeight = "none"; el.style.height = "auto"; sc.classList.add("zoomed-slide"); box.classList.add("zlock"); }
     sc.scrollLeft = (sl + x) * k - x; sc.scrollTop = (st + y) * k - y;
-    if (zoom <= 1.01) clearZoom(); else { rd.classList.add("zoomed"); showZoom(); }
+    if (zoom <= 1.01) clearZoom(); else rd.classList.add("zoomed");
   };
   // mode slide: halaman strip panjang (manhwa/manhua) dibuat selebar layar dan bisa digulir ke bawah
   if (slide) $$(".r-slide .r-img", box).forEach((im) => {
@@ -1030,8 +1162,15 @@ async function vReader(src, id, chId) {
   const pinchPaint = () => {
     if (!pinch) return;
     pinch.raf = 0;
+    // Kunci di dalam halaman: hasil perbesaran + geseran selalu menutupi layar baca, tidak pernah lewat dari tepi
+    // gambar (tidak ada celah hitam di samping/atas/bawah). Bila gambar lebih kecil dari layar, dijaga di dalamnya.
+    const { r, B, ox, oy } = pinch, s2 = pinch.s, cl = (v, a, b) => Math.min(Math.max(v, Math.min(a, b)), Math.max(a, b));
+    const base = (start, o) => start + o * (1 - s2);          // posisi tepi kiri/atas setelah diperbesar, sebelum digeser
+    const lim = (start, size, o, bStart, bSize) => { const w = size * s2, p0 = base(start, o);
+      return w >= bSize ? [bStart + bSize - w - p0, bStart - p0] : [bStart - p0, bStart + bSize - w - p0]; };
+    pinch.dx = cl(pinch.dx, ...lim(r.left, r.width, ox, B.left, B.width));
+    pinch.dy = cl(pinch.dy, ...lim(r.top, r.height, oy, B.top, B.height));
     pinch.el.style.transform = `translate3d(${pinch.dx}px, ${pinch.dy}px, 0) scale(${pinch.s})`;
-    $("#rzt").textContent = Math.round(pinch.z * pinch.s * 100) + "%"; $("#rzoom").hidden = pinch.z * pinch.s <= 1.02;
   };
   const pinchMove = (e) => {
     if (!pinch || e.touches.length !== 2) return;
@@ -1042,8 +1181,9 @@ async function vReader(src, id, chId) {
     if (!pinch.on) {
       pinch.on = true;
       const el = zTarget(); if (!el) { pinch = null; return; }
-      const r = el.getBoundingClientRect();
-      pinch.el = el; el.style.transformOrigin = `${pinch.x - r.left}px ${pinch.y - r.top}px`; el.style.willChange = "transform";
+      const r = el.getBoundingClientRect(), sc = slide ? el.parentElement : box;
+      pinch.el = el; pinch.r = r; pinch.B = sc.getBoundingClientRect(); pinch.ox = pinch.x - r.left; pinch.oy = pinch.y - r.top;
+      el.style.transformOrigin = `${pinch.ox}px ${pinch.oy}px`; el.style.willChange = "transform";
     }
     const z = Math.max(1, Math.min(ZMAX, pinch.z * (dd / pinch.d)));
     pinch.s = z / pinch.z;
@@ -1060,7 +1200,6 @@ async function vReader(src, id, chId) {
     applyZoom(p.z * p.s, p.x, p.y);
     const sc = slide ? zTarget()?.parentElement : box;
     if (sc && zoom > 1.01) { sc.scrollLeft -= p.dx; sc.scrollTop -= p.dy; }
-    showZoom();
   };
   box.addEventListener("touchstart", (e) => {
     if (e.touches.length !== 2 || pinch) return;
@@ -1070,6 +1209,33 @@ async function vReader(src, id, chId) {
   }, { passive: true });
   box.addEventListener("touchend", pinchEnd, { passive: true });
   box.addEventListener("touchcancel", pinchEnd, { passive: true });
+  // Gulir otomatis (mode Scroll): 1× / 2× / 3×. Selama jari menekan layar → berhenti; jari dilepas → lanjut lagi
+  // dari posisi itu (juga setelah menggeser sendiri). Dimatikan lewat pilihan OFF.
+  // Berhenti sendiri di akhir chapter; lanjut otomatis ke chapter berikutnya tetap memakai pengaturannya sendiri.
+  const AS_PX = { 1: 50, 2: 100, 3: 160 };   // px per detik
+  let asRun = false, asHold = false, asRaf = 0, asLast = 0, asY = 0, asHoldT = 0;
+  const asSpeed = () => (slide ? 0 : AS_PX[choiceVal("autoScroll")] || 0);
+  const asTick = (t) => {
+    asRaf = 0;
+    if (!asRun || !rd.isConnected || parse().name !== "reader") { asRun = false; return; }
+    const v = asSpeed(); if (!v) { asPause(); return; }
+    const dt = Math.min(100, t - (asLast || t)); asLast = t;
+    if (!asHold && !pinch && zoom <= 1.01 && !menuOpen() && !seeking) {
+      if (Math.abs(box.scrollTop - asY) > 2) asY = box.scrollTop;            // digeser sendiri → lanjut dari posisi itu
+      const max = box.scrollHeight - box.clientHeight;
+      asY = Math.min(max, asY + (v * dt) / 1000); box.scrollTop = asY;
+      if (asY >= max - 1) { asPause(); return; }                           // sampai akhir chapter → berhenti
+    }
+    asRaf = requestAnimationFrame(asTick);
+  };
+  const asStart = () => { if (!asSpeed() || asRun) return; asRun = true; asLast = 0; asY = box.scrollTop; if (!asRaf) asRaf = requestAnimationFrame(asTick); };
+  function asPause() { asRun = false; cancelAnimationFrame(asRaf); asRaf = 0; }
+  box.addEventListener("touchstart", () => { asHold = true; clearTimeout(asHoldT); }, { passive: true });
+  // jari dilepas: lanjut lagi (gulir manual yang masih meluncur dibiarkan selesai dulu ±0,35 dtk)
+  const asUnhold = (e) => { if (e.touches?.length) return; clearTimeout(asHoldT); asHoldT = setTimeout(() => { asHold = false; asY = box.scrollTop; if (asSpeed() && !asRun && !atEnd) asStart(); }, 350); };
+  box.addEventListener("touchend", asUnhold, { passive: true }); box.addEventListener("touchcancel", asUnhold, { passive: true });
+  // mulai sendiri saat chapter terbuka (pengaturan aktif), setelah pembaca sempat melihat posisinya
+  if (asSpeed()) setTimeout(() => { if (rd.isConnected && !atEnd) asStart(); }, 1200);
   // geser slider halaman
   const track = $("#rtrack");
   const seekAt = (clientX) => { const r = track.getBoundingClientRect(); const f = Math.min(1, Math.max(0, (clientX - r.left) / r.width)); goPage(Math.round(f * (total - 1)) + 1); };
@@ -1079,7 +1245,7 @@ async function vReader(src, id, chId) {
   track.addEventListener("keydown", (e) => { if (e.key === "ArrowRight") goPage(curPage + 1); if (e.key === "ArrowLeft") goPage(curPage - 1); });
   const menu = (open) => { $(".r-menu").hidden = !open; $(".r-menu-bg").hidden = !open; $("[data-act=menu]").setAttribute("aria-expanded", String(open)); };
   setActs({
-    back: toComic,
+    back: leave,
     retry: () => vReader(src, id, chId),
     like: async () => {
       if (!S.loggedIn()) { toast("Masuk dulu untuk memberi like."); return; }
@@ -1105,10 +1271,15 @@ async function vReader(src, id, chId) {
       S.setSetting(k, v);
       flipChoice(el);
       if (k === "screenMode") syncFs();
-      if (k === "chapterEnd") { if (v === "auto" && atEnd) autoNextStart(); else autoNextStop(); }
+      if (k === "nextDelay") { autoNextStop(); if (v !== "off" && atEnd) autoNextStart(); }
+      if (k === "autoScroll") {
+        if (v === "off") asPause();
+        else if (slide) toast("Gulir otomatis hanya untuk mode Scroll");
+        else { menu(false); asStart(); }
+      }
     },
     cancelNext: () => { autoNextStop(true); toast("Lanjut otomatis dibatalkan untuk chapter ini"); },
-    reimg: (el) => { const im = $(`.r-img[data-i="${el.dataset.i}"]`, rd); if (im) reloadImg(im); },
+    reimg: (el) => { const im = $(`.r-img[data-i="${el.dataset.i}"]`, box); if (im) reloadImg(im); },
     reload: () => { menu(false); if (failed.size) { const n = failed.size; [...failed].forEach(reloadImg); toast(`Memuat ulang ${n} gambar yang gagal…`); } else { toast("Memuat ulang chapter…", 1500); vReader(src, id, chId); } },
     prev: () => prev && goReplace(readHref(src, id, prev.id)),
     main: () => (next ? goReplace(readHref(src, id, next.id)) : toComic()),
@@ -1117,7 +1288,7 @@ async function vReader(src, id, chId) {
   // #10 gambar gagal (server/internet): tombol muat ulang per halaman, menu "Muat ulang chapter",
   // dan otomatis dicoba lagi saat internet tersambung kembali
   const failed = new Set();
-  $$(".r-img", rd).forEach((im) => { im.dataset.o = im.getAttribute("src") || im.dataset.src || ""; });
+  $$(".r-img", box).forEach((im) => { im.dataset.o = im.getAttribute("src") || im.dataset.src || ""; });
   // muat halaman yang mendekati layar: 3 layar ke depan, 1 layar ke belakang (mode slide: 1 halaman ke kiri/kanan),
   // supaya saat digulir gambar berikutnya sudah siap tanpa jeda, tapi tetap tidak mengunduh seluruh chapter
   const loadImg = (im) => {
@@ -1128,10 +1299,10 @@ async function vReader(src, id, chId) {
   };
   let slowLogged = 0;
   // selain jarak 3 layar, 2 halaman sesudah halaman yang mulai dimuat ikut diunduh (halaman manhwa bisa sangat panjang)
-  const loadNear = (im) => { const i = Number(im.dataset.i); [i, i + 1, i + 2].forEach((k) => { const x = $(`.r-img[data-i="${k}"]`, rd); if (x?.dataset.src) { loadImg(x); lazyIo.unobserve(x); } }); };
+  const loadNear = (im) => { const i = Number(im.dataset.i); [i, i + 1, i + 2].forEach((k) => { const x = $(`.r-img[data-i="${k}"]`, box); if (x?.dataset.src) { loadImg(x); lazyIo.unobserve(x); } }); };
   const lazyIo = new IntersectionObserver((es) => es.forEach((x) => { if (x.isIntersecting) loadNear(x.target); }),
     { root: box, rootMargin: slide ? "0px 100%" : "100% 0px 300% 0px" });
-  $$(".r-img[data-src]", rd).forEach((im) => lazyIo.observe(im));
+  $$(".r-img[data-src]", box).forEach((im) => lazyIo.observe(im));
   // Tinggi sementara halaman yang belum dimuat = rasio gambar terakhir yang sudah tampil (halaman satu chapter
   // biasanya sama ukurannya), bukan 1 layar penuh. Jadi saat gambar datang, isi layar hampir tidak bergeser.
   rd.addEventListener("load", (e) => {
@@ -1164,9 +1335,10 @@ async function vReader(src, id, chId) {
   addEventListener("online", onOnline);
   // Mode fullscreen: bilah status HP mengikuti menu bacaan. Menu tampil → bilah tampil; menu hilang
   // (diketuk atau digulir) → bilah disembunyikan. Mode standar: bilah selalu tampil.
-  const syncFs = () => N.setFullscreen(choiceVal("screenMode") === "fullscreen" && !rd.classList.contains("ui"));
+  const syncFs = () => { if (leaving) return; const fs = choiceVal("screenMode") === "fullscreen"; N.setFullscreen(fs && !rd.classList.contains("ui"), fs); };
   const fsObs = new MutationObserver(syncFs);
   fsObs.observe(rd, { attributes: true, attributeFilter: ["class"] });
+  syncFs();   // langsung saat pembaca dibuka (juga pindah chapter: overlay tetap, halaman tidak melompat)
   // Di akhir chapter (pengaturan "Di akhir chapter"): "menu" = menu bacaan muncul (bawaan);
   // "auto" = hitung mundur 2 detik lalu chapter berikutnya terbuka. Batal bila petunjuk diketuk atau
   // pembaca menggulir kembali ke atas. Tidak berjalan saat chapter baru dibuka (belum digulir).
@@ -1177,11 +1349,13 @@ async function vReader(src, id, chId) {
     if (hint) { hint.hidden = true; hint.classList.remove("run"); }
   }
   function autoNextStart() {
-    if (!next || !hint || nextT || nextOff || choiceVal("chapterEnd") !== "auto" || zoom > 1.02) return;
+    const sec = Number(choiceVal("nextDelay")) || 0;
+    if (!next || !hint || nextT || nextOff || !sec || zoom > 1.02) return;
     if (!slide && box.scrollTop < 40 && curPage <= 1) return;
     hint.querySelector(".r-ntx").textContent = `Lanjut ke Chapter ${next.ch}… ketuk untuk batal`;
+    hint.style.setProperty("--nd", sec + "s");   // panjang bilah hitung mundur = jeda yang dipilih
     hint.hidden = false; hint.classList.remove("run"); void hint.offsetWidth; hint.classList.add("run");
-    nextT = setTimeout(() => { nextT = null; if (parse().name === "reader" && atEnd) goReplace(readHref(src, id, next.id)); else autoNextStop(); }, 2000);
+    nextT = setTimeout(() => { nextT = null; if (parse().name === "reader" && atEnd) goReplace(readHref(src, id, next.id)); else autoNextStop(); }, sec * 1000);
   }
   // #2 kembali ke halaman terakhir dibaca. Mode gulir: halaman sebelumnya dimuat dulu supaya posisinya tepat;
   // berhenti menyesuaikan begitu pembaca menyentuh layar.
@@ -1194,15 +1368,18 @@ async function vReader(src, id, chId) {
     // halaman sebelum posisi itu TIDAK diunduh (hemat kuota); halaman kosong punya tinggi sementara, dan
     // posisi disesuaikan lagi setiap kali gambar di sekitar tujuan selesai dimuat
     const jump = () => { if (!stop && parse().name === "reader") goPage(resumeAt); };
-    requestAnimationFrame(jump);
-    if (!slide) $$(".r-img", rd).slice(Math.max(0, resumeAt - 3), resumeAt).forEach((im) => im.addEventListener("load", jump, { once: true }));
+    // langsung (sebelum layar digambar) supaya pembaca tidak sempat tampil di halaman 1 lalu melompat;
+    // selama 2 frame pertama halaman disembunyikan sampai posisinya pasti
+    rd.classList.add("resuming"); jump();
+    requestAnimationFrame(() => { jump(); requestAnimationFrame(() => rd.classList.remove("resuming")); });
+    if (!slide) $$(".r-img", box).slice(0, resumeAt).forEach((im) => im.addEventListener("load", jump, { once: true }));   // semua halaman di atas tujuan: tingginya berubah saat termuat
     toast(`Lanjut dari halaman ${resumeAt}`, 1800);
   }
-  cleanup = () => { lazyIo.disconnect(); fsObs.disconnect(); clearTimeout(tapT); clearTimeout(nextT); cancelAnimationFrame(rafPos); endIo?.disconnect(); removeEventListener("online", onOnline); N.setFullscreen(false); S.flushHistory(); };
+  cleanup = () => { lazyIo.disconnect(); fsObs.disconnect(); clearTimeout(tapT); clearTimeout(nextT); cancelAnimationFrame(rafPos); endIo?.disconnect(); removeEventListener("online", onOnline); (parse().name === "reader" ? 0 : N.setFullscreen(false, false)); S.flushHistory(); };   // ke halaman lain: bilah status dikembalikan SEBELUM halaman baru digambar (tidak melompat setelahnya); pindah chapter: status layar tidak disentuh sama sekali sampai chapter baru tampil (dulu dilepas setelah 0,3 dtk → seluruh layar bergeser naik-turun saat chapter lambat dimuat)
   // jenis belum diketahui dari tag: periksa bentuk beberapa gambar pertama. Kebanyakan sangat tinggi
   // (tinggi > 1,8× lebar) → strip panjang manhwa/manhua: diingat, dan mode slide dialihkan ke scroll.
   if (!kind && !longStrip) {
-    const firsts = $$(".r-img", rd).slice(0, 4);
+    const firsts = $$(".r-img", box).slice(0, 4);
     const cekStrip = () => {
       const done = firsts.filter((im) => im.complete && im.naturalWidth);
       if (done.length < Math.min(2, firsts.length)) return;
@@ -1301,7 +1478,7 @@ function openPhoto() {
     ${p?.avatar_path ? `<button class="sh-row red" data-s="rm">${icon("trash", 18)}Hapus foto profil</button>` : ""}
     <button class="sh-cancel" data-s="close">Batal</button>`, async (b) => {
     if (b.dataset.s !== "rm") return;
-    if (!confirm("Hapus foto profil? Avatar kembali memakai huruf awal nama.")) return;
+    if (!(await ask("Hapus foto profil? Avatar kembali memakai huruf awal nama.", { ok: "Hapus", danger: true }))) return;
     b.disabled = true;
     try { await setAvatar(null); closeSheet(); toast("Foto profil dihapus"); if (route.name === "more") vMore(); }
     catch (e) { b.disabled = false; toast(e.message, 4500); }
@@ -1381,8 +1558,9 @@ async function refreshLatest(items) {
 const FAV_SORTS = [["update", "Update terbaru"], ["added", "Terakhir ditambah"], ["az", "Judul A-Z"], ["za", "Judul Z-A"]];
 let fav = { tab: "lib", q: "", filter: "all" };
 // perilaku tab Unduhan dilepas setiap kali Favorit digambar ulang (tidak menumpuk)
-let favDlOff = null;
-function vFav(tab) {
+let favDlOff = null, favShell = "";
+const FAV_CARDS = "<!--kartu-->";
+function vFav(tab, soft = false) {
   if (favDlOff) { favDlOff(); favDlOff = null; }
   if (tab && ["lib", "hist", "dl"].includes(tab)) fav.tab = tab;
   const grid = S.state.settings.favView === "grid";
@@ -1412,7 +1590,7 @@ function vFav(tab) {
     return `<a class="fa-row" href="${comicHref(x.source, x.comic_id)}">${cover(x.cover, x.title, "sm")}<span class="fa-mid">
       <b class="fa-t">${esc(x.title)}</b>
       <span class="fa-meta"><i class="fa-dot s-${esc(x.source)}"></i>${esc(srcName(x.source))}<span class="fa-sep">·</span>${esc(ago(x.read_at))}</span>
-      <span class="fa-meta"><b class="fa-rd">Ch. ${esc(x.chapter)}</b>${x.pages ? `<span class="fa-sep">·</span>${done ? "selesai" : `hal ${x.page || 1} / ${x.pages}`}` : ""}</span>
+      <span class="fa-meta"><b class="fa-rd">Ch. ${esc(x.chapter)}</b>${x.pages ? `<span class="fa-sep">·</span>${done ? "selesai" : `hal ${Number(x.page) || 1} / ${Number(x.pages) || 0}`}` : ""}</span>
       <span class="fa-bar"><i style="width:${pct(x.page || 1, x.pages || 0) || 4}%"></i></span>
     </span>${btn}</a>`;
   };
@@ -1431,29 +1609,49 @@ function vFav(tab) {
       <span class="fa-bar"><i style="width:${pctRead}%"></i></span>
     </span>${badge}</a>`;
   };
-  let body = "";
+  let body = "", cards = null;
   if (fav.tab === "lib") {
     body = `<div class="row g8"><label class="search box grow"><span class="mu">${icon("search", 19)}</span><span class="sr">Cari di koleksi</span><input id="fq" placeholder="Cari di koleksimu" value="${esc(fav.q)}"></label><button class="sq-btn lg" data-act="fsort" aria-label="Urutkan: ${esc(FAV_SORTS.find(([k]) => k === fs)[1])}">${icon("sort", 18, 2)}</button>${viewBtn(grid, "fview", "lg")}</div>
   ${chips([{ id: "all", name: "Semua" }, { id: "new", name: "New update" }, { id: "manga", name: "Manga" }, { id: "manhwa", name: "Manhwa" }, { id: "manhua", name: "Manhua" }], fav.filter, "ff")}
   <div class="mu xs info">${libAll.length ? `${lib.length} dari ${libAll.length} judul · ${esc(FAV_SORTS.find(([k]) => k === fs)[1])} · ${S.loggedIn() ? "tersinkron" : "tersimpan di HP ini"}` : ""}</div>
   ${!lib.length ? (libAll.length ? `<div class="empty"><b>Tidak ada yang cocok</b><span>Ubah kata kunci atau filter.</span></div>`
       : `<div class="empty"><span class="empty-ic">${icon("heart", 24)}</span><b>Koleksi masih kosong</b><span>Ketuk ikon hati di halaman komik untuk menyimpannya di sini.</span><a class="btn ghost" href="#/search">Cari komik</a></div>`)
-    : grid ? `<div class="g3 favg">${lib.map((m) => { const r = readOf(m); return `<a class="grid-card" href="${comicHref(m.source, m.comic_id)}"><span class="gc-cv">${cover(m.cover, m.title, "fav3")}
+    : grid ? `<div class="g3 favg">${FAV_CARDS}</div>`
+    : `<div class="frows">${FAV_CARDS}</div>`}`;
+    cards = grid ? lib.map((m) => { const r = readOf(m); return `<a class="grid-card" href="${comicHref(m.source, m.comic_id)}"><span class="gc-cv">${cover(m.cover, m.title, "fav3")}
         <span class="stack">${m.latest != null ? `<span class="st-red">Terbaru ${esc(m.latest)}</span>` : ""}<span class="st-dark">${r ? "Dibaca " + esc(r.chapter) : "Belum dibaca"}</span></span>
         ${isFresh(m) ? `<span class="new-up">NEW UPDATE</span>` : ""}${m.notify ? `<span class="bell-b">${icon("bellF", 12)}</span>` : ""}</span>
-        <b class="fg-t">${esc(m.title)}</b><span class="mu xs">${srcType(m)}</span></a>`; }).join("")}</div>`
-    : `<div class="frows">${lib.map(favRow).join("")}</div>`}`;
+        <b class="fg-t">${esc(m.title)}</b><span class="mu xs">${srcType(m)}</span></a>`; }) : lib.map(favRow);
   } else if (fav.tab === "hist") {
+    cards = hist.map(histRow);
     body = hist.length ? `<div class="sec-h"><span class="mu xs">Terbaru di atas</span><button class="link-red" data-act="clearHist">Bersihkan</button></div>
-  <div class="frows">${hist.map(histRow).join("")}</div>`
+  <div class="frows">${FAV_CARDS}</div>`
       : `<div class="empty"><span class="empty-ic">${icon("clock", 24)}</span><b>Belum ada riwayat</b><span>Chapter yang kamu baca akan muncul di sini.</span></div>`;
   } else {
     body = DL.favTab();
   }
-  view.innerHTML = `
+  const shell = `
 <div class="page-h"><h1>Favorit</h1>${seg([{ id: "lib", name: "Koleksi" }, { id: "hist", name: "Riwayat" }, { id: "dl", name: "Unduhan" }], fav.tab, "tab")}</div>
 ${!S.loggedIn() && fav.tab !== "dl" ? `<div class="note mx">${icon("cloud", 18)}<span>Tersimpan di HP ini saja. <a href="#/more">Masuk</a> agar tersinkron di semua perangkat.</span></div>` : ""}
 <div class="px s14">${body}</div><div class="pad-nav"></div>`;
+  // Gambar ulang karena data berubah di belakang layar (chapter terbaru tiap komik, sinkron riwayat):
+  // bila kerangka halaman sama, hanya kartu yang berubah yang diganti. Kartu lain (beserta sampulnya yang sudah
+  // termuat) dibiarkan, jadi tidak ada sampul berkedip & animasi masuk halaman tidak terulang dari awal.
+  const list = soft && cards && favShell === shell ? view.querySelector(":scope > .px > .favg, :scope > .px > .frows") : null;
+  if (list?._cards) {
+    if (list._cards.join("\n") === cards.join("\n")) return;
+    const pool = new Map();
+    [...list.children].forEach((el, i) => { const h = list._cards[i]; if (h == null) return; if (!pool.has(h)) pool.set(h, []); pool.get(h).push(el); });
+    const tp = document.createElement("template");
+    const nodes = cards.map((h) => pool.get(h)?.shift() || (tp.innerHTML = h, tp.content.firstElementChild));
+    nodes.forEach((n, i) => { if (list.children[i] !== n) list.insertBefore(n, list.children[i] || null); });
+    while (list.children.length > nodes.length) list.lastElementChild.remove();
+    list._cards = cards;
+    return;
+  }
+  favShell = shell;
+  view.innerHTML = cards ? shell.replace(FAV_CARDS, () => cards.join("")) : shell;
+  const lst = cards && view.querySelector(":scope > .px > .favg, :scope > .px > .frows"); if (lst) lst._cards = cards;
   const fq = $("#fq");
   if (fq) fq.addEventListener("input", () => { fav.q = fq.value; const pos = fq.selectionStart; vFav(); const n = $("#fq"); n.focus(); n.setSelectionRange(pos, pos); });
   setActs({
@@ -1461,7 +1659,7 @@ ${!S.loggedIn() && fav.tab !== "dl" ? `<div class="note mx">${icon("cloud", 18)}
     ff: (el) => { fav.filter = el.dataset.v; vFav(); },
     fview: () => S.setSetting("favView", grid ? "list" : "grid"),
     fsort: () => sortSheet("Urutkan koleksi", FAV_SORTS, fs, (v) => S.setSetting("favSort", v)),
-    clearHist: async () => { if (!confirm("Hapus semua riwayat baca?")) return; try { await S.clearHistory(); toast("Riwayat dibersihkan"); } catch (e) { toast(e.message); } },
+    clearHist: async () => { if (!(await ask("Hapus semua riwayat baca?", { ok: "Hapus", danger: true }))) return; try { await S.clearHistory(); toast("Riwayat dibersihkan"); } catch (e) { toast(e.message); } },
   });
   if (fav.tab === "lib" && libAll.length) refreshLatest(libAll);
   if (fav.tab === "dl") {
@@ -1482,10 +1680,11 @@ const READ_OPTS = [
 ];
 // pilihan dua mode (bawaan = yang pertama)
 const READ_CHOICES = [
+  ["autoScroll", "Gulir otomatis (mode Scroll)", [["off", "OFF", "Halaman hanya bergerak saat kamu menggulir."], ["1", "1×", "Gulir otomatis pelan. Tekan layar untuk berhenti, lepas untuk lanjut."], ["2", "2×", "Gulir otomatis sedang. Tekan layar untuk berhenti, lepas untuk lanjut."], ["3", "3×", "Gulir otomatis cepat. Tekan layar untuk berhenti, lepas untuk lanjut."]], "off"],
   ["screenMode", "Tampilan layar", [["standard", "Mode standar", "Bilah status HP tetap tampil saat membaca."], ["fullscreen", "Mode fullscreen", "Bilah status HP ikut menu bacaan: menu tampil → bilah tampil, menu hilang → bilah disembunyikan."]]],
-  ["chapterEnd", "Di akhir chapter", [["menu", "Tampilkan menu", "Menu muncul saat sampai di akhir chapter; pilih sendiri lanjut atau tidak."], ["auto", "Otomatis lanjut", "Sampai di akhir chapter, chapter berikutnya terbuka sendiri (bisa dibatalkan)."]]],
+  ["nextDelay", "Lanjut otomatis ke chapter berikutnya", [["off", "OFF", "Menu muncul di akhir chapter; pilih sendiri lanjut atau tidak."], ["1", "1 dtk", "Sampai di akhir chapter, chapter berikutnya terbuka setelah 1 detik (ketuk untuk batal)."], ["2", "2 dtk", "Sampai di akhir chapter, chapter berikutnya terbuka setelah 2 detik (ketuk untuk batal)."], ["3", "3 dtk", "Sampai di akhir chapter, chapter berikutnya terbuka setelah 3 detik (ketuk untuk batal)."], ["5", "5 dtk", "Sampai di akhir chapter, chapter berikutnya terbuka setelah 5 detik (ketuk untuk batal)."]], "3"],
 ];
-const choiceVal = (k) => { const c = READ_CHOICES.find((x) => x[0] === k); const v = S.state.settings[k]; return c[2].some((o) => o[0] === v) ? v : c[2][0][0]; };
+const choiceVal = (k) => { const c = READ_CHOICES.find((x) => x[0] === k); const v = S.state.settings[k]; return c[2].some((o) => o[0] === v) ? v : (c[3] ?? c[2][0][0]); };
 // ubah tampilan sakelar/pilihan di tempat (tanpa menggambar ulang) supaya animasinya terlihat
 const flipToggle = (el, on) => { el.setAttribute("aria-checked", String(on)); el.querySelector(".switch")?.classList.toggle("on", on); };
 const flipChoice = (el) => {
@@ -1494,7 +1693,7 @@ const flipChoice = (el) => {
   const o = READ_CHOICES.find((x) => x[0] === k)[2].find((x) => x[0] === v); const d = box.querySelector(".lh"); if (o && d) d.textContent = o[2];
 };
 // versi ringkas untuk menu ⋯ pembaca: 1 baris per pilihan, tanpa keterangan panjang
-const SHORT = { autoHide: "Sembunyikan menu otomatis", screenMode: "Layar", chapterEnd: "Akhir chapter", standard: "Standar", fullscreen: "Fullscreen", menu: "Menu", auto: "Lanjut" };
+const SHORT = { autoScroll: "Gulir otomatis", autoHide: "Sembunyikan menu otomatis", screenMode: "Layar", nextDelay: "Lanjut otomatis", standard: "Standar", fullscreen: "Fullscreen" };
 const readPrefsCompact = () => READ_OPTS.map(([k, t]) => { const on = !!S.state.settings[k]; return `<button class="mrow rq-tog" data-act="rtog" data-k="${k}" role="switch" aria-checked="${on}"><b>${SHORT[k] || t}</b><span class="switch ${on ? "on" : ""}"><span></span></span></button>`; }).join("")
   + READ_CHOICES.map(([k, t, opts]) => { const cur = choiceVal(k); return `<div class="ch-opt rq-row" data-ck="${k}"><b>${SHORT[k] || t}</b><div class="seg s2" role="tablist">${opts.map(([v, n]) => `<button role="tab" aria-selected="${v === cur}" data-act="rch" data-k="${k}" data-v="${v}" aria-label="${n}">${SHORT[v] || n}</button>`).join("")}</div></div>`; }).join("");
 const choiceRow = (k) => {
@@ -1503,6 +1702,8 @@ const choiceRow = (k) => {
 };
 const readPrefs = (act) => READ_OPTS.map(([k, t, dsc]) => toggleRow(k, t, dsc, act)).join("") + READ_CHOICES.map(([k]) => choiceRow(k)).join("");
 const toggleRow = (k, t, dsc, act = "rtog") => { const on = !!S.state.settings[k]; return `<button class="mrow" data-act="${act}" data-k="${k}" role="switch" aria-checked="${on}"><span class="rc-mid"><b>${t}</b><span class="mu sm">${dsc}</span></span><span class="switch ${on ? "on" : ""}"><span></span></span></button>`; };
+// bar unduhan di baris "Unduhan" (Lainnya): terbuka saat ada unduhan berjalan, garis berkilau saat aktif, abu-abu saat dijeda
+const dlBar = (a) => `<span class="dl-mbar${a ? " on" : ""}${a?.paused ? " pz" : ""}" id="dlmbar" aria-hidden="true"><i style="width:${a ? Math.max(3, a.pct).toFixed(1) : 0}%"></i></span>`;
 const group = (t, inner) => `<section class="sec s20"><h2 class="cap">${t}</h2><div class="group">${inner}</div></section>`;
 // bingkai avatar kosmik dari prototipe (dimuat sekali saat dibutuhkan); cadangan: cincin warna sederhana
 let AVM = null;
@@ -1535,8 +1736,7 @@ ${!api.configured ? `<div class="note warn mx">${icon("info", 18)}<span>Aplikasi
 ${user ? `<button class="me mx" data-act="level">${avatarHtml(p, lv)}
     <span class="rc-mid g5"><span class="me-name"><b class="t1">${esc(p?.name || "Memuat…")}</b>${badges(p)}</span>
       <span class="row g8 mu sm">${rankPill(lv)}Lv ${lv.lv}${lv.max ? " · level maksimal" : ` · ${(lv.need - lv.cur).toLocaleString("id-ID")} EXP lagi ke Lv ${lv.lv + 1}`}</span>
-      <span class="prog"><span style="width:${lv.max ? 100 : pct(lv.cur, lv.need)}%"></span></span></span><span class="mu">${icon("chev", 18)}</span></button>
-  ${group("Akun", mrow("img", "Foto profil", p?.avatar_path ? "Ketuk untuk mengganti · maks 10 MB" : "Belum ada · ketuk untuk menambah (maks 10 MB)", "photo") + mrow("user", "Nama tampilan", esc(p?.name || ""), "goName") + mrow("msg", "Email", esc(user.email || ""), "goEmail") + mrow("key", "Ganti password", "", "goPass") + mrow("out", "Keluar", "", "logout", { danger: true }))}`
+      <span class="prog"><span style="width:${lv.max ? 100 : pct(lv.cur, lv.need)}%"></span></span></span><span class="mu">${icon("chev", 18)}</span></button>`
   : `<div class="guest mx">${avatarHtml(null, S.levelOf(null), 56, { ini: "T", noMedal: true })}<span class="rc-mid g4"><b class="b16">Tamu</b><span class="mu sm">Belum masuk · level, rank, dan koleksi belum tersimpan di akun</span></span></div>
   <div class="auth mx"><b class="b17">${authMode === "up" ? "Daftar akun Ninokuu" : authMode === "reset" ? "Lupa password" : "Masuk ke Ninokuu"}</b>
     <span class="mu sm">${authMode === "reset" ? "Kami kirim link ke emailmu untuk membuat password baru." : "Masuk agar koleksi, riwayat baca, dan pengaturan tersinkron di semua perangkatmu."}</span>
@@ -1548,21 +1748,18 @@ ${user ? `<button class="me mx" data-act="level">${avatarHtml(p, lv)}
       <button class="btn primary" type="submit" ${api.configured ? "" : "disabled"}>${authMode === "up" ? "Daftar" : authMode === "reset" ? "Kirim link" : "Masuk"}</button>
     </form>
     ${authMode === "in" ? `<button class="btn ghost" data-act="auth" data-v="up">Belum punya akun? Daftar</button><button class="link" data-act="auth" data-v="reset">Lupa password?</button>` : `<button class="btn ghost" data-act="auth" data-v="in">Sudah punya akun? Masuk</button>`}</div>`}
+${user ? group("Akun", mrow("user", "Akun", "Foto profil · nama tampilan · email · password", "akun")) : ""}
 ${["developer", "moderator"].includes(p?.role) ? group("Developer", mrow("dev", "Panel developer", p.role === "developer" ? "Moderasi, pengumuman, statistik" : "Moderasi chat", "dev")) : ""}
-${group("Bacaanmu", mrow("star", "Level &amp; Rank", user ? `${lv.rank} · Lv ${lv.lv}${X.cachedStatus() ? ` · 🔥 ${X.cachedStatus().streak} hari` : ""}` : "Masuk untuk mulai naik level", "level") + (user ? mrow("share", "Rekap bacaan", "7 & 30 hari · bagikan sebagai gambar", "recap") : "") + mrow("down", "Unduhan", DL.supported() ? `<span id="dlsub">${DL.savedCount()} file tersimpan${DL.progressLine() ? " · " + esc(DL.progressLine()) : ""}</span>` : "Baca offline di aplikasi APK", "dlrow") + mrow("clock", "Riwayat baca", `${S.history().length} judul`, "goHist") + mrow("sliders", "Pengaturan", "Mode efek avatar · tampilan layar & akhir chapter saat membaca", "settings"))}
-<section class="sec s20"><h2 class="cap">Pengalaman baca</h2><div class="card col g12"><span class="b145">Mode baca</span>
-  ${seg([{ id: "scroll", name: "Scroll (webtoon)" }, { id: "slide", name: "Slide (halaman)" }], st.readMode, "rmode", "s2")}
-  ${st.readMode === "slide" ? `<span class="mu sm">Arah geser</span>${seg([{ id: "rtl", name: "Kanan ke kiri" }, { id: "ltr", name: "Kiri ke kanan" }], st.readDir === "ltr" ? "ltr" : "rtl", "dir", "s2")}` : ""}
-  <span class="mu xs lh">${st.readMode === "slide" ? "Geser per halaman. Kanan ke kiri cocok untuk manga Jepang." : "Gulir ke bawah, halaman tersambung. Cocok untuk manhwa dan manhua."}</span></div></section>
+${group("Bacaanmu", mrow("star", "Level &amp; Rank", user ? `${lv.rank} · Lv ${lv.lv}${X.cachedStatus() ? ` · 🔥 ${X.cachedStatus().streak} hari` : ""}` : "Masuk untuk mulai naik level", "level") + (user ? mrow("share", "Rekap bacaan", "7 & 30 hari · bagikan sebagai gambar", "recap") : "") + mrow("down", "Unduhan", DL.supported() ? `<span id="dlsub">${DL.savedCount()} file tersimpan${DL.progressLine() ? " · " + esc(DL.progressLine()) : ""}</span>${dlBar(DL.active())}` : "Baca offline di aplikasi APK", "dlrow") + mrow("clock", "Riwayat baca", `${S.history().length} judul`, "goHist") + mrow("sliders", "Pengaturan", "Mode baca · gulir otomatis · tampilan layar · efek avatar", "settings"))}
 ${N.DEV ? group("Ninokuu Dev", mrow("bug", "Log error", `${N.devLog().length} catatan · salin & kirim ke developer`, "devlog") + mrow("info", "Build uji", `v${esc(VERSION)} · build ${esc(N.BUILD)} · function ${esc(api.FN.split("/").pop())}`, "")) : ""}
 ${N.isApp ? group("Aplikasi", `<span id="updrow"></span>` + (N.pushSupported() || !N.DEV ? mrow("bell", "Notifikasi HP", `<span id="pushst">Memeriksa…</span>`, "pushset") : mrow("bell", "Notifikasi HP", "Belum aktif di Ninokuu Dev (paket .dev belum didaftarkan di Firebase)", "")) + mrow("info", "Versi aplikasi", `v${esc(VERSION)}${N.DEV ? " Dev" : ""} · ketuk untuk cek pembaruan`, "checkupd"))
   : group("Aplikasi Android", mrow("down", "Pasang aplikasi Android (APK)", "Baca Shinigami &amp; WestManga, notifikasi chapter baru di HP", "getapk"))}
-${group("Data &amp; penyimpanan", mrow("cloud", "Backup data offline", "Simpan koleksi, riwayat, dan pengaturan ke file", "backup") + mrow("restore", "Pulihkan data", "Dari file backup", "restore") + mrow("trash", "Bersihkan cache", "Gambar sampul &amp; halaman yang tersimpan", "cache"))}
+${group("Data &amp; penyimpanan", mrow("cloud", "Backup data offline", "Simpan koleksi, riwayat, dan pengaturan ke file", "backup") + mrow("restore", "Pulihkan data", "Dari file backup", "restore") + mrow("trash", "Bersihkan cache", `<span id="cachesub">Menghitung cache di HP…</span>`, "cache"))}
 <section class="sec s20"><button class="tk-card" data-act="trakteer" aria-label="Dukung Ninokuu di Trakteer">
   <span class="tk-ic">${icon("gift", 26, 2)}</span>
   <span class="tk-t"><b>Traktir Ninokuu</b><span>Gratis &amp; tanpa iklan berkat dukunganmu. Kirim hadiah kecil lewat Trakteer.</span></span>
   <span class="tk-go">${icon("chev", 18, 2.4)}</span></button></section>
-${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord Ninokuu", "discord") + mrow("star", "Yang baru di versi ini", `Fitur baru &amp; panduan bergambar v${esc(VERSION)}`, "whatsnew") + mrow("info", "Tentang aplikasi", "Versi " + esc(VERSION), "about") + mrow("shield", "Kebijakan privasi", "", "privacy") + mrow("doc", "Ketentuan pengguna", "", "terms"))}
+${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord Ninokuu", "discord") + mrow("star", "Yang baru di versi ini", `Fitur baru &amp; panduan bergambar v${esc(VERSION)}`, "whatsnew") + mrow("info", "Tentang aplikasi", "Versi " + esc(VERSION), "about") + mrow("shield", "Kebijakan privasi", "", "privacy") + mrow("doc", "Ketentuan pengguna", "", "terms") + (user ? mrow("out", "Keluar", "", "logout", { danger: true }) : ""))}
 <p class="mu xs center mt18">Ninokuu versi ${esc(VERSION)}</p><div class="pad-nav"></div>`;
   if (N.isApp) {
     refreshPushStatus();
@@ -1584,6 +1781,7 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
       if (N.pushSupported()) N.pushEnable(api.rpc, true).then(() => { if (route.name === "more") vMore(); }).catch(() => {});
     } catch (ex) { err.textContent = ex.message; btn.disabled = false; }
   });
+  N.cacheSize().then((b) => { const el = $("#cachesub"); if (el && route.name === "more") el.textContent = b ? `±${N.fmtBytes(b)} di HP · gambar sampul & halaman` : "Cache kosong"; }).catch(() => {});
   if (user && !X.cachedStatus()) X.loadStatus().then((ds) => { const el = $("button.mrow[data-act=level] .mu.sm"); if (ds && el && route.name === "more" && !el.textContent.includes("🔥")) el.textContent += ` · 🔥 ${ds.streak} hari`; });
   setActs({
     auth: (el) => { authMode = el.dataset.v; vMore(); },
@@ -1596,7 +1794,7 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
     update: () => checkUpdate(true),
     checkupd: () => checkUpdate(true),
     devlog: () => openDevLog(),
-    settings: () => go("#/p/settings"),
+    settings: () => go("#/p/settings"), akun: () => go("#/p/akun"),
     pushset: async () => {
       if (!user) { toast("Masuk dulu supaya notifikasi bisa dikirim ke HP ini."); return; }
       try {
@@ -1616,14 +1814,19 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
       } catch (e) { showPush("error"); toast("Pendaftaran notifikasi gagal: " + e.message, 5000); }
     },
     discord: () => soon("Server Discord Ninokuu sedang disiapkan."), trakteer: () => openTrakteer(),
-    rmode: (el) => { S.setSetting("readMode", el.dataset.v); vMore(); },
-    dir: (el) => { S.setSetting("readDir", el.dataset.v); vMore(); },
-    logout: async () => { if (!confirm("Keluar dari akun? Koleksi dan riwayatmu tetap aman di server.")) return; await S.flushHistory(); await api.signOut(); S.clearUserData(); toast("Kamu sudah keluar"); vMore(); },
+    logout: async () => { if (!(await ask("Keluar dari akun? Koleksi dan riwayatmu tetap aman di server.", { ok: "Keluar", danger: true }))) return; await S.flushHistory(); await N.pushRelease(api.rest).catch(() => {}); await api.signOut(); S.clearUserData(); toast("Kamu sudah keluar"); vMore(); },
     cache: async () => {
-      if ("caches" in window) { const keys = await caches.keys(); await Promise.all(keys.filter((k) => k.startsWith("ninokuu-img")).map((k) => caches.delete(k))); }
-      try { Object.keys(sessionStorage).filter((k) => k.startsWith("ninokuu:d:")).forEach((k) => sessionStorage.removeItem(k)); } catch {}
+      const c = await N.cacheParts().catch(() => ({ images: 0, data: 0, total: 0 }));
+      if (!c.total) { toast("Cache sudah bersih"); return; }
+      const html = `<div class="cc-big"><b>±${esc(N.fmtBytes(c.total))}</b><span>perkiraan cache di HP</span></div>
+        <div class="cc-rows"><span>${icon("img", 15)}Gambar sampul &amp; halaman<b>${esc(N.fmtBytes(c.images))}</b></span>${c.data ? `<span>${icon("doc", 15)}Data info komik<b>${esc(N.fmtBytes(c.data))}</b></span>` : ""}</div>
+        <span class="cc-note">${icon("shield", 14)}Koleksi, riwayat &amp; unduhan tetap aman</span>`;
+      if (!(await ask("", { title: "Bersihkan cache?", html, ok: "Bersihkan", danger: true }))) return;
+      const sub = $("#cachesub"); if (sub) sub.textContent = "Membersihkan…";
+      const r = await N.cacheClear().catch(() => ({ freed: 0, after: 0 }));
       detailCache.clear(); browseCache.clear();
-      toast("Cache dibersihkan");
+      if (sub) sub.textContent = r.after ? `±${N.fmtBytes(r.after)} di HP · gambar sampul & halaman` : "Cache kosong";
+      toast(r.freed > 0 ? `${N.fmtBytes(r.freed)} cache dihapus` : "Cache sudah bersih", 3000);
     },
   });
 }
@@ -1742,10 +1945,10 @@ function openDevLog() {
 // jadi pengguna tidak perlu menutup-buka aplikasi. Sedang membaca → spanduk kecil di atas (tidak menutupi halaman);
 // di halaman lain → lembar pembaruan. Tiap versi hanya diumumkan sekali per sesi (dan tidak lagi bila dipilih "Nanti").
 let updLast = 0, updShown = "";
-async function checkUpdate(manual) {
+async function checkUpdate(manual, fresh = false) {
   if (manual) toast("Memeriksa pembaruan…", 1500);
   updLast = Date.now();
-  const r = await N.latestBuild(manual);
+  const r = await N.latestBuild(manual || fresh);
   if (!r) { if (manual) toast("Tidak bisa memeriksa pembaruan. Periksa koneksi internet."); return; }
   if (r.newer) {
     const key = String(r.version || r.build);
@@ -1779,9 +1982,9 @@ function startApp() {
   document.body.classList.add("is-app");
   N.onKeyboard(setKeyboard);
   N.onPushReceived(() => refreshDots());
-  setTimeout(() => checkUpdate(false), 2500);
+  setTimeout(() => checkUpdate(false, true), 2500);              // aplikasi dibuka: selalu cek baru (tanpa simpanan)
   setInterval(updTick, 60e3);                                   // tiap menit dicek apakah sudah 15 menit sejak cek terakhir
-  N.onResume(() => { if (Date.now() - updLast > 5 * 60e3) setTimeout(() => checkUpdate(false), 1200); });
+  N.onResume(() => { if (Date.now() - updLast > 5 * 60e3) setTimeout(() => checkUpdate(false, true), 1200); });
   N.onPushOpen((h) => go(h));
   N.onUrlOpen((h, why) => {
     go(h);
@@ -1792,6 +1995,7 @@ function startApp() {
   N.onBack((exit) => {
     const ae = document.activeElement;
     if (ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName) && document.body.classList.contains("chfoc")) { ae.blur(); return; }
+    if (closeAsk()) return;   // dialog konfirmasi terbuka → tombol kembali = Batal
     const flt = $(".flt-host [data-f=close]"); if (flt) { flt.click(); return; }
     if (sheetEl) { closeSheet(); return; }
     if (document.getElementById("notif")) { closeNotif(); return; }
@@ -1800,6 +2004,7 @@ function startApp() {
     const chs = $(".chs-host [data-x=close]"); if (chs) { chs.click(); return; }
     const ip = $(".img-prev"); if (ip) { ip.click(); return; }
     if (X.closeDaily()) return;
+    if (route.name === "reader" && acts.back) { acts.back(); return; }   // pembaca: bar meluncur keluar dulu
     // sama seperti prototipe: halaman dalam → mundur; tab lain → Beranda; Beranda → tekan sekali lagi untuk keluar
     if (!["home", "search", "fav", "more"].includes(route.name)) { if (navIdx > 0) history.back(); else goReplace("#/home"); return; }
     if (route.name !== "home") { goReplace("#/home"); return; }
@@ -1873,17 +2078,33 @@ async function vPage(name) {
   } else if (name === "restore") {
     html = topbar("Pulihkan data") + `<div class="px col g14 mt6"><p class="mu sm lh m0">Pilih file backup (.json) dari HP. Data di file digabung dengan data yang sudah ada; judul yang sama tidak terduplikat.</p>
   <label class="btn primary">${icon("restore", 18, 2)}Pilih file backup<input type="file" accept="application/json,.json" id="rf" hidden></label><span class="err" id="perr"></span></div>`;
+  } else if (name === "akun") {
+    // Akun: foto profil, nama tampilan, email, password (sama seperti halaman Pengaturan)
+    const user = api.currentUser();
+    if (!user) { go("#/more"); return; }
+    const pr = S.state.profile;
+    view.innerHTML = topbar("Akun") + `<div class="px col g14 mt6">
+  <section class="sec"><h2 class="cap">Profil</h2><div class="group">${mrow("img", "Foto profil", pr?.avatar_path ? "Ketuk untuk mengganti · maks 10 MB" : "Belum ada · ketuk untuk menambah (maks 10 MB)", "photo") + mrow("user", "Nama tampilan", esc(pr?.name || ""), "goName")}</div></section>
+  <section class="sec"><h2 class="cap">Masuk &amp; keamanan</h2><div class="group">${mrow("msg", "Email", esc(user.email || ""), "goEmail") + mrow("key", "Ganti password", "", "goPass")}</div></section></div><div class="pad-nav"></div>`;
+    setActs({ back: () => back("#/more"), photo: () => openPhoto(), goName: () => go("#/p/name"), goEmail: () => go("#/p/email"), goPass: () => go("#/p/pass") });
+    return;
   } else if (name === "settings") {
     // Pengaturan: tampilan & perilaku saat membaca (pilihan bacaan juga ada di menu ⋯ pembaca)
     const draw = () => {
+      const st = S.state.settings;
       view.innerHTML = topbar("Pengaturan") + `<div class="px col g14 mt6">
+  <section class="sec"><h2 class="cap">Mode baca</h2><div class="card col g12">
+  ${seg([{ id: "scroll", name: "Scroll (webtoon)" }, { id: "slide", name: "Slide (halaman)" }], st.readMode, "rmode", "s2")}
+  ${st.readMode === "slide" ? `<span class="mu sm">Arah geser</span>${seg([{ id: "rtl", name: "Kanan ke kiri" }, { id: "ltr", name: "Kiri ke kanan" }], st.readDir === "ltr" ? "ltr" : "rtl", "dir", "s2")}` : ""}
+  <span class="mu xs lh">${st.readMode === "slide" ? "Geser per halaman. Kanan ke kiri cocok untuk manga Jepang. Manhwa/manhua tetap dibaca dengan Scroll." : "Gulir ke bawah, halaman tersambung. Cocok untuk manhwa dan manhua."}</span></div></section>
   <section class="sec"><h2 class="cap">Tampilan</h2><div class="card col g12"><span class="b145">Mode efek avatar</span>
     ${seg([{ id: "Ringan", name: "Ringan" }, { id: "Normal", name: "Normal" }], S.state.settings.gfx || "Normal", "gfx", "s2")}
     <span class="mu xs lh">${(S.state.settings.gfx || "Normal") === "Ringan" ? "Partikel dikurangi; komet, aurora, dan awan nebula dimatikan. Hemat baterai, cocok untuk HP spek rendah." : "Bingkai avatar kosmik penuh dengan partikel dan animasi."}</span></div></section>
   <section class="sec"><h2 class="cap">Bacaan</h2><div class="group" id="setRead">${readPrefs("rtog")}</div></section></div><div class="pad-nav"></div>`;
     };
     draw();
-    setActs({ back: () => back("#/more"), gfx: (el) => { S.setSetting("gfx", el.dataset.v); applyGfx(); draw(); }, rtog: (el) => { const on = !S.state.settings[el.dataset.k]; S.setSetting(el.dataset.k, on); flipToggle(el, on); }, rch: (el) => { S.setSetting(el.dataset.k, el.dataset.v); flipChoice(el); } });
+    setActs({ back: () => back("#/more"), gfx: (el) => { S.setSetting("gfx", el.dataset.v); applyGfx(); draw(); },
+      rmode: (el) => { S.setSetting("readMode", el.dataset.v); draw(); }, dir: (el) => { S.setSetting("readDir", el.dataset.v); draw(); }, rtog: (el) => { const on = !S.state.settings[el.dataset.k]; S.setSetting(el.dataset.k, on); flipToggle(el, on); }, rch: (el) => { S.setSetting(el.dataset.k, el.dataset.v); flipChoice(el); } });
     return;
   } else if (name === "about") {
     html = topbar("Tentang aplikasi") + `<div class="px col g14 mt10"><div class="card col center g10 big-card"><img src="icons/logo.png" alt="Ninokuu" class="about-logo">
@@ -1910,12 +2131,24 @@ async function vPage(name) {
     try {
       const j = JSON.parse(await file.text());
       if (j?.app !== "ninokuu") throw new Error("Ini bukan file backup Ninokuu.");
+      // isi backup tidak dipercaya: hanya sumber yang dikenal, field dari daftar putih, string dipotong, angka dipaksa bulat
+      const str = (v, n) => (typeof v === "string" ? v.slice(0, n) : "");
+      const int = (v) => { const x = Math.trunc(Number(v)); return Number.isFinite(x) && x > 0 ? Math.min(x, 10000) : 0; };
+      const okKey = (x) => !!x && SRC_IDS.includes(x.source) && typeof x.comic_id === "string" && x.comic_id.length > 0 && x.comic_id.length <= 300;
       let added = 0;
-      for (const m of j.lib || []) if (m?.source && m?.comic_id && m?.title && !S.inLib(m.source, m.comic_id)) { await S.toggleLib(m).catch(() => {}); added++; }
-      for (const h of j.hist || []) if (h?.source && h?.comic_id && !S.histItem(h.source, h.comic_id)) S.saveHistory(h);
+      for (const m of Array.isArray(j.lib) ? j.lib : []) {
+        if (!okKey(m) || typeof m.title !== "string" || !m.title) continue;
+        const row = { source: m.source, comic_id: m.comic_id, title: str(m.title, 300), cover: str(m.cover, 1000) };
+        if (!S.inLib(row.source, row.comic_id)) { await S.toggleLib(row).catch(() => {}); added++; }
+      }
+      for (const h of Array.isArray(j.hist) ? j.hist : []) {
+        if (!okKey(h) || S.histItem(h.source, h.comic_id)) continue;
+        S.saveHistory({ source: h.source, comic_id: h.comic_id, title: str(h.title, 300), cover: str(h.cover, 1000), type: str(h.type, 20),
+          chapter: str(h.chapter, 40), chapter_id: str(h.chapter_id, 300), page: int(h.page), pages: int(h.pages) });
+      }
       if (j.settings && typeof j.settings === "object") ["readMode", "readDir", "updView", "searchView", "favView", "gfx", "favSort"].forEach((k) => { if (typeof j.settings[k] === "string") S.setSetting(k, j.settings[k]); });
         ["autoHide"].forEach((k) => { if (typeof j.settings[k] === "boolean") S.setSetting(k, j.settings[k]); });
-        ["screenMode", "chapterEnd"].forEach((k) => { if (typeof j.settings[k] === "string") S.setSetting(k, j.settings[k]); });
+        ["screenMode", "nextDelay"].forEach((k) => { if (typeof j.settings[k] === "string") S.setSetting(k, j.settings[k]); });
       toast(`Data dipulihkan · ${added} judul baru di koleksi`, 3500); go("#/fav");
     } catch (ex) { $("#perr").textContent = ex.message || "File tidak bisa dibaca."; }
   });
@@ -1948,9 +2181,19 @@ screen.orientation?.addEventListener?.("change", checkOrientation);
 window.addEventListener("orientationchange", () => setTimeout(checkOrientation, 50));
 let oriT = 0; window.addEventListener("resize", () => { clearTimeout(oriT); oriT = setTimeout(() => { if (!kbOpen) checkOrientation(); }, 120); });
 
-api.onAuth((s) => { if (!s) S.clearUserData(); });
+// Data lokal dibersihkan saat keluar, dan juga saat akun berganti TANPA keluar (mis. sesi diganti oleh tautan #access_token):
+// tanpa ini, syncAfterLogin() akan mengunggah koleksi/riwayat akun lama ke akun yang baru.
+// Tamu → masuk (uid null → akun) tetap menggabungkan data tamu seperti biasa.
+let authUid = api.userId();
+api.onAuth((s) => {
+  const uid = s?.user?.id || null;
+  if (!s || (authUid && uid && uid !== authUid)) S.clearUserData();
+  authUid = uid;
+});
 if (S.loggedIn()) { S.loadProfile().catch(() => {}); S.pull().catch(() => {}); }
-S.subscribe(() => { if (route.name === "fav" && !document.activeElement?.matches?.("#fq")) vFav(); });
+// perubahan data beruntun (mis. 12 komik dicek chapter terbarunya) digabung jadi 1 gambar ulang per frame
+let favSubRaf = 0;
+S.subscribe(() => { if (route.name !== "fav" || favSubRaf) return; favSubRaf = requestAnimationFrame(() => { favSubRaf = 0; if (route.name === "fav" && !document.activeElement?.matches?.("#fq")) vFav(undefined, true); }); });
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") S.flushHistory(); });
 // Android WebView kadang tidak menggambar ulang area gulir (halaman komik) setelah aplikasi dibuka lagi dari
 // latar belakang: layar gelap kosong sampai digeser. Geser 1 px lalu kembalikan untuk memaksa gambar ulang.
@@ -1990,7 +2233,13 @@ if (!N.isApp && "serviceWorker" in navigator && location.protocol === "https:") 
   X.startDaily();
   DL.start();
   // progres unduhan di baris "Unduhan" halaman Lainnya
-  window.addEventListener("nk:dl", () => { const el = document.getElementById("dlsub"); if (el) { const pl = DL.progressLine(); el.textContent = `${DL.savedCount()} file tersimpan${pl ? " · " + pl : ""}`; } });
+  window.addEventListener("nk:dl", () => {
+    const el = document.getElementById("dlsub"); if (!el) return;
+    const pl = DL.progressLine(); el.textContent = `${DL.savedCount()} file tersimpan${pl ? " · " + pl : ""}`;
+    const a = DL.active(), bar = document.getElementById("dlmbar"); if (!bar) return;
+    bar.classList.toggle("on", !!a); bar.classList.toggle("pz", !!a?.paused);
+    if (a) bar.firstElementChild.style.width = Math.max(3, a.pct).toFixed(1) + "%";
+  });
   // bingkai avatar (berkas besar) dimuat di latar belakang agar menu Lainnya langsung tampil
   setTimeout(() => (window.requestIdleCallback || setTimeout)(() => loadAvatars()), 1200);
 })();

@@ -38,6 +38,16 @@ export const toNum = (v) => {
   const n = mul > 1 ? parseFloat(m[1].replace(",", ".")) : parseFloat(m[1].replace(/[.,](?=\d{3}(\D|$))/g, "").replace(",", "."));
   return Number.isFinite(n) ? Math.round(n * mul) : null;
 };
+// skor/rating komik dari sumber (skala 10); sama dengan Edge Function
+export const toScore = (v) => {
+  if (v && typeof v === "object") v = v.average ?? v.avg ?? v.value ?? v.score;
+  const n = typeof v === "number" ? v : parseFloat(String(v ?? "").trim().replace(",", "."));
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const x = n <= 10 ? n : n <= 100 ? n / 10 : NaN;
+  return Number.isFinite(x) ? Math.round(x * 10) / 10 : null;
+};
+const SCORE_KEYS = ["user_rate", "rating", "score", "rate", "rating_avg", "avg_rating", "average_rating", "rating_value", "ratingValue", "star", "stars"];
+const pickScore = (...objs) => { for (const o of objs) if (o && typeof o === "object") for (const k of SCORE_KEYS) { const n = toScore(o[k]); if (n != null) return n; } return null; };
 const VIEW_KEYS = ["view_count", "views_count", "total_views", "total_view", "views", "view", "viewer", "viewers", "read_count", "total_read", "readers", "post_views", "hits"];
 const pickViews = (...objs) => {
   for (const o of objs) if (o && typeof o === "object") for (const k of VIEW_KEYS) { const n = toNum(o[k]); if (n != null && n > 0) return n; }
@@ -110,10 +120,12 @@ export async function imgFallback(im) {
 
 // gambar yang menolak dimuat langsung oleh WebView (mis. butuh Referer) → ambil lewat jaringan HP
 const blobUrls = new Map();
+export const blobFor = (u) => blobUrls.get(u) || "";
 export async function imageViaNative(url, referer) {
   if (blobUrls.has(url)) return blobUrls.get(url);
   const r = await nget(url, { type: "arraybuffer", headers: referer ? { Referer: referer } : {} });
   const u = URL.createObjectURL(new Blob([r.bytes], { type: r.type }));
+  blobBytes += r.bytes?.byteLength || 0;
   if (blobUrls.size > 300) { const [k, v] = blobUrls.entries().next().value; URL.revokeObjectURL(v); blobUrls.delete(k); }
   blobUrls.set(url, u);
   return u;
@@ -162,7 +174,7 @@ const SHNG = (() => {
       return { ok: true, manga: { id, title: String(d.title || ""), cover: coverOf(d), desc: String(d.description || "").trim(), status: STATUS[Number(d.status)] || normStatus(d.status_name || d.status_label || d.status),
         tags: [...(tax.Genre || []), ...(tax.Format || [])].map((x) => x?.name).filter(Boolean).slice(0, 8),
         author: (tax.Author || []).map((x) => x?.name).filter(Boolean).join(", "), url: `${SITE}/series/${id}`,
-        views: pickViews(d, d.stats, d.statistic), publisher: pickPublisher(tax) || pickPublisher(d) }, chapters: chs };
+        views: pickViews(d, d.stats, d.statistic), score: pickScore(d, d.stats, d.statistic), publisher: pickPublisher(tax) || pickPublisher(d) }, chapters: chs };
     },
     async pages(b) {
       const d = (await get(`/v1/chapter/detail/${encodeURIComponent(b.chapter_id)}`))?.data;
@@ -227,7 +239,7 @@ const WEST = (() => {
       tmp.innerHTML = String(d.sinopsis || "").replace(/<\/p>\s*<p[^>]*>/gi, "\n\n").replace(/<br\s*\/?>/gi, "\n");
       return { ok: true, manga: { id: String(d.slug), title: String(d.title || d.slug), cover: abs(d.cover), desc: (tmp.textContent || "").trim(),
         tags: [...(type ? [type[0].toUpperCase() + type.slice(1)] : []), ...(d.genres || []).map((g) => g?.name).filter(Boolean)].slice(0, 8),
-        status: normStatus(d.status), views: pickViews(d, d.stats), publisher: pickPublisher(d),
+        status: normStatus(d.status), views: pickViews(d, d.stats), score: pickScore(d, d.stats), publisher: pickPublisher(d),
         author: String(d.author || ""), url: `${base}/comic/${d.slug}` }, chapters: (d.chapters || []).filter((c) => c?.slug).map(mapCh) };
     },
     async pages(b) {
@@ -244,13 +256,104 @@ const WEST = (() => {
   };
 })();
 
+/* ---------- Komiku (HTML; cadangan bila Cloudflare Komiku menolak server) ---------- */
+// Komiku biasanya lewat server. Bila server ditolak Cloudflare (blocked), APK mengambil halamannya sendiri lewat
+// jaringan HP selama 30 menit, lalu mencoba server lagi.
+const KOMI = (() => {
+  const SITE = "https://komiku.org", API = "https://api.komiku.org";
+  const okHost = (u) => /(^|\.)komiku\.(org|to|id)$/.test(hostOf(u));
+  const html = async (u) => new DOMParser().parseFromString(await nget(u, { type: "text", headers: { Accept: "text/html,application/xhtml+xml,*/*;q=0.8", Referer: SITE + "/", "Sec-Fetch-Dest": "document", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Site": "same-origin" } }), "text/html");
+  const txt = (el) => (el?.textContent || "").replace(/\s+/g, " ").trim();
+  const absU = (v, base) => { try { return new URL(v, base).href; } catch { return ""; } };
+  const imgOf = (im, base) => { if (!im) return ""; for (const a of ["data-lazy-src", "data-src", "data-cfsrc", "data-original", "src"]) { const v = im.getAttribute(a); if (v && !/^data:/i.test(v) && !/\.(svg|gif)(\?|$)/i.test(v)) return absU(v, base); } return ""; };
+  const cover = (c, w) => { try { const u = new URL(c); const m = u.hostname.match(/^(thumbnail|img|cover)\.komiku\.([a-z]+)$/i); if (m) u.hostname = `${m[1].toLowerCase()}.komiku.org`; if (/^thumbnail\.komiku\./i.test(u.hostname)) { u.search = ""; u.searchParams.set("w", String(w)); } return u.href; } catch { return c; } };
+  const chNum = (name, url) => { const m = name.match(/(?:chapter|chap|ch\.?|bab|episode|ep\.?)\s*[-:#]?\s*(\d+(?:[.,]\d+)?)/i) || url.match(/(?:chapter|ch|bab|episode|ep)[-_]?(\d+(?:[-.]\d+)?)\/?$/i) || name.match(/(\d+(?:\.\d+)?)/); return m ? m[1].replace(/[,-]/, ".").replace(/^0+(?=\d)/, "") : null; };
+  const chTitle = (name) => (name.match(/^\s*(?:chapter|chap|ch\.?|bab|episode|ep\.?)?\s*[\d.,]+\s*[-–:]\s*(.+)$/i)?.[1] || "").trim();
+  const MON = { jan: 0, feb: 1, mar: 2, apr: 3, mei: 4, may: 4, jun: 5, jul: 6, agu: 7, agt: 7, aug: 7, sep: 8, okt: 9, oct: 9, nov: 10, des: 11, dec: 11 };
+  const date = (s) => {
+    const t = s.trim().toLowerCase(); let m;
+    if ((m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/))) return new Date(Date.UTC(+m[3], +m[2] - 1, +m[1])).toISOString();
+    if ((m = t.match(/(\d+)\s*(detik|menit|jam|hari|minggu|bulan|tahun)/))) return new Date(Date.now() - +m[1] * { detik: 1e3, menit: 6e4, jam: 36e5, hari: 864e5, minggu: 6048e5, bulan: 2592e6, tahun: 31536e6 }[m[2]]).toISOString();
+    if ((m = t.match(/(\d{1,2})\s+([a-z]{3})[a-z]*\.?,?\s+(\d{4})/)) && m[2] in MON) return new Date(Date.UTC(+m[3], MON[m[2]], +m[1])).toISOString();
+    const p = Date.parse(t); return isNaN(p) ? null : new Date(p).toISOString();
+  };
+  async function srcPage(sp, b) {
+    const u = new URL(API + "/manga/" + (sp > 1 ? `page/${sp}/` : ""));
+    if (b.q) u.searchParams.set("s", b.q);
+    u.searchParams.set("orderby", b.sort === "popular" ? "meta_value_num" : "modified");
+    if (b.type) u.searchParams.set("tipe", b.type);
+    const g = b.genres || [];
+    if (g[0]) u.searchParams.set("genre", g[0]);
+    if (g[1]) u.searchParams.set("genre2", g[1]);
+    if (b.status === "ongoing" || b.status === "completed") u.searchParams.set("statusmanga", b.status === "ongoing" ? "ongoing" : "end");
+    const d = await html(u.href), items = [];
+    for (const el of d.querySelectorAll(".bge")) {
+      const title = txt(el.querySelector("h3")), a = [...el.querySelectorAll("a[href]")].find((x) => x.querySelector("h3"));
+      if (!a || !title) continue;
+      const tp = (txt(el.querySelector(".tpe1_inf")).match(/\b(manga|manhwa|manhua)\b/i)?.[1] || b.type || "").toLowerCase();
+      items.push({ id: absU(a.getAttribute("href"), SITE), title, cover: cover(imgOf(el.querySelector("img"), SITE).replace(/\?.*$/, ""), 300), type: tp });
+    }
+    return { items, hasNext: !!d.querySelector("span[hx-get]") || items.length >= 10 };
+  }
+  const rows = (root, base) => [...root.querySelectorAll("tr")].map((tr) => {
+    const td = tr.querySelector(".judulseries"), a = td?.querySelector("a[href]") || (td && tr.querySelector("a[href]"));
+    if (!a) return null;
+    const url = absU(a.getAttribute("href"), base), name = txt(a);
+    return { id: url, ch: chNum(name, url), title: chTitle(name), url, at: date(txt(tr.querySelector(".tanggalseries"))) };
+  }).filter(Boolean);
+  const comicUrl = (id) => { if (!okHost(id)) throw new Error("Link bukan dari Komiku"); return id; };
+  return {
+    async browse(b) {
+      // halaman aplikasi (limit) disusun dari halaman situs (±10 komik per halaman)
+      const page = Math.max(1, Number(b.page) || 1), limit = Math.min(30, Number(b.limit) || 20), per = 10;
+      const start = (page - 1) * limit, end = start + limit, out = [];
+      let hasNext = false;
+      for (let sp = Math.floor(start / per) + 1; sp <= Math.floor((end - 1) / per) + 1; sp++) {
+        const r = await srcPage(sp, b), base = (sp - 1) * per;
+        r.items.forEach((it, i) => { if (base + i >= start && base + i < end) out.push(it); });
+        hasNext = r.hasNext;
+        if (!r.hasNext || !r.items.length) break;
+      }
+      return { ok: true, items: out, hasNext };
+    },
+    async detail(b) {
+      const url = comicUrl(b.comic_id), d = await html(url);
+      const row = (re) => { for (const td of d.querySelectorAll("td")) if (re.test(txt(td))) { const n = td.nextElementSibling; if (n?.tagName === "TD") return txt(n); } return ""; };
+      const title = txt(d.querySelector("h1")).replace(/^komik\s+/i, "") || d.querySelector('meta[property="og:title"]')?.getAttribute("content") || "";
+      const cv = imgOf(d.querySelector(".ims img") || d.querySelector('img[itemprop="image"]'), url).replace(/\?.*$/, "");
+      const desc = txt(d.querySelector("#Sinopsis p") || d.querySelector("p.desc"));
+      const tags = [...d.querySelectorAll("ul.genre li.genre")].map(txt).filter(Boolean).slice(0, 8);
+      const tbl = d.querySelector("#Daftar_Chapter");
+      return { ok: true, manga: { id: url, title, cover: cover(cv, 500), desc, tags, status: normStatus(row(/^status/i)), author: row(/^(pengarang|komikus|author)/i), url,
+        publisher: row(/^(penerbit|publisher|serialisasi|serialization)/i).slice(0, 120), views: toNum(row(/^(pembaca|dibaca|dilihat|views?)/i)), score: toScore(row(/^(skor|score|rating|nilai)/i)) },
+        chapters: tbl ? rows(tbl, url) : [], more: null };
+    },
+    async pages(b) {
+      const url = comicUrl(b.chapter_id), d = await html(url);
+      const box = d.querySelector("#Baca_Komik");
+      const images = [...(box?.querySelectorAll("img") || [])].map((im) => imgOf(im, url)).filter((u) => u && !/komiku-promosi/i.test(u)).map((u) => ({ u, direct: true }));
+      if (!images.length) throw new Error("Chapter ini tidak berisi gambar.");
+      return { ok: true, ref: url, images };
+    },
+    async latest(b) {
+      const r = await this.detail(b);
+      const top = r.chapters.reduce((x, c) => (!x || (parseFloat(c.ch) || -1) > (parseFloat(x.ch) || -1) ? c : x), null);
+      return { ok: true, source: "komiku", ch: top?.ch ?? null, at: top?.at ?? null };
+    },
+  };
+})();
+let komikuViaApp = 0;   // sampai kapan Komiku diambil lewat jaringan HP (server sedang ditolak Cloudflare)
+export const canDirectFallback = (src) => src === "komiku" && isApp && !!plugin("CapacitorHttp");
+export function serverBlocked(src) { if (src === "komiku") { komikuViaApp = Date.now() + 30 * 60e3; logDev("api", "Komiku menolak server; 30 menit ke depan diambil lewat jaringan HP"); } }
+
 export const DIRECT = isApp && plugin("CapacitorHttp") ? { shinigami: SHNG, westmanga: WEST } : {};
+const NAMES = { shinigami: "Shinigami", westmanga: "WestManga", komiku: "Komiku" };
 // dipanggil api.call(): kembalikan null bila sumber/aksi ini tetap lewat server
 export async function direct(action, body) {
-  const s = DIRECT[body?.source];
+  const s = DIRECT[body?.source] || (body?.source === "komiku" && Date.now() < komikuViaApp && canDirectFallback("komiku") ? KOMI : null);
   if (!s || typeof s[action] !== "function") return null;
   try { return await s[action](body); }
-  catch (e) { throw new Error(`${body.source === "shinigami" ? "Shinigami" : "WestManga"} tidak bisa dijangkau dari HP: ${e.message}`); }
+  catch (e) { throw new Error(`${NAMES[body.source] || body.source} tidak bisa dijangkau dari HP: ${e.message}`); }
 }
 
 /* ---------- Notifikasi (Firebase Cloud Messaging) ---------- */
@@ -292,6 +395,13 @@ export async function pushEnable(rpc, ask = false, force = false) {
     lastError = "";
     return "on";
   } catch (e) { lastError = e.message || String(e); lastToken = null; throw e; }
+}
+// dipanggil SAAT KELUAR AKUN, sebelum sesi dihapus: lepaskan token HP ini dari akun lama (supaya notifikasinya tidak
+// terus dikirim ke HP ini) dan reset lastToken (supaya akun berikutnya selalu mendaftarkan ulang token yang sama).
+export async function pushRelease(rest) {
+  const t = lastToken; lastToken = null;
+  if (!t || typeof rest !== "function") return;
+  await rest(`devices?token=eq.${encodeURIComponent(t)}`, { method: "DELETE", prefer: "return=minimal" }).catch(() => {});
 }
 // notifikasi masuk saat aplikasi terbuka → perbarui lonceng
 export function onPushReceived(cb) { PN()?.addListener("pushNotificationReceived", () => cb()); }
@@ -350,7 +460,7 @@ export async function checkBlockedSources(lib, call) {
 
 /* ---------- versi APK terbaru (GitHub Release "apk-terbaru") ---------- */
 // API GitHub tanpa login dibatasi 60 permintaan/jam per jaringan (IP). Supaya tidak habis (lalu muncul
-// "Tidak bisa memeriksa pembaruan"): hasil disimpan 10 menit, dan bila API menolak, versi global dibaca dari
+// "Tidak bisa memeriksa pembaruan"): hasil disimpan 10 menit untuk cek berkala & halaman Lainnya (saat aplikasi dibuka, kembali dari latar belakang, atau cek manual selalu ambil yang baru), dan bila API menolak, versi global dibaca dari
 // berkas VERSION + CHANGELOG di raw.githubusercontent.com (CDN, tanpa batas itu).
 const UPDK = "ninokuu:updCache";
 function fromRelease(j) {
@@ -377,7 +487,7 @@ async function fromRaw() {
 export async function latestBuild(force = false) {
   if (!isApp) return null;
   let info = null;
-  try { const c = JSON.parse(localStorage.getItem(UPDK) || "null"); if (c && c.k === RELEASE_TAG && Date.now() - c.t < (force ? 60e3 : 10 * 60e3)) info = c.info; } catch {}
+  try { const c = JSON.parse(localStorage.getItem(UPDK) || "null"); if (!force && c && c.k === RELEASE_TAG && Date.now() - c.t < 10 * 60e3) info = c.info; } catch {}
   if (!info) {
     try { info = fromRelease(await nget(`https://api.github.com/repos/${REPO}/releases/tags/${RELEASE_TAG}`, { headers: { Accept: "application/vnd.github+json" } })); }
     catch { try { info = await fromRaw(); } catch { info = null; } }
@@ -412,16 +522,84 @@ try { plugin("StatusBar")?.setOverlaysWebView?.({ overlay: false })?.catch?.(() 
 
 /* ---------- layar penuh saat membaca ---------- */
 // APK: bilah status Android disembunyikan (plugin StatusBar). Web: Fullscreen API (butuh ketukan pengguna).
-let fsOn = false;
-export async function setFullscreen(on) {
-  if (on === fsOn) return;
-  fsOn = on;
-  document.body.classList.toggle("nk-fs", !!on);   // layar penuh: jarak aman atas kembali ke nilai sistem (lubang kamera)
+let fsOn = false, ovOn = false, fsSeq = 0;
+// on = bilah status disembunyikan; overlay = halaman digambar di bawah bilah status sampai ujung atas (termasuk
+// area lubang kamera). Di pembaca mode layar penuh overlay tetap menyala selama di pembaca, walau menu bacaan
+// (dan bilah status) muncul: kalau ikut dimatikan setiap ketukan, seluruh halaman melompat setinggi bilah status.
+// keluar dari pembaca: ditunda sebentar, supaya pindah chapter (pembaca lama ditutup lalu langsung dibuka lagi)
+// tidak mematikan-menyalakan overlay (halaman tidak melompat)
+export function leaveFullscreen() { const t = ++fsSeq; setTimeout(() => { if (t === fsSeq) setFullscreen(false, false); }, 300); }
+export async function setFullscreen(on, overlay = on) {
+  on = !!on; overlay = !!overlay || on; fsSeq++;
+  if (on === fsOn && overlay === ovOn) return;
+  const wasOn = fsOn, wasOv = ovOn;
+  fsOn = on; ovOn = overlay;
+  document.body.classList.toggle("nk-fs", overlay);   // di bawah bilah status: jarak aman atas = nilai sistem
   const sb = plugin("StatusBar");
-  if (sb) { try { await (on ? sb.hide() : sb.show()); if (!on) await sb.setOverlaysWebView?.({ overlay: false }); } catch {} return; }
+  if (sb) {
+    try {
+      if (overlay && !wasOv) await sb.setOverlaysWebView?.({ overlay: true });
+      // bilah status: lewat plugin Ninokuu (perilaku "sementara": ditarik → muncul transparan lalu hilang sendiri);
+      // APK lama tanpa method ini memakai StatusBar bawaan
+      if (on !== wasOn) {
+        const nc = cachePlugin();
+        let done = false;
+        if (nc?.bars) { try { await nc.bars({ hide: on }); done = true; } catch {} }
+        if (!done) await (on ? sb.hide() : sb.show());
+      }
+      if (!overlay && wasOv) await sb.setOverlaysWebView?.({ overlay: false });
+    } catch {}
+    return;
+  }
   if (isApp) return;
   try {
     if (on && !document.fullscreenElement && document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen({ navigationUI: "hide" });
     if (!on && document.fullscreenElement) await document.exitFullscreen();
   } catch { fsOn = false; }
 }
+
+/* ---------- cache aplikasi (Lainnya → Bersihkan cache) ---------- */
+// APK: plugin NinokuuCache (cache WebView: gambar sampul & halaman komik) + simpanan aplikasi sendiri.
+// Web: Cache Storage gambar (service worker) + simpanan sementara info komik.
+const cachePlugin = () => { const C = CAP(); if (!isApp || !C) return null; return C.Plugins?.NinokuuCache || (C.isPluginAvailable?.("NinokuuCache") ? C.registerPlugin?.("NinokuuCache") : null) || null; };
+const dataBytes = () => { let n = 0; try { for (const k of Object.keys(sessionStorage)) if (k.startsWith("ninokuu:d:")) n += (sessionStorage.getItem(k) || "").length * 2; } catch {} return n; };
+async function webCacheBytes() {
+  let n = dataBytes();
+  if ("caches" in window) {
+    try {
+      for (const name of (await caches.keys()).filter((k) => k.startsWith("ninokuu-img"))) {
+        const c = await caches.open(name);
+        for (const req of await c.keys()) { const r = await c.match(req); const len = Number(r?.headers.get("content-length")); n += len > 0 ? len : (await r.blob()).size; }
+      }
+    } catch {}
+  }
+  return n;
+}
+// rincian perkiraan: gambar (cache WebView/Cache Storage/gambar di memori) & data info komik sementara
+export async function cacheParts() {
+  const p = cachePlugin(); let nat = 0;
+  if (p) { try { nat = Number((await p.size())?.bytes) || 0; } catch {} }
+  const web = await webCacheBytes(), data = dataBytes();
+  return { images: nat + (web - data) + blobBytes, data, total: nat + web + blobBytes };
+}
+export async function cacheSize() {
+  const p = cachePlugin(); let nat = 0;
+  if (p) { try { nat = Number((await p.size())?.bytes) || 0; } catch {} }
+  return nat + (await webCacheBytes()) + blobBytes;
+}
+let blobBytes = 0;
+export async function cacheClear() {
+  const before = await cacheSize();
+  let freedNative = 0;
+  const p = cachePlugin();
+  if (p) { try { freedNative = Number((await p.clear())?.freed) || 0; } catch {} }
+  const web = await webCacheBytes();
+  if ("caches" in window) { try { for (const k of (await caches.keys()).filter((k) => k.startsWith("ninokuu-img"))) await caches.delete(k); } catch {} }
+  try { Object.keys(sessionStorage).filter((k) => k.startsWith("ninokuu:d:")).forEach((k) => sessionStorage.removeItem(k)); } catch {}
+  const mem = blobBytes;
+  for (const u of blobUrls.values()) URL.revokeObjectURL(u);
+  blobUrls.clear(); blobBytes = 0;
+  const after = await cacheSize();
+  return { before, after, freed: Math.max(freedNative + web + mem, before - after, 0) };
+}
+export const fmtBytes = (b) => { b = Number(b) || 0; if (b < 1024) return b + " B"; if (b < 1048576) return Math.round(b / 1024) + " KB"; const m = b / 1048576; return m >= 1024 ? (m / 1024).toFixed(1).replace(".", ",") + " GB" : (m < 10 ? m.toFixed(1).replace(".", ",") : Math.round(m)) + " MB"; };

@@ -1,7 +1,7 @@
 // Chat publik + Panel developer (mengikuti prototipe desain).
 import * as api from "./api.js";
 import * as S from "./store.js";
-import { esc, icon, $, $$, toast, ago, rankBadge } from "./ui.js";
+import { esc, icon, $, $$, toast, ago, rankBadge, ask } from "./ui.js";
 import { frameImage } from "./exp.js";
 import * as O from "./online.js";
 
@@ -20,6 +20,11 @@ const MAX_IMG = 30 * 1024 * 1024;
 const VB = `<span class="verif" title="Terverifikasi">${icon("check", 10, 3.2)}</span>`;
 const isStaff = () => ["developer", "moderator"].includes(S.state.profile?.role) && !S.state.settings.asUser;
 const isDev = () => S.state.profile?.role === "developer" && !S.state.settings.asUser;
+// Gambar pesan yang dimoderasi dihapus oleh server: moderator tidak punya izin Storage atas folder orang lain, jadi tanpa ini
+// gambarnya tetap bisa dibuka lewat alamat publik. Dipanggil SETELAH aksi moderasinya berhasil; bila gagal, aksinya tidak
+// dibatalkan (cron menyapu gambar yatim berkala).
+const purgeImages = (paths) => { const p = (paths || []).filter(Boolean); return p.length ? api.call("purge_chat_images", { paths: p }).catch(() => {}) : Promise.resolve(); };
+const purgeUser = (uid) => api.call("purge_chat_images", { user_id: uid }).catch(() => {});
 
 // teks ||spoiler|| → tombol yang menutup teks sampai diketuk
 const revealed = new Set();
@@ -52,17 +57,19 @@ const plain = (t) => String(t || "").replace(/\|\|([\s\S]+?)\|\|/g, "$1");
 
 /* ---------- kompres gambar sebelum diunggah (hemat kuota penyimpanan) ---------- */
 async function compress(file) {
-  if (file.type === "image/gif") return { blob: file, ext: "gif" };
-  try {
-    const bmp = await createImageBitmap(file);
-    const k = Math.min(1, 1280 / Math.max(bmp.width, bmp.height));
-    const c = document.createElement("canvas");
-    c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
-    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
-    const blob = await new Promise((r) => c.toBlob(r, "image/webp", 0.78));
-    if (blob && blob.size < file.size) return { blob, ext: "webp", w: c.width, h: c.height };
-    return { blob: file, ext: file.type.split("/")[1].replace("jpeg", "jpg"), w: bmp.width, h: bmp.height };
-  } catch { return { blob: file, ext: file.type.split("/")[1].replace("jpeg", "jpg") }; }
+  if (file.type === "image/gif") return { blob: file, ext: "gif" };   // GIF tidak punya EXIF/GPS; animasinya hilang bila digambar ulang
+  // Gambar ulang lewat canvas SELALU dipakai (walau hasilnya tidak lebih kecil): hanya langkah ini yang membuang
+  // metadata EXIF/XMP (lokasi GPS, perangkat, waktu). File asli tidak pernah diunggah sebagai cadangan.
+  let bmp;
+  try { bmp = await createImageBitmap(file); } catch { throw new Error("Gambar tidak bisa diproses. Coba gambar lain."); }
+  const k = Math.min(1, 1280 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  bmp.close?.();
+  const blob = await new Promise((r) => c.toBlob(r, "image/webp", 0.78));
+  if (!blob) throw new Error("Gambar tidak bisa diproses. Coba gambar lain.");
+  return { blob, ext: blob.type === "image/webp" ? "webp" : "png", w: c.width, h: c.height };   // WebView lama bisa mengembalikan PNG
 }
 
 /* ---------- pengumuman tersemat di chat publik ---------- */
@@ -219,7 +226,8 @@ export async function vChat(view, ctx, opt = {}) {
         image_path = `${me}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${c.ext}`;
         await api.upload("chat-images", image_path, new File([c.blob], "x." + c.ext, { type: c.blob.type || att.file.type }));
       }
-      await api.rest("chat_messages", { method: "POST", body: { body: text, image_path, image_spoiler: !!att?.sp, room }, prefer: "return=minimal" });
+      try { await api.rest("chat_messages", { method: "POST", body: { body: text, image_path, image_spoiler: !!att?.sp, room }, prefer: "return=minimal" }); }
+      catch (e) { if (image_path) api.removeFiles("chat-images", [image_path]).catch(() => {}); throw e; }   // pesan gagal terkirim: gambarnya tidak dibiarkan tertinggal di server
       lastSent = Date.now(); inp.value = ""; att = null;
       await load(false); drawComposer(); draw(); toBottom(); toast("Terkirim", 1200);
     } catch (e) { toast(e.message, 4000); }
@@ -261,12 +269,12 @@ export async function vChat(view, ctx, opt = {}) {
     else if (a === "selcut") { const [i, s0, s1, t] = sel(); navigator.clipboard?.writeText(t).catch(() => {}); i.value = i.value.slice(0, s0) + i.value.slice(s1); i.setSelectionRange(s0, s0); i.dispatchEvent(new Event("input")); toast("Teks dipotong"); }
     else if (a === "mcopy") { const t = plain(m?.body); if (t) navigator.clipboard?.writeText(t).catch(() => {}); sheet(""); toast(t ? "Pesan disalin" : "Pesan ini hanya berisi gambar"); }
     else if (a === "mreport") run(() => api.rest("chat_reports", { method: "POST", body: { message_id: m.id }, prefer: "resolution=ignore-duplicates,return=minimal" }), "Pesan dilaporkan. Terima kasih, moderator akan meninjaunya.");
-    else if (a === "mdel") { if (!confirm("Hapus pesan ini?")) return; run(async () => { await api.rest(`chat_messages?id=eq.${m.id}`, { method: "DELETE" }); if (m.image_path && m.user_id === me) await api.removeFile("chat-images", m.image_path).catch(() => {}); }, "Pesan dihapus"); }
-    else if (a === "mhide") run(() => api.rpc("mod_set_hidden", { p_message: m.id, p_hidden: !m.hidden }), m.hidden ? "Pesan ditampilkan lagi" : "Pesan disembunyikan dari semua pengguna");
+    else if (a === "mdel") { if (!(await ask("Hapus pesan ini?", { ok: "Hapus", danger: true }))) return; run(async () => { await api.rest(`chat_messages?id=eq.${m.id}`, { method: "DELETE" }); if (m.image_path) await (m.user_id === me ? api.removeFile("chat-images", m.image_path).catch(() => {}) : purgeImages([m.image_path])); }, "Pesan dihapus"); }
+    else if (a === "mhide") run(async () => { await api.rpc("mod_set_hidden", { p_message: m.id, p_hidden: !m.hidden }); if (!m.hidden && m.image_path && m.user_id !== me) await purgeImages([m.image_path]); }, m.hidden ? "Pesan ditampilkan lagi" : "Pesan disembunyikan dari semua pengguna");
     else if (a === "mmute") run(() => api.rpc("mod_restrict", { p_user: m.user_id, p_mute_minutes: 60 }), `${m.name} dibisukan 1 jam`);
-    else if (a === "mban") { if (!confirm(`Blokir ${m.name}? Semua pesannya disembunyikan dan dia tidak bisa menulis di chat publik.`)) return; run(() => api.rpc("mod_restrict", { p_user: m.user_id, p_ban: true }), `${m.name} diblokir dari chat`); }
+    else if (a === "mban") { if (!(await ask(`Blokir ${m.name}? Semua pesannya disembunyikan dan dia tidak bisa menulis di chat publik.`, { ok: "Blokir", danger: true }))) return; run(async () => { await api.rpc("mod_restrict", { p_user: m.user_id, p_ban: true }); await purgeUser(m.user_id); }, `${m.name} diblokir dari chat`); }
     else if (a === "pinx") b.classList.toggle("open");
-    else if (a === "unpin") { if (!confirm("Lepas pengumuman ini dari chat publik untuk semua pengguna?")) return; run(() => api.rest(`announcements?id=eq.${pin.id}`, { method: "PATCH", body: { pinned: false }, prefer: "return=minimal" }), "Pengumuman dilepas dari chat untuk semua pengguna"); }
+    else if (a === "unpin") { if (!(await ask("Lepas pengumuman ini dari chat publik untuk semua pengguna?", { ok: "Lepas" }))) return; run(() => api.rest(`announcements?id=eq.${pin.id}`, { method: "PATCH", body: { pinned: false }, prefer: "return=minimal" }), "Pengumuman dilepas dari chat untuk semua pengguna"); }
     else if (a === "pinhide") { hidePin(pin.id); pin = null; draw(); toast("Pengumuman disembunyikan dari layarmu selama 24 jam", 3000); }
   });
   setActs({ back: () => back(opt.backHref || "#/home") });
@@ -304,7 +312,8 @@ const CLEAN = [
   ["chat_public", "Chat publik lama", [30, 14, 7], (s) => `${s.chat_public} pesan${s.oldest_chat ? " · tertua " + ago(s.oldest_chat) : ""}`],
   ["comments", "Komentar komik & chapter lama", [365, 180, 90], (s) => `${s.comments} komentar`],
   ["chat_images", "Gambar chat lama (teksnya tetap)", [60, 30, 14, 7], (s) => `${s.img_count} gambar · ${fmtB(s.img_bytes)}`],
-  ["img_orphans", "Gambar tanpa pesan", null, (s) => `${s.img_orphans} file (pesannya sudah dihapus)`],
+  ["img_orphans", "Gambar tanpa pesan", null, (s) => `${s.img_orphans} file (pesannya dihapus atau gagal terkirim)`],
+  ["avatar_orphans", "Foto profil lama", null, (s) => `${s.avatar_orphans ?? 0} file tidak dipakai siapa pun`],
   ["notifications", "Notifikasi lama", [7, 3], (s) => `${s.notifications} notifikasi`],
   ["read_log", "Log baca lama", [365, 180, 90], (s) => `${s.read_log} baris · EXP tetap, tapi chapter lama bisa memberi EXP lagi`],
   ["bugs_done", "Laporan komik yang sudah selesai", null, (s) => `${s.bugs_done} laporan`],
@@ -342,21 +351,62 @@ function annCard(a) {
 }
 
 /* ---------- Panel developer ---------- */
-// Panduan (khusus developer): domain situs sumber pindah → ganti alamat sampai jadi APK lagi.
+// Panduan (khusus developer): semua API/domain yang bisa diganti manual, cara mendapatkannya, sampai jadi APK lagi.
 const gh = (path, label) => `<a href="https://github.com/Rexxaply/NinoKuu-Manga/${path}" target="_blank" rel="noopener">${label}</a>`;
+const SB = (path, label) => `<a href="https://supabase.com/dashboard/project/ocersqyrztzegwzjvvoh/${path}" target="_blank" rel="noopener">${label}</a>`;
 const step = (n, t, hint = "") => `<li><span class="gs-n">${n}</span><span class="gs-t"><b>${t}</b>${hint ? `<span class="mu xs">${hint}</span>` : ""}</span></li>`;
-const SITE_GUIDE = `<section class="col g10"><h2 class="cap m0">Panduan</h2>
-<details class="card guide"><summary><b>Situs sumber pindah alamat</b><span class="mu xs">Komiku & Kiryuu: langkah 1–2 · Shinigami & WestManga: langkah 1, 3–6</span></summary>
-<ol class="gsteps">
-${step(1, "Cari alamat baru", "Buka situs lama di browser → salin alamat barunya, mis. <code>https://v8.kiryuu.to</code>")}
-${step(2, "Komiku / Kiryuu: ganti di Supabase → selesai", "Supabase → ninokuu → Edge Functions → Secrets → ubah <code>KOMIKU_SITE</code> atau <code>KIRYUU_SITE</code> → Save. Tidak perlu APK baru.")}
-${step(3, "Shinigami / WestManga: ganti di GitHub", `Buka ${gh("blob/main/app/js/native.js", "app/js/native.js")} → ✏️ Edit → ganti alamat di dalam tanda kutip (cari <code>shinigami</code> atau <code>westmanga</code>)`)}
-${step(4, "Naikkan versi", `Buka ${gh("blob/main/VERSION", "VERSION")} → ✏️ Edit. Ganti alamat situs = perbaikan → angka terakhir +1, mis. <code>1.8.0</code> → <code>1.8.1</code>`)}
-${step(5, "Commit, tunggu APK jadi", `Tekan <b>Commit changes</b> → ${gh("actions", "tab Actions")} → tunggu centang hijau (±5 menit)`)}
-${step(6, "Pasang APK baru → selesai", `Lainnya → Versi aplikasi → perbarui, atau unduh ${gh("releases/download/apk-terbaru/ninokuu.apk", "ninokuu.apk")}`)}
-</ol>
-<p class="mu xs gs-foot">Mau uji dulu? Di langkah 3–4 pilih branch <code>dev</code> → hasilnya ${gh("releases/download/apk-dev/ninokuu-dev.apk", "ninokuu-dev.apk")}. Masih gagal → Ninokuu Dev → Lainnya → Log error → salin.</p>
-</details></section>`;
+const card = (title, sub, inner, foot = "") => `<details class="card guide"><summary><b>${title}</b><span class="mu xs">${sub}</span></summary>${inner}${foot ? `<p class="mu xs gs-foot">${foot}</p>` : ""}</details>`;
+const row = (k, where, what) => `<li class="gmap-r"><code>${k}</code><span class="mu xs">${what}</span><span class="gmap-w ${where === "Supabase" ? "sb" : "apk"}">${where === "Supabase" ? "Supabase · tanpa APK" : "Kode · APK baru"}</span></li>`;
+const SITE_GUIDE = `<section class="col g10"><h2 class="cap m0">Panduan ganti API &amp; domain</h2>
+${card("1. Peta: apa saja yang bisa diganti", "Mana yang cukup di Supabase, mana yang harus jadi APK baru", `
+<ul class="gmap">
+${row("KOMIKU_SITE", "Supabase", "Alamat situs Komiku, mis. <code>https://komiku.org</code> (info komik & halaman chapter)")}
+${row("KOMIKU_API", "Supabase", "Alamat daftar/cari Komiku, mis. <code>https://api.komiku.org</code>")}
+${row("KIRYUU_SITE", "Supabase", "Alamat situs Kiryuu, mis. <code>https://v7.kiryuu.to</code> (dipakai untuk semua data Kiryuu)")}
+${row("SHNGM_API · SHNGM_SITE", "Supabase", "Shinigami untuk server (notifikasi & web). APK membaca Shinigami sendiri, lihat baris di bawah")}
+${row("WEST_SITE", "Supabase", "WestManga untuk server, boleh lebih dari satu dipisah koma: <code>https://v1.westmanga.my,https://v1.westmanga.top</code>")}
+${row("IMG_PROXY", "Supabase", "Rem darurat kuota: <code>on</code> (normal), <code>cover</code> (proxy hanya sampul), <code>off</code> (proxy mati)")}
+${row("Shinigami (API &amp; SITE)", "Kode", "<code>app/js/native.js</code> → baris <code>const API = …, SITE = …</code> di bagian Shinigami")}
+${row("WestManga (SITES)", "Kode", "<code>app/js/native.js</code> → baris <code>const SITES = [ … ]</code> di bagian WestManga")}
+${row("ninokuu.site", "Kode", "<code>app/js/native.js</code> (<code>SITE_URL</code>) dan <code>app/js/api.js</code> (<code>VERIFY_URL</code>, <code>RESET_URL</code>)")}
+${row("Supabase URL &amp; anon key", "Kode", "GitHub → Settings → Secrets → <code>SUPABASE_URL</code>, <code>SUPABASE_ANON_KEY</code> (dibaca saat APK dibangun)")}
+</ul>`, "Aturannya: yang dibaca <b>server</b> (Edge Function) cukup diganti di Supabase dan langsung berlaku untuk semua pengguna. Yang dibaca <b>aplikasi di HP</b> tertanam di APK, jadi harus dibangun APK baru lalu dipasang ulang.")}
+${card("2. Cara mendapatkan alamat baru", "Domain situs & alamat API", `<ol class="gsteps">
+${step(1, "Domain situs: buka alamat lama", "Biasanya otomatis dialihkan ke alamat baru. Salin alamat di bilah browser sampai tanda <code>/</code> pertama, mis. <code>https://v8.kiryuu.to</code> (tanpa garis miring di akhir).")}
+${step(2, "Tidak dialihkan? Cari pengumuman resmi", "Cari di Google “nama situs + domain baru”, atau buka Instagram/Discord/Telegram resmi situsnya. Hindari situs tiruan yang penuh iklan.")}
+${step(3, "Alamat API (Shinigami, WestManga, Komiku API)", "Di PC: buka situsnya di Chrome → tekan F12 → tab <b>Network</b> → pilih <b>Fetch/XHR</b> → muat ulang halaman. Lihat kolom nama/Domain: alamat yang memuat daftar komik itulah API-nya, mis. <code>https://api.shinigami.io</code>.")}
+${step(4, "Cek alamatnya benar", "Buka di browser: Kiryuu <code>…/wp-json/wp/v2/manga?per_page=1</code> · Shinigami <code>API/v1/manga/list?limit=1</code> · WestManga <code>SITE/api/contents?per_page=1</code>. Kalau muncul teks JSON (kurung kurawal), alamatnya benar.")}
+</ol>`, "Bingung mencari alamat API? Kirim nama situs & alamat barunya ke Claude, nanti dicarikan dan dicek.")}
+${card("3. Ganti di Supabase (tanpa APK baru)", "Komiku, Kiryuu, rem darurat IMG_PROXY, dan sisi server Shinigami/WestManga", `<ol class="gsteps">
+${step(1, "Buka Secrets Edge Function", `${SB("functions/secrets", "Supabase → Edge Functions → Secrets")} (login akun Supabase-mu)`)}
+${step(2, "Ubah atau tambah secret", "Cari namanya (mis. <code>KIRYUU_SITE</code>). Belum ada? Tekan <b>Add new secret</b>, isi Name persis sama dan Value alamat barunya.")}
+${step(3, "Simpan", "Tekan <b>Save</b>. Berlaku untuk function global & dev sekaligus dalam ±1 menit, tanpa deploy dan tanpa APK baru.")}
+${step(4, "Uji", "Buka Ninokuu → Beranda → pilih sumber itu → buka satu komik & satu chapter. Masih gagal → cek ejaan (<code>https://</code>, tanpa <code>/</code> di akhir).")}
+</ol>`, "Mengosongkan/menghapus secret = kembali ke alamat bawaan di kode.")}
+${card("4. Ganti di kode → jadi APK baru", "Shinigami & WestManga di HP, ninokuu.site", `<ol class="gsteps">
+${step(1, "Uji di Ninokuu Dev dulu", `Buka ${gh("tree/dev", "GitHub → branch dev")}. Semua langkah di bawah dikerjakan di branch <code>dev</code> dulu; setelah lancar, ulangi di <code>main</code> untuk versi global.`)}
+${step(2, "Edit file kodenya", `Buka ${gh("blob/dev/app/js/native.js", "app/js/native.js")} → ikon ✏️ (Edit) → tekan Ctrl+F / cari <code>shinigami</code> atau <code>westmanga</code> → ganti alamat <b>di dalam tanda kutip</b> saja, jangan hapus tanda kutip/koma.`)}
+${step(3, "Naikkan versi", `Buka ${gh("blob/dev/VERSION", "VERSION")} → ✏️. Ganti alamat = perbaikan, jadi angka terakhir +1, mis. <code>1.8.4</code> → <code>1.8.5</code>.`)}
+${step(4, "Commit", "Tekan <b>Commit changes…</b> → pilih <b>Commit directly to the dev branch</b> → <b>Commit changes</b>. Lakukan untuk kedua file.")}
+${step(5, "Tunggu APK selesai dibangun", `Buka ${gh("actions", "tab Actions")} → tunggu “Build Ninokuu Dev” (branch dev) atau “Build APK” (main) bercentang hijau (±5–8 menit). Versi global hanya dibangun bila VERSION naik. Silang merah = ada salah ketik; buka log-nya atau kirim ke Claude.`)}
+${step(6, "Pasang & cek", `Dev: Ninokuu Dev → Lainnya → Versi aplikasi, atau unduh ${gh("releases/download/apk-dev/ninokuu-dev.apk", "ninokuu-dev.apk")}. Global (setelah diulang di <code>main</code>): Ninokuu → Lainnya → Versi aplikasi → perbarui, atau ${gh("releases/download/apk-terbaru/ninokuu.apk", "ninokuu.apk")}.`)}
+</ol>`, "Jangan pernah mengubah secret GitHub <code>APK_KEYSTORE_PASSWORD</code> dan berkas keystore: APK baru tidak akan bisa dipasang di atas APK lama.")}
+${card("5. Ganti project Supabase / domain ninokuu.site", "Jarang dilakukan, perlu APK baru", `<ol class="gsteps">
+${step(1, "Supabase URL & anon key", `${SB("settings/api", "Supabase → Project Settings → API")}: salin Project URL dan kunci <b>anon/publishable</b> (BUKAN service_role/secret) → ${gh("settings/secrets/actions", "GitHub → Settings → Secrets → Actions")} → ubah <code>SUPABASE_URL</code> &amp; <code>SUPABASE_ANON_KEY</code> → naikkan VERSION → commit (langkah 4.3–4.6).`)}
+${step(2, "Domain ninokuu.site", "Repo <code>ninokuu-site</code> → berkas <code>CNAME</code> isi domain baru, lalu atur DNS di penyedia domain (A ke GitHub Pages, CNAME <code>www</code> ke <code>rexxaply.github.io</code>).")}
+${step(3, "Izinkan di Supabase Auth", `${SB("auth/url-configuration", "Supabase → Authentication → URL Configuration")} → tambah <code>https://domain-baru/verified/</code> dan <code>https://domain-baru/resetpassword/</code> di Redirect URLs.`)}
+${step(4, "Ubah alamat di kode → APK baru", "<code>app/js/native.js</code> (<code>SITE_URL</code>) dan <code>app/js/api.js</code> (<code>VERIFY_URL</code>, <code>RESET_URL</code>) → naikkan VERSION → commit (langkah 4.2–4.6).")}
+</ol>`, "Kunci rahasia (service_role, Firebase) hanya disimpan di Supabase Secrets, jangan pernah ditempel ke kode atau GitHub.")}
+${card("6. Menambah changelog, “Yang baru” & versi", "Catatan rilis, pop-up fitur baru, gambar slide, nomor versi", `<ol class="gsteps">
+${step(1, "Tentukan nomor versi", "Format <code>MAYOR.MINOR.PATCH</code>. <b>PATCH</b> (1.8.3 → 1.8.4): perbaikan bug / ganti alamat. <b>MINOR</b> (1.8.x → 1.9.0): ada fitur baru. <b>MAYOR</b> (1.x → 2.0.0): perubahan besar yang tidak cocok dengan versi lama.")}
+${step(2, "Tulis CHANGELOG.md", `Buka ${gh("blob/dev/CHANGELOG.md", "CHANGELOG.md")} → ✏️. Tambah bagian baru <b>di atas</b> versi lama (setelah garis <code>---</code>): <code>## 1.9.0 — 21 Nov 2026</code>, lalu <code>### Ringkasan</code> berisi poin <code>- …</code> (maks ±12 baris: tampil di peringatan pembaruan & halaman ninokuu.site/update), lalu <code>### Detail</code> untuk rincian.`)}
+${step(3, "Versi MINOR/MAYOR: isi pop-up “Yang baru”", `Buka ${gh("blob/dev/app/js/tour.js", "app/js/tour.js")} → ✏️. Salin satu entri lama (mis. <code>"1.8.0": { … },</code>) ke paling atas daftar <code>WHATS_NEW</code>, ganti nomornya, lalu isi: <code>title</code>, <code>intro</code> (1–2 kalimat), <code>features</code> (<code>["Judul", "Keterangan"]</code>, penting di atas), <code>fixes</code> (perbaikan bug), <code>tour</code> (slide). Jaga tanda kutip, koma, dan kurung tetap utuh. Versi PATCH tidak perlu entri baru.`)}
+${step(4, "Siapkan gambar slide", "Tangkapan layar fitur dari HP → potong seperlunya → ubah ke <b>WebP</b> ukuran <code>420×909</code>, ±10–20 KB (bisa di squoosh.app) → beri nama pendek huruf kecil, mis. <code>gulir.webp</code>.")}
+${step(5, "Unggah gambar & sambungkan", `Buka ${gh("tree/dev/app/img/new", "app/img/new")} → <b>Add file → Upload files</b> → pilih gambar → commit ke branch <code>dev</code>. Di <code>tour</code> tulis <code>{ img: "gulir", title: "…", text: "…" }</code> (nama file tanpa <code>.webp</code>).`)}
+${step(6, "Naikkan VERSION & commit", "Isi <code>VERSION</code> dengan nomor yang sama → commit. Build global <b>gagal</b> bila entri “Yang baru” atau gambar slidenya tidak ada (dev hanya memberi peringatan), jadi kesalahan ketahuan sebelum rilis.")}
+${step(7, "Cek hasilnya", "Ninokuu Dev → Lainnya → <b>Yang baru di versi ini</b> (pop-up & slide), dan Lainnya → Versi aplikasi (catatan pembaruan). Lancar → ulangi di <code>main</code> atau minta Claude menggabungkan dev ke main.")}
+</ol>`, "Catatan rilis di GitHub Release dan halaman ninokuu.site/update diambil otomatis dari bagian versi itu di CHANGELOG.md; tanpa bagian itu, yang tampil adalah pesan commit terakhir.")}
+</section>`;
 export async function vDev(view, ctx) {
   const { topbar, setActs, back, loading } = ctx;
   const p = S.state.profile, dev = p?.role === "developer", staff = dev || p?.role === "moderator";
@@ -401,7 +451,7 @@ export async function vDev(view, ctx) {
   <section class="col g10"><h2 class="cap m0">Laporan chat · ${repMsgs.length}</h2>
     ${repMsgs.length ? repMsgs.map((m) => `<div class="card col g10 ${m.hidden ? "" : "rep-open"}"><span class="row g8 xs"><b class="sm">${esc(m.name)}</b><span class="rep-n">${counts[m.id]} laporan</span>${m.room && m.room !== "public" ? `<span class="mu">${m.room.startsWith("ch:") ? "Komentar chapter" : "Komentar komik"}</span>` : ""}<span class="mu" style="margin-left:auto">${m.hidden ? "Disembunyikan" : "Masih tampil"}</span></span>
       <span class="sm">${esc(plain(m.body) || "Gambar")}</span>
-      <div class="row g6 wrap"><button class="btn ghost sm" data-d="hide" data-id="${m.id}" data-h="${m.hidden}">${m.hidden ? "Tampilkan lagi" : "Sembunyikan"}</button><button class="btn ghost sm" data-d="del" data-id="${m.id}">Hapus</button>
+      <div class="row g6 wrap"><button class="btn ghost sm" data-d="hide" data-id="${m.id}" data-h="${m.hidden}" data-p="${esc(m.image_path || "")}">${m.hidden ? "Tampilkan lagi" : "Sembunyikan"}</button><button class="btn ghost sm" data-d="del" data-id="${m.id}" data-p="${esc(m.image_path || "")}">Hapus</button>
         ${m.role === "developer" ? "" : `<button class="btn ghost sm" data-d="mute" data-u="${m.user_id}" data-n="${esc(m.name)}">Bisukan 1 jam</button><button class="btn ghost sm red" data-d="ban" data-u="${m.user_id}" data-n="${esc(m.name)}">Blokir</button>`}</div></div>`).join("")
       : `<div class="card center mu sm">Tidak ada laporan. Chat aman.</div>`}</section>
   <section class="col g10"><h2 class="cap m0">Laporan komik · ${(bugs || []).length}</h2>
@@ -431,7 +481,7 @@ export async function vDev(view, ctx) {
     }
     if (a === "ann") {
       const t = form.title.trim(); if (!t) return toast("Isi judul pengumuman dulu");
-      if (!confirm(`Kirim pengumuman “${t}”${form.push ? " ke semua pengguna" : ""}?`)) return;
+      if (!(await ask(`Kirim pengumuman “${t}”${form.push ? " ke semua pengguna" : ""}?`, { ok: "Kirim" }))) return;
       run(async () => {
         const body = { title: t, body: form.body.trim(), pinned: form.pin, push: form.push };
         if (form.pin && form.days) body.pinned_until = new Date(Date.now() + form.days * 864e5).toISOString();
@@ -443,19 +493,19 @@ export async function vDev(view, ctx) {
     }
     if (a === "cron") run(async () => { b.disabled = true; await api.call("run_cron"); }, "Cron selesai dijalankan");
     if (a === "test") run(() => api.call("test_push"), "Tes notifikasi dikirim");
-    if (a === "hide") run(() => api.rpc("mod_set_hidden", { p_message: Number(b.dataset.id), p_hidden: b.dataset.h !== "true" }), "Status pesan diperbarui");
-    if (a === "del") { if (!confirm("Hapus pesan ini untuk semua?")) return; run(() => api.rest(`chat_messages?id=eq.${b.dataset.id}`, { method: "DELETE" }), "Pesan dihapus"); }
+    if (a === "hide") run(async () => { const hide = b.dataset.h !== "true"; await api.rpc("mod_set_hidden", { p_message: Number(b.dataset.id), p_hidden: hide }); if (hide) await purgeImages([b.dataset.p]); }, "Status pesan diperbarui");
+    if (a === "del") { if (!(await ask("Hapus pesan ini untuk semua?", { ok: "Hapus", danger: true }))) return; run(async () => { await api.rest(`chat_messages?id=eq.${b.dataset.id}`, { method: "DELETE" }); await purgeImages([b.dataset.p]); }, "Pesan dihapus"); }
     if (a === "mute") run(() => api.rpc("mod_restrict", { p_user: b.dataset.u, p_mute_minutes: 60 }), `${b.dataset.n} dibisukan 1 jam`);
-    if (a === "ban") { if (!confirm(`Blokir ${b.dataset.n} dari chat?`)) return; run(() => api.rpc("mod_restrict", { p_user: b.dataset.u, p_ban: true }), `${b.dataset.n} diblokir`); }
+    if (a === "ban") { if (!(await ask(`Blokir ${b.dataset.n} dari chat?`, { ok: "Blokir", danger: true }))) return; run(async () => { await api.rpc("mod_restrict", { p_user: b.dataset.u, p_ban: true }); await purgeUser(b.dataset.u); }, `${b.dataset.n} diblokir`); }
     if (a === "clean") {
       const kind = b.dataset.k, sel = root.querySelector(`select[data-k="${kind}"]`), days = sel ? Number(sel.value) : 1;
       const item = CLEAN.find((c) => c[0] === kind);
-      if (!confirm(`${item[1]}${sel ? ` lebih dari ${days} hari` : ""} akan dihapus permanen. Lanjutkan?`)) return;
+      if (!(await ask(`${item[1]}${sel ? ` lebih dari ${days} hari` : ""} akan dihapus permanen. Lanjutkan?`, { ok: "Hapus", danger: true }))) return;
       b.disabled = true; b.textContent = "Membersihkan…";
       return run(async () => {
         const r = await api.rpc("dev_cleanup", { p_kind: kind, p_days: days });
         const imgs = r?.images || [];
-        if (imgs.length) await api.removeFiles("chat-images", imgs);
+        if (imgs.length) await api.removeFiles(kind === "avatar_orphans" ? "avatars" : "chat-images", imgs);
         toast(`${nf(r?.deleted)} data dibersihkan${imgs.length ? ` · ${nf(imgs.length)} file gambar dihapus` : ""}`, 3500);
       });
     }
@@ -465,7 +515,7 @@ export async function vDev(view, ctx) {
         on ? "Disematkan lagi selama 3 hari" : "Dilepas dari chat untuk semua pengguna");
     }
     if (a === "anndel") {
-      if (!confirm("Tarik pengumuman ini?\n\nPengumuman hilang dari Chat publik dan dari lonceng semua pengguna. Notifikasi yang sudah masuk ke HP tidak bisa ditarik.")) return;
+      if (!(await ask("Tarik pengumuman ini?\n\nPengumuman hilang dari Chat publik dan dari lonceng semua pengguna. Notifikasi yang sudah masuk ke HP tidak bisa ditarik.", { ok: "Tarik", danger: true }))) return;
       run(() => api.rest(`announcements?id=eq.${b.dataset.id}`, { method: "DELETE" }), "Pengumuman ditarik");
     }
     if (a === "bugok") run(() => api.rest(`bug_reports?id=eq.${b.dataset.id}`, { method: "PATCH", body: { resolved: true }, prefer: "return=minimal" }), "Laporan ditandai selesai");

@@ -145,7 +145,9 @@ jobs:
           PY
 
       - name: Pasang Capacitor
-        run: npm install --no-audit --no-fund
+        # versi paket dikunci apk/package-lock.json (npm ci gagal bila lockfile tidak cocok dengan package.json);
+        # --ignore-scripts: tidak ada skrip paket yang berjalan di job ini
+        run: npm ci --no-audit --no-fund --ignore-scripts
 
       - name: Sisipkan JavaScript Capacitor (penghubung ke plugin native)
         run: |
@@ -182,12 +184,12 @@ jobs:
             s = s.replace(/(<style name="AppTheme.NoActionBar"[^>]*>)/, `$1\n        ${items}`);
             s = s.replace(/(<style name="AppTheme.NoActionBarLaunch"[^>]*>)/, `$1\n        <item name="windowSplashScreenBackground">@color/ninokuu_bg</item>\n        ${items}`);
             fs.writeFileSync(sf, s);
-            // izin notifikasi, ikon & channel default FCM, orientasi potret
+            // izin notifikasi, ikon & channel default FCM, orientasi potret (boleh terbalik atas-bawah bila putar otomatis HP menyala)
             const mf = "android/app/src/main/AndroidManifest.xml"; let m = fs.readFileSync(mf, "utf8");
             if (!m.includes("POST_NOTIFICATIONS")) m = m.replace("</manifest>", `    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n</manifest>`);
             m = m.replace("</application>", `    <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/ic_stat_ninokuu" />\n        <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="ninokuu" />\n        <meta-data android:name="com.google.firebase.messaging.default_notification_color" android:resource="@color/ninokuu_red" />\n    </application>`);
             // layar menyusut saat keyboard muncul (kolom chat tidak tertutup keyboard)
-            m = m.replace(/<activity\b/, `<activity\n            android:screenOrientation="portrait"` + (m.includes("windowSoftInputMode") ? "" : `\n            android:windowSoftInputMode="adjustResize"`));
+            m = m.replace(/<activity\b/, `<activity\n            android:screenOrientation="userPortrait"` + (m.includes("windowSoftInputMode") ? "" : `\n            android:windowSoftInputMode="adjustResize"`));
             // keamanan: token sesi di penyimpanan WebView tidak ikut cadangan otomatis Android
             m = m.replace(/android:allowBackup="true"/, `android:allowBackup="false"`);
             if (!m.includes("android:allowBackup")) m = m.replace(/<application\b/, `<application\n        android:allowBackup="false"`);
@@ -200,6 +202,15 @@ jobs:
             // (tidak untuk Ninokuu Dev, supaya tautan tetap dibuka aplikasi global tanpa pilihan ganda)
             if (process.env.CHANNEL !== "dev" && !m.includes(`android:scheme="ninokuu"`)) m = m.replace(/(<activity\b[\s\S]*?MainActivity[\s\S]*?>)/, `$1\n            <intent-filter>\n                <action android:name="android.intent.action.VIEW" />\n                <category android:name="android.intent.category.DEFAULT" />\n                <category android:name="android.intent.category.BROWSABLE" />\n                <data android:scheme="ninokuu" />\n            </intent-filter>`);
             fs.writeFileSync(mf, m);'
+          # bilah gulir bawaan WebView (abu-abu di tepi kanan) dimatikan: pembaca memakai indikator gulir sendiri
+          MA=$(find android/app/src/main/java -name MainActivity.java | head -1)
+          PKG=$(grep -m1 '^package ' "$MA")
+          printf '%s\n\nimport android.os.Bundle;\nimport android.webkit.WebView;\nimport com.getcapacitor.BridgeActivity;\n\npublic class MainActivity extends BridgeActivity {\n    @Override\n    public void onCreate(Bundle savedInstanceState) {\n        registerPlugin(NinokuuCachePlugin.class);\n        super.onCreate(savedInstanceState);\n        WebView w = getBridge().getWebView();\n        w.setVerticalScrollBarEnabled(false);\n        w.setHorizontalScrollBarEnabled(false);\n    }\n}\n' "$PKG" > "$MA"
+          grep -q "setVerticalScrollBarEnabled(false)" "$MA" || { echo "::error::Gagal mematikan bilah gulir WebView"; exit 1; }
+          # plugin cache Ninokuu (hitung & bersihkan cache di Lainnya → Bersihkan cache)
+          sed "s/^package __PKG__;/$PKG/" ../apk/native/NinokuuCachePlugin.java > "$(dirname "$MA")/NinokuuCachePlugin.java"
+          grep -q "registerPlugin(NinokuuCachePlugin.class)" "$MA" && grep -q '^package ' "$(dirname "$MA")/NinokuuCachePlugin.java" || { echo "::error::Plugin cache Ninokuu gagal dipasang"; exit 1; }
+          cat "$MA"
           grep -q 'android:allowBackup="false"' android/app/src/main/AndroidManifest.xml || { echo "::error::allowBackup belum false"; exit 1; }
           grep -n "ninokuu_bg" android/app/src/main/res/values/styles.xml | head -3
           grep -n "POST_NOTIFICATIONS\|EXTERNAL_STORAGE\|ic_stat_ninokuu\|screenOrientation\|scheme=" android/app/src/main/AndroidManifest.xml
@@ -276,7 +287,8 @@ jobs:
           echo "https://github.com/${{ github.repository }}/releases/download/apk-dev/ninokuu-dev.apk" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Terbitkan ke Release "apk-terbaru"
-        if: env.CHANNEL != 'dev'
+        # rilis global hanya dari branch utama (Run workflow dari branch lain tidak bisa menimpa apk-terbaru)
+        if: env.CHANNEL != 'dev' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

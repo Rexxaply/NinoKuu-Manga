@@ -7,6 +7,33 @@ import { esc, icon } from "./ui.js";
 
 // Isi per versi. Slide: img = nama file di img/new/ (tanpa .webp).
 export const WHATS_NEW = {
+  "1.9.0": {
+    title: "Yang baru di Ninokuu 1.9.0",
+    intro: "Gulir otomatis, skor komik, pindah chapter yang mulus, pembersih cache, dan Komiku tetap bisa dibaca walau situsnya menolak server.",
+    features: [
+      ["Gulir otomatis", "Mode Scroll bisa menggulir sendiri 1×, 2×, atau 3×. Tekan layar untuk berhenti, lepas untuk lanjut. Atur di menu ⋯ pembaca atau Pengaturan."],
+      ["Lanjut otomatis", "Sampai di akhir chapter, chapter berikutnya terbuka sendiri setelah 1–5 detik (bawaan 3 detik). Ketuk untuk batal."],
+      ["Pindah chapter mulus", "Chapter berikutnya masuk dari kanan, chapter sebelumnya dari kiri, tanpa layar hitam atau halaman yang meloncat."],
+      ["Skor komik", "Info komik menampilkan skor ★ dari situs sumber, bila sumbernya menyediakan."],
+      ["Bersihkan cache", "Lainnya → Bersihkan cache: lihat perkiraan cache di HP lalu kosongkan. Koleksi, riwayat, dan unduhan tetap aman."],
+      ["Layar penuh sampai ujung", "Mode layar penuh memakai area sekitar lubang kamera. Bilah status yang ditarik muncul transparan lalu hilang sendiri."],
+      ["Komiku tetap jalan", "Komiku sedang menolak server Ninokuu. Di aplikasi, Komiku otomatis dibuka langsung lewat jaringan HP."],
+      ["Akun & Pengaturan rapi", "Panel Akun baru (foto, nama, email, password), Mode baca pindah ke Pengaturan, dan semua dialog kini gaya Ninokuu."],
+    ],
+    fixes: [
+      "Tombol Chapter di menu ⋯ menampilkan nomor chapter yang sedang dibaca.",
+      "Zoom terkunci di dalam halaman, tanpa celah hitam di tepi dan tanpa label persen.",
+      "Bar bawah yang mengecil terbuka lagi sendiri setelah layar diam ±2,5 detik.",
+      "HP boleh diputar terbalik dalam posisi potret.",
+      "Perbaikan keamanan di server, unduhan, restore backup, dan gambar chat.",
+    ],
+    tour: [
+      { img: "gulir", title: "Gulir otomatis", text: "Buka menu ⋯ di pembaca, pilih 1×, 2×, atau 3×. Tekan layar untuk berhenti sebentar, lepas untuk lanjut." },
+      { img: "skor", title: "Skor komik", text: "Skor ★ dari situs sumber tampil di info komik, di sebelah status komik." },
+      { img: "cache", title: "Bersihkan cache", text: "Di Lainnya, ketuk Bersihkan cache untuk melihat perkiraan cache di HP lalu mengosongkannya." },
+      { img: "setelan", title: "Semua di Pengaturan", text: "Mode baca, gulir otomatis, layar penuh, dan lanjut otomatis kini ada di satu halaman Pengaturan." },
+    ],
+  },
   "1.8.0": {
     title: "Yang baru di Ninokuu 1.8.0",
     intro: "Dukung Ninokuu lewat Trakteer, pembaruan muncul sendiri tanpa membuka ulang aplikasi, backup jadi file sungguhan, dan banyak tampilan yang dirapikan.",

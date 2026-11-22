@@ -12,8 +12,9 @@ export const state = {
   hist: new Map(Object.entries(api.lsGet("hist", {}))),   // key → {source, comic_id, title, cover, chapter, chapter_id, page, read_at}
   profile: api.lsGet("profile"),                          // {name, exp, role, verified}
   // autoHide: menu bacaan hilang saat menggulir · screenMode: "standard" | "fullscreen" (bilah status HP disembunyikan
-  // saat layar bacaan diketuk) · chapterEnd: "menu" (menu muncul di akhir chapter) | "auto" (langsung lanjut chapter)
-  settings: { readMode: "scroll", updView: "list", searchView: "grid", autoHide: true, screenMode: "standard", chapterEnd: "menu", ...api.lsGet("settings", {}) },
+  // saat layar bacaan diketuk) · nextDelay: jeda lanjut otomatis ke chapter berikutnya "off" | "1" | "2" | "3" | "5" (detik)
+  // (menggantikan chapterEnd "menu"/"auto" sejak 1.8.3; bawaan 3 detik)
+  settings: { readMode: "scroll", updView: "list", searchView: "grid", autoHide: true, screenMode: "standard", nextDelay: "3", ...api.lsGet("settings", {}) },
 };
 const saveLocal = () => {
   api.lsSet("lib", Object.fromEntries(state.lib));
@@ -99,16 +100,19 @@ export function saveHistory(h) {
   saveLocal(); emit();
   if (!loggedIn()) return;
   histDirty.add(k);
-  clearTimeout(histTimer);
-  histTimer = setTimeout(flushHistory, 1500);
+  // posisi halaman berubah terus saat membaca: dikirim paling sering 1× per 20 detik (bukan setiap ganti halaman).
+  // Tetap aman: tersimpan di HP seketika, dan dikirim langsung saat keluar dari pembaca / aplikasi ke latar belakang.
+  if (!histTimer) histTimer = setTimeout(() => { histTimer = null; flushHistory(); }, 20000);
 }
 export async function flushHistory() {
+  clearTimeout(histTimer); histTimer = null;
   const rows = [...histDirty].map((k) => state.hist.get(k)).filter(Boolean).map(histRow);
   histDirty.clear();
   if (rows.length && loggedIn()) await api.rest("history?on_conflict=user_id,source,comic_id", { method: "POST", body: rows, prefer: "resolution=merge-duplicates,return=minimal" }).catch(() => {});
 }
-const histRow = (h) => ({ source: h.source, comic_id: h.comic_id, title: (h.title || "").slice(0, 300), cover: (h.cover || "").slice(0, 1000),
-  chapter: String(h.chapter ?? "").slice(0, 40) || "?", page: Math.max(1, Math.min(10000, h.page || 1)), read_at: h.read_at });
+// toleran terhadap nilai bukan-string / bukan-angka (mis. dari backup yang rusak): satu entri buruk tidak boleh menggagalkan sinkronisasi semuanya
+const histRow = (h) => ({ source: String(h.source), comic_id: String(h.comic_id), title: String(h.title || "").slice(0, 300), cover: String(h.cover || "").slice(0, 1000),
+  chapter: String(h.chapter ?? "").slice(0, 40) || "?", page: Math.max(1, Math.min(10000, Math.trunc(Number(h.page)) || 1)), read_at: h.read_at });
 // chapter dibaca sampai habis = sekali EXP (dicek server). Profil diperbarui setelahnya.
 export async function awardRead(src, id, chapter) {
   if (!loggedIn() || chapter == null) return;
