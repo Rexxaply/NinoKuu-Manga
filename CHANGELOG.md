@@ -11,6 +11,13 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
+## 1.8.12 — 22 Nov 2026
+
+### Ringkasan
+- Perbaikan: setelah pindah chapter, halaman ke-3 dan seterusnya kosong (hitam) sampai digulir turun lalu naik lagi (sejak animasi geser 1.8.10)
+
+---
+
 ## 1.8.11 — 22 Nov 2026
 
 ### Ringkasan

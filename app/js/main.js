@@ -1058,7 +1058,7 @@ async function vReader(src, id, chId) {
     if (i !== curPage) { curPage = i; $("#rpg").textContent = i; savePos(i); if (!isLocal) S.saveHistory({ ...meta, page: i }); }
   };
   const goPage = (i, smooth = false) => {
-    const el = $(`.r-img[data-i="${i}"]`); if (!el) return;
+    const el = $(`.r-img[data-i="${i}"]`, box); if (!el) return;
     quietUntil = Date.now() + (smooth ? 900 : 400);
     if (slide) { clearZoom(); const w = box.clientWidth; box.scrollTo({ left: (rtl ? -1 : 1) * (i - 1) * w, behavior: smooth ? "smooth" : "auto" }); }
     else box.scrollTo({ top: el.offsetTop, behavior: smooth ? "smooth" : "auto" });
@@ -1276,7 +1276,7 @@ async function vReader(src, id, chId) {
       }
     },
     cancelNext: () => { autoNextStop(true); toast("Lanjut otomatis dibatalkan untuk chapter ini"); },
-    reimg: (el) => { const im = $(`.r-img[data-i="${el.dataset.i}"]`, rd); if (im) reloadImg(im); },
+    reimg: (el) => { const im = $(`.r-img[data-i="${el.dataset.i}"]`, box); if (im) reloadImg(im); },
     reload: () => { menu(false); if (failed.size) { const n = failed.size; [...failed].forEach(reloadImg); toast(`Memuat ulang ${n} gambar yang gagal…`); } else { toast("Memuat ulang chapter…", 1500); vReader(src, id, chId); } },
     prev: () => prev && goReplace(readHref(src, id, prev.id)),
     main: () => (next ? goReplace(readHref(src, id, next.id)) : toComic()),
@@ -1296,7 +1296,7 @@ async function vReader(src, id, chId) {
   };
   let slowLogged = 0;
   // selain jarak 3 layar, 2 halaman sesudah halaman yang mulai dimuat ikut diunduh (halaman manhwa bisa sangat panjang)
-  const loadNear = (im) => { const i = Number(im.dataset.i); [i, i + 1, i + 2].forEach((k) => { const x = $(`.r-img[data-i="${k}"]`, rd); if (x?.dataset.src) { loadImg(x); lazyIo.unobserve(x); } }); };
+  const loadNear = (im) => { const i = Number(im.dataset.i); [i, i + 1, i + 2].forEach((k) => { const x = $(`.r-img[data-i="${k}"]`, box); if (x?.dataset.src) { loadImg(x); lazyIo.unobserve(x); } }); };
   const lazyIo = new IntersectionObserver((es) => es.forEach((x) => { if (x.isIntersecting) loadNear(x.target); }),
     { root: box, rootMargin: slide ? "0px 100%" : "100% 0px 300% 0px" });
   $$(".r-img[data-src]", box).forEach((im) => lazyIo.observe(im));
