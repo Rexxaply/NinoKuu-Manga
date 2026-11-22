@@ -1,8 +1,10 @@
 package __PKG__;
 
 // Cek chapter baru di latar belakang (aplikasi ditutup), untuk sumber yang menolak server Ninokuu (Komiku).
+// Hanya aktif di HP akun developer: HP ini mengecek komik Komiku berlonceng milik SEMUA pengguna.
 // Dijalankan WorkManager ±tiap 30 menit saat ada internet. Alurnya:
-//   1. minta daftar komik berlonceng akun ini ke server (action bg_list, memakai kunci latar belakang)
+//   1. minta daftar komik yang perlu dicek ke server (action bg_list, memakai kunci latar belakang; maks. 60, yang
+//      paling lama tidak dicek dulu)
 //   2. buka halaman komiknya lewat jaringan HP (seperti browser biasa)
 //   3. kirim daftar chapter ke server (action bg_report); server yang mengirim notifikasi ke semua pengikut
 // Dipasang oleh .github/workflows/apk.yml (package diganti otomatis).
@@ -99,7 +101,7 @@ public class NinokuuBgWorker extends Worker {
         try {
             if (c.getResponseCode() / 100 != 2) throw new Exception("HTTP " + c.getResponseCode());
             if (!c.getURL().getHost().matches("^([a-z0-9-]+\\.)?komiku\\.(org|to|id)$")) throw new Exception("pengalihan ke situs lain");
-            return read(c.getInputStream(), MAX_HTML);
+            return read(c.getInputStream(), MAX_HTML, true);
         } finally { c.disconnect(); }
     }
 
@@ -113,17 +115,29 @@ public class NinokuuBgWorker extends Worker {
             int code = c.getResponseCode();
             if (code == 401) return null;   // kunci tidak berlaku lagi (keluar akun / kunci diganti)
             if (code / 100 != 2) throw new Exception("HTTP " + code);
-            return new JSONObject(read(c.getInputStream(), 512 * 1024));
+            return new JSONObject(read(c.getInputStream(), 512 * 1024, false));
         } finally { c.disconnect(); }
     }
 
-    private static String read(InputStream in, int max) throws Exception {
+    // komik=true: berhenti mengunduh begitu tabel chapter sudah memuat 50 baris (hemat kuota: sisa halaman berisi
+    // chapter lama yang tidak dibutuhkan)
+    private static String read(InputStream in, int max, boolean komik) throws Exception {
         ByteArrayOutputStream bo = new ByteArrayOutputStream();
         byte[] buf = new byte[16384];
-        int n;
+        StringBuilder mark = komik ? new StringBuilder() : null;
+        int n, rows = 0, at = -1;
         while ((n = in.read(buf)) > 0) {
             bo.write(buf, 0, Math.min(n, max - bo.size()));
             if (bo.size() >= max) break;
+            if (mark != null) {
+                mark.append(new String(buf, 0, n, StandardCharsets.ISO_8859_1));
+                if (at < 0) at = mark.indexOf("Daftar_Chapter");
+                if (at >= 0) {
+                    int i = at; rows = 0;
+                    while ((i = mark.indexOf("judulseries", i + 1)) >= 0) rows++;
+                    if (rows > 51) break;
+                }
+            }
         }
         in.close();
         return bo.toString("UTF-8");

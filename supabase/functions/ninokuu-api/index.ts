@@ -1119,10 +1119,14 @@ function cleanChapters(x: unknown): Chapter[] {
 const testPushAt = new Map<string, number>();
 const isSource = (s: unknown): s is Source => (SOURCES as readonly string[]).includes(String(s));
 // Laporan chapter dari HP (aplikasi terbuka atau cek latar belakang). Dipakai report_chapters & bg_report.
-async function reportChapters(uid: string, body: any): Promise<Response> {
+// trusted = HP developer (cek latar belakang untuk semua pengguna): komik cukup diikuti siapa pun, dan laporannya
+// langsung dipercaya (tanpa menunggu pelapor kedua).
+async function reportChapters(uid: string, body: any, trusted = false): Promise<Response> {
   const src = body.source, id = clip(body.comic_id, 600);
   if (!isSource(src) || !REPORTABLE.includes(src)) return json({ error: "sumber ini dicek langsung oleh server" }, 400);
-  const { data: lib } = await admin.from("library").select("title, cover").eq("user_id", uid).eq("source", src).eq("comic_id", id).maybeSingle();
+  const { data: lib } = trusted
+    ? await admin.from("library").select("title, cover").eq("source", src).eq("comic_id", id).eq("notify", true).limit(1).maybeSingle()
+    : await admin.from("library").select("title, cover").eq("user_id", uid).eq("source", src).eq("comic_id", id).maybeSingle();
   if (!lib) return json({ error: "Komik ini tidak ada di koleksimu" }, 404);
   const { data: mine } = await admin.from("chapter_reports").select("created_at").eq("source", src).eq("comic_id", id).eq("user_id", uid).maybeSingle();
   if (mine?.created_at && Date.now() - Date.parse(mine.created_at) < 5 * 60e3) return json({ ok: true, skipped: true });
@@ -1133,7 +1137,7 @@ async function reportChapters(uid: string, body: any): Promise<Response> {
   const { error: upErr } = await admin.from("chapter_reports").upsert({ source: src, comic_id: id, user_id: uid, num: n, chapter: clip(top.ch, 40), created_at: new Date().toISOString() }, { onConflict: "source,comic_id,user_id" });
   if (upErr) return json({ error: "chapter_reports: " + upErr.message + " — jalankan ulang ninokuu-schema.sql versi terbaru." }, 500);
   const { count } = await admin.from("library").select("user_id", { count: "exact", head: true }).eq("source", src).eq("comic_id", id).eq("notify", true);
-  const need = Math.min(2, Math.max(1, count || 1));
+  const need = trusted ? 1 : Math.min(2, Math.max(1, count || 1));
   const since = new Date(Date.now() - 24 * 3600e3).toISOString();
   const { data: reps } = await admin.from("chapter_reports").select("num, chapter").eq("source", src).eq("comic_id", id).gte("created_at", since)
     .order("num", { ascending: false }).limit(need);
@@ -1223,11 +1227,19 @@ Deno.serve(async (req) => {
 
     // Cek latar belakang dari HP (aplikasi ditutup): daftar komik berlonceng yang perlu dicek HP, lalu laporannya
     if (action === "bg_list" || action === "bg_report") {
+      // Hanya HP akun developer yang mengecek di latar belakang, untuk SEMUA komik Komiku berlonceng milik semua pengguna
+      // (pengguna lain cukup menerima notifikasi). Urutan: yang paling lama tidak dicek dulu, maks. 60 per putaran.
       const uid = await bgUser(body.key);
       if (!uid) return json({ error: "kunci latar belakang tidak valid" }, 401);
-      if (action === "bg_report") return await reportChapters(uid, body);
-      const { data } = await admin.from("library").select("source, comic_id").eq("user_id", uid).eq("notify", true).in("source", REPORTABLE).limit(40);
-      return json({ ok: true, items: data || [] });
+      const { data: me } = await admin.from("profiles").select("role").eq("id", uid).maybeSingle();
+      if (me?.role !== "developer") return json({ error: "kunci latar belakang tidak valid" }, 401);
+      if (action === "bg_report") return await reportChapters(uid, body, true);
+      const { data } = await admin.from("library").select("source, comic_id").eq("notify", true).eq("source", "komiku").limit(5000);
+      const ids = [...new Set((data || []).map((r: any) => r.comic_id))];
+      const { data: st } = ids.length ? await admin.from("chapter_reports").select("comic_id, created_at").eq("source", "komiku").eq("user_id", uid).in("comic_id", ids.slice(0, 1000)) : { data: [] };
+      const last = new Map((st || []).map((r: any) => [r.comic_id, Date.parse(r.created_at) || 0]));
+      ids.sort((a, b) => (last.get(a) || 0) - (last.get(b) || 0));
+      return json({ ok: true, items: ids.slice(0, 60).map((comic_id) => ({ source: "komiku", comic_id })) });
     }
 
     const user = await userOf(req);
@@ -1235,6 +1247,8 @@ Deno.serve(async (req) => {
 
     // buat (atau ganti) kunci cek latar belakang untuk HP ini; kunci lama otomatis tidak berlaku
     if (action === "bg_key") {
+      const { data: me } = await admin.from("profiles").select("role").eq("id", user.id).maybeSingle();
+      if (me?.role !== "developer") return json({ error: "khusus developer" }, 403);
       const key = [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, "0")).join("");
       const { error } = await admin.from("bg_keys").upsert({ user_id: user.id, key_hash: await sha256hex(key), created_at: new Date().toISOString() }, { onConflict: "user_id" });
       if (error) return json({ error: "bg_keys: " + error.message + " — jalankan ulang ninokuu-schema.sql versi terbaru." }, 500);

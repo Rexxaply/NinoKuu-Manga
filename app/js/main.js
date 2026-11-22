@@ -2016,7 +2016,8 @@ function startApp() {
   const check = () => {
     if (!S.loggedIn()) return;
     N.checkBlockedSources([...S.state.lib.values()], api.call).catch(() => {});
-    N.bgEnsure(api.currentUser()?.id, api.call, api.FN, api.SB_KEY).catch(() => {});
+    // cek latar belakang Komiku untuk semua pengguna: hanya dari HP akun developer
+    if (S.state.profile?.role === "developer") N.bgEnsure(api.currentUser()?.id, api.call, api.FN, api.SB_KEY).catch(() => {});
   };
   setTimeout(pushQuiet, 3000);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { pushQuiet(); if (route.name === "more") refreshPushStatus(); } });
