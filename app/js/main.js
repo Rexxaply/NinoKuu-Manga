@@ -133,7 +133,9 @@ async function render() {
     // kelas animasi dilepas setelah selesai: halaman yang digambar ulang (data datang) tidak ikut meluncur lagi
     movingT = setTimeout(() => { holdFx(false); watchFx(); if (my === renderSeq) view.classList.remove("in", "in-f", "in-b"); }, 420);
     for (const c of view.children) c.classList.toggle("vfix", getComputedStyle(c).position === "fixed");
-    void view.offsetWidth; view.classList.add("in", fwd ? "in-f" : "in-b");
+    // pindah chapter di pembaca: chapter berikutnya masuk dari kanan, chapter sebelumnya dari kiri
+    const f = route.name === "reader" && fromReader ? !rdBack : fwd;
+    void view.offsetWidth; view.classList.add("in", f ? "in-f" : "in-b");
   };
   const job = (VIEWS[route.name] || VIEWS.home)(...route.params);
   if (view.childElementCount && !keepOld) animate();
@@ -179,6 +181,7 @@ nav.addEventListener("click", (e) => {
   navAcc = 0; setNavMin(false);
 }, true);
 const go = (h) => { location.hash = h; };
+let rdLast = null, rdBack = false;   // chapter terakhir yang dibuka di pembaca (arah animasi pindah chapter)
 // ganti halaman tanpa menambah riwayat (dipakai saat pindah chapter)
 const goReplace = (h) => { if (h === location.hash) return; replacing = true; location.replace(h); };
 const back = (fallback = "#/home") => (navIdx > 0 ? history.back() : goReplace(fallback));
@@ -897,6 +900,8 @@ async function vReader(src, id, chId) {
   catch (e) { d = DL.offlineDetail(src, id); if (!d) { fail(e); return; } }   // offline: info dari unduhan
   if (!d) { fail(new Error("File unduhan tidak ditemukan di HP.")); return; }
   const idx = d.chapters.findIndex((c) => c.id === chId);
+  // arah animasi pindah chapter (lihat render): mundur bila urutan chapter baru lebih kecil dari yang tadi dibaca
+  rdBack = !!rdLast && rdLast.k === src + "|" + id && idx >= 0 && idx < rdLast.i; rdLast = { k: src + "|" + id, i: idx };
   const ch = d.chapters[idx] || { id: chId, ch: "?" };
   const prev = d.chapters[idx - 1], next = d.chapters[idx + 1];
   // chapter yang sudah diunduh dibaca dari file di HP (tanpa kuota, bisa offline)
@@ -971,7 +976,7 @@ async function vReader(src, id, chId) {
       return `<button role="radio" aria-selected="${on}" aria-checked="${on}" data-act="rmode" data-v="${k}" ${off ? "disabled" : ""}>${icon(ic, 16)}${n}</button>`; }).join("")}</div>
     ${longStrip ? `<span class="mu xs rm-note">Slide tak tersedia untuk manhwa/manhua.</span>` : ""}
     ${slide ? `<div class="rq-row"><span>Arah geser</span><div class="seg s2">${[["rtl", "Ka → Ki"], ["ltr", "Ki → Ka"]].map(([k, n]) => `<button role="tab" aria-selected="${(rtl ? "rtl" : "ltr") === k}" data-act="rdir" data-v="${k}" aria-label="${k === "rtl" ? "Kanan ke kiri" : "Kiri ke kanan"}">${n}</button>`).join("")}</div></div>` : ""}
-    <div class="rq-acts"><button class="rq-act" data-act="chlist"><span class="gold">${icon("list", 18)}</span>Chapter <span class="mu">${d.chapters.length}</span></button><button class="rq-act" data-act="rreport"><span class="redt">${icon("bug", 18)}</span>Laporkan</button></div>
+    <div class="rq-acts"><button class="rq-act" data-act="chlist"><span class="gold">${icon("list", 18)}</span>Chapter <span class="mu">${esc(ch.ch)}</span></button><button class="rq-act" data-act="rreport"><span class="redt">${icon("bug", 18)}</span>Laporkan</button></div>
     <span class="cap mt4">Bacaan</span><div class="r-togs rq">${readPrefsCompact()}</div>
   </div>
   <div class="r-bottom">

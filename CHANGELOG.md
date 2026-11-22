@@ -11,6 +11,15 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
+## 1.8.9 — 22 Nov 2026
+
+### Ringkasan
+- Layar penuh di pembaca (APK): bilah status yang ditarik dari atas kini muncul transparan di atas halaman lalu hilang sendiri setelah beberapa detik, tanpa perlu mengetuk halaman dua kali
+- Animasi pindah chapter mengikuti arah: chapter berikutnya masuk dari kanan, chapter sebelumnya dari kiri
+- Menu bacaan: tombol "Chapter" menampilkan nomor chapter yang sedang dibaca (bukan jumlah chapter)
+
+---
+
 ## 1.8.8 — 21 Nov 2026
 
 ### Ringkasan

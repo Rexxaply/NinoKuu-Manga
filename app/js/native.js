@@ -448,7 +448,14 @@ export async function setFullscreen(on, overlay = on) {
   if (sb) {
     try {
       if (overlay && !wasOv) await sb.setOverlaysWebView?.({ overlay: true });
-      if (on !== wasOn) await (on ? sb.hide() : sb.show());
+      // bilah status: lewat plugin Ninokuu (perilaku "sementara": ditarik → muncul transparan lalu hilang sendiri);
+      // APK lama tanpa method ini memakai StatusBar bawaan
+      if (on !== wasOn) {
+        const nc = cachePlugin();
+        let done = false;
+        if (nc?.bars) { try { await nc.bars({ hide: on }); done = true; } catch {} }
+        if (!done) await (on ? sb.hide() : sb.show());
+      }
       if (!overlay && wasOv) await sb.setOverlaysWebView?.({ overlay: false });
     } catch {}
     return;
