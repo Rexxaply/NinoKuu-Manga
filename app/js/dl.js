@@ -20,6 +20,11 @@ const MB_EST = 9;                                  // perkiraan ukuran per chapt
 const keyOf = (src, id, chId) => `${src}|${id}|${chId}`;
 const idx = () => api.lsGet("dlIndex", {}) || {};
 const saveIdx = (o) => api.lsSet("dlIndex", o);
+// semua jalur tulis/hapus wajib berada di dalam Ninokuu/ (tanpa segmen kosong, "." atau "..")
+const inNinokuu = (p) => typeof p === "string" && p.startsWith("Ninokuu/") && !p.split("/").some((s) => s === "" || s === "." || s === "..");
+const shortHash = (s) => { let h = 5381; for (const c of String(s)) h = (((h << 5) + h) ^ c.charCodeAt(0)) >>> 0; return h.toString(36); };
+// jalur sudah dipakai catatan lain (judul serupa, atau komik yang sama dari sumber lain)?
+const taken = (dir, path, key) => Object.entries(idx()).some(([k, r]) => k !== key && r.dir === dir && r.path === path);
 const queue = () => api.lsGet("dlQueue", []) || [];
 const saveQueue = (q) => api.lsSet("dlQueue", q);
 export const fmt = () => (FMTS.includes(api.lsGet("dlFmt")) ? api.lsGet("dlFmt") : "CBZ");
@@ -29,7 +34,9 @@ const autoOld = () => !!api.lsGet("dlAutoOld", false);
 const emit = (d = {}) => window.dispatchEvent(new CustomEvent("nk:dl", { detail: d }));
 const mbS = (b) => { if (b > 0 && b < 104858) return Math.max(1, Math.round(b / 1024)) + " KB"; const m = b / 1048576; return m >= 1000 ? (m / 1024).toFixed(1).replace(".", ",") + " GB" : (m < 10 ? m.toFixed(1).replace(".", ",") : Math.round(m)) + " MB"; };
 const chLabel = (a, b) => (a === b ? `Ch. ${a}` : `Ch. ${a}–${b}`);
-const safe = (s) => String(s || "").replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || "Tanpa judul";
+// nama aman untuk file/folder. Hasil yang hanya berisi titik ("." / "..") diganti, supaya judul dari sumber
+// tidak bisa menjadi segmen "naik folder" di jalur Ninokuu/<judul>/…
+const safe = (s) => { const r = String(s || "").replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 80); return /^[.\s]*$/.test(r) ? "Tanpa judul" : r; };
 const pad = (n) => String(n).padStart(3, "0");
 const numOf = (c) => parseFloat(c);
 
@@ -81,7 +88,8 @@ export async function shareFile(uri, title) {
 
 const b64 = (u8) => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = no; r.readAsDataURL(new Blob([u8])); });
 async function writeBytes(dir, path, u8) {
-  const CH = 3 << 20;                               // potongan 3 MB (kelipatan 3 → base64 bisa disambung)
+  if (!inNinokuu(path)) throw new Error("Jalur file tidak valid");
+  const CH = 3 << 20;                              // potongan 3 MB (kelipatan 3 → base64 bisa disambung)
   await fs().writeFile({ path, data: await b64(u8.subarray(0, CH)), directory: dir, recursive: true });
   for (let o = CH; o < u8.length; o += CH) await fs().appendFile({ path, data: await b64(u8.subarray(o, o + CH)), directory: dir });
 }
@@ -252,14 +260,16 @@ async function dlChapter(j, it, flag) {
   }
   if (flag.stop) throw STOP;
   const dir = await storeDir(), base = `Ninokuu/${safe(j.title)}`, name = `Chapter ${safe(it.ch)}`;
+  const key = keyOf(j.src, j.id, it.chId), tag = ` [${safe(j.src)}-${shortHash(j.id)}]`;   // akhiran hanya dipakai bila jalur bentrok
   let path, bytes = files.reduce((a, f) => a + f.data.length, 0);
   if (j.fmt === "Folder gambar") {
-    path = `${base}/${name}`;
+    path = `${base}/${name}`; if (taken(dir, path, key)) path += tag;
     for (const f of files) await writeBytes(dir, `${path}/${f.name}`, f.data);
   } else {
     const info = `<?xml version="1.0" encoding="utf-8"?>\n<ComicInfo><Series>${esc(j.title)}</Series><Number>${esc(it.ch)}</Number><PageCount>${files.length}</PageCount><Web>${esc(j.src)}</Web></ComicInfo>`;
     const zip = zipStore(j.fmt === "CBZ" ? [...files, { name: "ComicInfo.xml", data: new TextEncoder().encode(info) }] : files);
-    path = `${base}/${name}.${j.fmt === "CBZ" ? "cbz" : "zip"}`; bytes = zip.length;
+    const ext = j.fmt === "CBZ" ? "cbz" : "zip";
+    path = `${base}/${name}.${ext}`; if (taken(dir, path, key)) path = `${base}/${name}${tag}.${ext}`; bytes = zip.length;
     await writeBytes(dir, path, zip);
   }
   const o = idx();
@@ -328,10 +338,14 @@ async function removeRecs(keys) {
   const o = idx();
   for (const k of keys) {
     const r = o[k]; if (!r) continue;
-    try {
-      if (r.fmt === "Folder gambar") await fs().rmdir({ path: r.path, directory: r.dir, recursive: true });
-      else await fs().deleteFile({ path: r.path, directory: r.dir });
-    } catch {}
+    // file yang masih dipakai catatan lain tidak dihapus; jalur di luar Ninokuu/ (catatan lama/rusak) tidak disentuh
+    const shared = Object.entries(o).some(([k2, r2]) => k2 !== k && !keys.includes(k2) && r2.dir === r.dir && r2.path === r.path);
+    if (!shared && inNinokuu(r.path)) {
+      try {
+        if (r.fmt === "Folder gambar") await fs().rmdir({ path: r.path, directory: r.dir, recursive: true });
+        else await fs().deleteFile({ path: r.path, directory: r.dir });
+      } catch {}
+    }
     delete o[k];
   }
   saveIdx(o); emit();
