@@ -110,8 +110,9 @@ export async function flushHistory() {
   histDirty.clear();
   if (rows.length && loggedIn()) await api.rest("history?on_conflict=user_id,source,comic_id", { method: "POST", body: rows, prefer: "resolution=merge-duplicates,return=minimal" }).catch(() => {});
 }
-const histRow = (h) => ({ source: h.source, comic_id: h.comic_id, title: (h.title || "").slice(0, 300), cover: (h.cover || "").slice(0, 1000),
-  chapter: String(h.chapter ?? "").slice(0, 40) || "?", page: Math.max(1, Math.min(10000, h.page || 1)), read_at: h.read_at });
+// toleran terhadap nilai bukan-string / bukan-angka (mis. dari backup yang rusak): satu entri buruk tidak boleh menggagalkan sinkronisasi semuanya
+const histRow = (h) => ({ source: String(h.source), comic_id: String(h.comic_id), title: String(h.title || "").slice(0, 300), cover: String(h.cover || "").slice(0, 1000),
+  chapter: String(h.chapter ?? "").slice(0, 40) || "?", page: Math.max(1, Math.min(10000, Math.trunc(Number(h.page)) || 1)), read_at: h.read_at });
 // chapter dibaca sampai habis = sekali EXP (dicek server). Profil diperbarui setelahnya.
 export async function awardRead(src, id, chapter) {
   if (!loggedIn() || chapter == null) return;

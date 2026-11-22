@@ -293,7 +293,7 @@ ${last ? `<section class="sec s16"><h2 class="cap">Lanjut baca</h2>
   <a class="resume" href="${last.chapter_id ? readHref(last.source, last.comic_id, last.chapter_id) : comicHref(last.source, last.comic_id)}">${cover(last.cover, last.title, "rs")}
     <span class="rc-mid g6"><span class="meta"><span class="tag-s">${esc(srcName(last.source))}</span>${last.type ? `<span>${esc(typeName(last.type))}</span>` : ""}</span>
       <span class="rs-t">${esc(last.title)}</span>
-      <span class="mu sm">Chapter ${esc(last.chapter)}${last.pages ? ` · halaman ${last.page || 1} dari ${last.pages}` : ""}</span>
+      <span class="mu sm">Chapter ${esc(last.chapter)}${last.pages ? ` · halaman ${Number(last.page) || 1} dari ${Number(last.pages) || 0}` : ""}</span>
       <span class="prog"><span style="width:${pct(last.page || 1, last.pages || 0) || 6}%"></span></span></span>
     <span class="play">${icon("play", 19, 2)}</span></a></section>` : ""}
 <section class="sec s26 nox"><div class="sec-h px"><h2>Top 10 populer</h2><span class="mu sm">${esc(srcName(homeSrc))}</span></div><div class="hs" id="pop">${loading(3, "sk-top")}</div></section>
@@ -1562,7 +1562,7 @@ function vFav(tab, soft = false) {
     return `<a class="fa-row" href="${comicHref(x.source, x.comic_id)}">${cover(x.cover, x.title, "sm")}<span class="fa-mid">
       <b class="fa-t">${esc(x.title)}</b>
       <span class="fa-meta"><i class="fa-dot s-${esc(x.source)}"></i>${esc(srcName(x.source))}<span class="fa-sep">·</span>${esc(ago(x.read_at))}</span>
-      <span class="fa-meta"><b class="fa-rd">Ch. ${esc(x.chapter)}</b>${x.pages ? `<span class="fa-sep">·</span>${done ? "selesai" : `hal ${x.page || 1} / ${x.pages}`}` : ""}</span>
+      <span class="fa-meta"><b class="fa-rd">Ch. ${esc(x.chapter)}</b>${x.pages ? `<span class="fa-sep">·</span>${done ? "selesai" : `hal ${Number(x.page) || 1} / ${Number(x.pages) || 0}`}` : ""}</span>
       <span class="fa-bar"><i style="width:${pct(x.page || 1, x.pages || 0) || 4}%"></i></span>
     </span>${btn}</a>`;
   };
@@ -1786,7 +1786,7 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
       } catch (e) { showPush("error"); toast("Pendaftaran notifikasi gagal: " + e.message, 5000); }
     },
     discord: () => soon("Server Discord Ninokuu sedang disiapkan."), trakteer: () => openTrakteer(),
-    logout: async () => { if (!(await ask("Keluar dari akun? Koleksi dan riwayatmu tetap aman di server.", { ok: "Keluar", danger: true }))) return; await S.flushHistory(); await api.signOut(); S.clearUserData(); toast("Kamu sudah keluar"); vMore(); },
+    logout: async () => { if (!(await ask("Keluar dari akun? Koleksi dan riwayatmu tetap aman di server.", { ok: "Keluar", danger: true }))) return; await S.flushHistory(); await N.pushRelease(api.rest).catch(() => {}); await api.signOut(); S.clearUserData(); toast("Kamu sudah keluar"); vMore(); },
     cache: async () => {
       const c = await N.cacheParts().catch(() => ({ images: 0, data: 0, total: 0 }));
       if (!c.total) { toast("Cache sudah bersih"); return; }
@@ -2103,9 +2103,21 @@ async function vPage(name) {
     try {
       const j = JSON.parse(await file.text());
       if (j?.app !== "ninokuu") throw new Error("Ini bukan file backup Ninokuu.");
+      // isi backup tidak dipercaya: hanya sumber yang dikenal, field dari daftar putih, string dipotong, angka dipaksa bulat
+      const str = (v, n) => (typeof v === "string" ? v.slice(0, n) : "");
+      const int = (v) => { const x = Math.trunc(Number(v)); return Number.isFinite(x) && x > 0 ? Math.min(x, 10000) : 0; };
+      const okKey = (x) => !!x && SRC_IDS.includes(x.source) && typeof x.comic_id === "string" && x.comic_id.length > 0 && x.comic_id.length <= 300;
       let added = 0;
-      for (const m of j.lib || []) if (m?.source && m?.comic_id && m?.title && !S.inLib(m.source, m.comic_id)) { await S.toggleLib(m).catch(() => {}); added++; }
-      for (const h of j.hist || []) if (h?.source && h?.comic_id && !S.histItem(h.source, h.comic_id)) S.saveHistory(h);
+      for (const m of Array.isArray(j.lib) ? j.lib : []) {
+        if (!okKey(m) || typeof m.title !== "string" || !m.title) continue;
+        const row = { source: m.source, comic_id: m.comic_id, title: str(m.title, 300), cover: str(m.cover, 1000) };
+        if (!S.inLib(row.source, row.comic_id)) { await S.toggleLib(row).catch(() => {}); added++; }
+      }
+      for (const h of Array.isArray(j.hist) ? j.hist : []) {
+        if (!okKey(h) || S.histItem(h.source, h.comic_id)) continue;
+        S.saveHistory({ source: h.source, comic_id: h.comic_id, title: str(h.title, 300), cover: str(h.cover, 1000), type: str(h.type, 20),
+          chapter: str(h.chapter, 40), chapter_id: str(h.chapter_id, 300), page: int(h.page), pages: int(h.pages) });
+      }
       if (j.settings && typeof j.settings === "object") ["readMode", "readDir", "updView", "searchView", "favView", "gfx", "favSort"].forEach((k) => { if (typeof j.settings[k] === "string") S.setSetting(k, j.settings[k]); });
         ["autoHide"].forEach((k) => { if (typeof j.settings[k] === "boolean") S.setSetting(k, j.settings[k]); });
         ["screenMode", "nextDelay"].forEach((k) => { if (typeof j.settings[k] === "string") S.setSetting(k, j.settings[k]); });

@@ -52,17 +52,19 @@ const plain = (t) => String(t || "").replace(/\|\|([\s\S]+?)\|\|/g, "$1");
 
 /* ---------- kompres gambar sebelum diunggah (hemat kuota penyimpanan) ---------- */
 async function compress(file) {
-  if (file.type === "image/gif") return { blob: file, ext: "gif" };
-  try {
-    const bmp = await createImageBitmap(file);
-    const k = Math.min(1, 1280 / Math.max(bmp.width, bmp.height));
-    const c = document.createElement("canvas");
-    c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
-    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
-    const blob = await new Promise((r) => c.toBlob(r, "image/webp", 0.78));
-    if (blob && blob.size < file.size) return { blob, ext: "webp", w: c.width, h: c.height };
-    return { blob: file, ext: file.type.split("/")[1].replace("jpeg", "jpg"), w: bmp.width, h: bmp.height };
-  } catch { return { blob: file, ext: file.type.split("/")[1].replace("jpeg", "jpg") }; }
+  if (file.type === "image/gif") return { blob: file, ext: "gif" };   // GIF tidak punya EXIF/GPS; animasinya hilang bila digambar ulang
+  // Gambar ulang lewat canvas SELALU dipakai (walau hasilnya tidak lebih kecil): hanya langkah ini yang membuang
+  // metadata EXIF/XMP (lokasi GPS, perangkat, waktu). File asli tidak pernah diunggah sebagai cadangan.
+  let bmp;
+  try { bmp = await createImageBitmap(file); } catch { throw new Error("Gambar tidak bisa diproses. Coba gambar lain."); }
+  const k = Math.min(1, 1280 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  bmp.close?.();
+  const blob = await new Promise((r) => c.toBlob(r, "image/webp", 0.78));
+  if (!blob) throw new Error("Gambar tidak bisa diproses. Coba gambar lain.");
+  return { blob, ext: blob.type === "image/webp" ? "webp" : "png", w: c.width, h: c.height };   // WebView lama bisa mengembalikan PNG
 }
 
 /* ---------- pengumuman tersemat di chat publik ---------- */
@@ -262,7 +264,7 @@ export async function vChat(view, ctx, opt = {}) {
     else if (a === "selcut") { const [i, s0, s1, t] = sel(); navigator.clipboard?.writeText(t).catch(() => {}); i.value = i.value.slice(0, s0) + i.value.slice(s1); i.setSelectionRange(s0, s0); i.dispatchEvent(new Event("input")); toast("Teks dipotong"); }
     else if (a === "mcopy") { const t = plain(m?.body); if (t) navigator.clipboard?.writeText(t).catch(() => {}); sheet(""); toast(t ? "Pesan disalin" : "Pesan ini hanya berisi gambar"); }
     else if (a === "mreport") run(() => api.rest("chat_reports", { method: "POST", body: { message_id: m.id }, prefer: "resolution=ignore-duplicates,return=minimal" }), "Pesan dilaporkan. Terima kasih, moderator akan meninjaunya.");
-    else if (a === "mdel") { if (!(await ask("Hapus pesan ini?", { ok: "Hapus", danger: true }))) return; run(async () => { await api.rest(`chat_messages?id=eq.${m.id}`, { method: "DELETE" }); if (m.image_path && m.user_id === me) await api.removeFile("chat-images", m.image_path).catch(() => {}); }, "Pesan dihapus"); }
+    else if (a === "mdel") { if (!(await ask("Hapus pesan ini?", { ok: "Hapus", danger: true }))) return; run(async () => { await api.rest(`chat_messages?id=eq.${m.id}`, { method: "DELETE" }); if (m.image_path && (m.user_id === me || isDev())) await api.removeFile("chat-images", m.image_path).catch(() => {}); }, "Pesan dihapus"); }
     else if (a === "mhide") run(() => api.rpc("mod_set_hidden", { p_message: m.id, p_hidden: !m.hidden }), m.hidden ? "Pesan ditampilkan lagi" : "Pesan disembunyikan dari semua pengguna");
     else if (a === "mmute") run(() => api.rpc("mod_restrict", { p_user: m.user_id, p_mute_minutes: 60 }), `${m.name} dibisukan 1 jam`);
     else if (a === "mban") { if (!(await ask(`Blokir ${m.name}? Semua pesannya disembunyikan dan dia tidak bisa menulis di chat publik.`, { ok: "Blokir", danger: true }))) return; run(() => api.rpc("mod_restrict", { p_user: m.user_id, p_ban: true }), `${m.name} diblokir dari chat`); }

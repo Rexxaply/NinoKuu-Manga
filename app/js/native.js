@@ -305,6 +305,13 @@ export async function pushEnable(rpc, ask = false, force = false) {
     return "on";
   } catch (e) { lastError = e.message || String(e); lastToken = null; throw e; }
 }
+// dipanggil SAAT KELUAR AKUN, sebelum sesi dihapus: lepaskan token HP ini dari akun lama (supaya notifikasinya tidak
+// terus dikirim ke HP ini) dan reset lastToken (supaya akun berikutnya selalu mendaftarkan ulang token yang sama).
+export async function pushRelease(rest) {
+  const t = lastToken; lastToken = null;
+  if (!t || typeof rest !== "function") return;
+  await rest(`devices?token=eq.${encodeURIComponent(t)}`, { method: "DELETE", prefer: "return=minimal" }).catch(() => {});
+}
 // notifikasi masuk saat aplikasi terbuka → perbarui lonceng
 export function onPushReceived(cb) { PN()?.addListener("pushNotificationReceived", () => cb()); }
 // ketuk notifikasi → buka halaman yang dituju (ninokuu://comic/<sumber>/<id>, ninokuu://chat, ninokuu://home)

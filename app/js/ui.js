@@ -69,8 +69,8 @@ document.addEventListener("load", (e) => {
 }, true);
 addEventListener("online", () => document.querySelectorAll(".cover.cv-fail").forEach(retryCover));
 
-export const comicHref = (src, id) => `#/c/${src}/${encodeURIComponent(id)}`;
-export const readHref = (src, id, ch) => `#/r/${src}/${encodeURIComponent(id)}/${encodeURIComponent(ch)}`;
+export const comicHref = (src, id) => `#/c/${encodeURIComponent(src)}/${encodeURIComponent(id)}`;
+export const readHref = (src, id, ch) => `#/r/${encodeURIComponent(src)}/${encodeURIComponent(id)}/${encodeURIComponent(ch)}`;
 
 export function greeting(d = new Date()) {
   const h = d.getHours();
