@@ -1,6 +1,6 @@
 // Koneksi ke Supabase (Auth, database REST, Storage) dan Edge Function ninokuu-api.
 // Tanpa library: semua lewat fetch, supaya ringan dan sama di PWA maupun APK.
-import { direct, logDev } from "./native.js";
+import { direct, logDev, canDirectFallback, serverBlocked } from "./native.js";
 const C = window.NINOKUU_CONFIG || {};
 const BASE = String(C.SUPABASE_URL || "").replace(/\/+$/, "");
 const KEY = String(C.SUPABASE_ANON_KEY || "");
@@ -178,7 +178,12 @@ export async function call(action, payload = {}) {
   try {
     r = await fetch(FN, { method: "POST", headers: { apikey: KEY, Authorization: "Bearer " + t, "Content-Type": "application/json" }, body: JSON.stringify({ action, ...payload }) });
   } catch { logDev("api", `${action}: jaringan gagal`, JSON.stringify(payload).slice(0, 300)); throw new ApiError(NET_MSG); }
-  if (!r.ok) { const e = await readErr(r); logDev("api", `${action}: HTTP ${r.status} ${e.message}`, JSON.stringify(payload).slice(0, 300)); throw e; }
+  if (!r.ok) {
+    const e = await readErr(r); logDev("api", `${action}: HTTP ${r.status} ${e.message}`, JSON.stringify(payload).slice(0, 300));
+    // sumber menolak server (Cloudflare) → APK mencoba mengambilnya sendiri lewat jaringan HP
+    if (e.blocked && canDirectFallback(payload?.source)) { serverBlocked(payload.source); const d2 = await direct(action, payload); if (d2) return d2; }
+    throw e;
+  }
   return r.json();
 }
 export const pageUrl = (p) => FN + "?" + p;

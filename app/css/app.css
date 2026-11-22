@@ -52,6 +52,16 @@ html, body { overflow-x: clip; }
 @keyframes fixUp { from { transform: translateY(calc(100% + 40px)); } }
 /* tanpa opacity: opacity < 1 pada #view mematikan efek kaca (backdrop-filter) semua tombol/menu di dalamnya selama
    animasi → isi di belakangnya sempat tembus tajam. Cukup geser seperti "push" iOS. */
+/* pindah chapter di pembaca: chapter lama (salinan .r-ghost) keluar penuh, chapter baru masuk dari sisi lain */
+.r-ghost { position: absolute; inset: 0; overflow: hidden; pointer-events: none; background: #0A0A0A; will-change: transform; }
+.r-ghost.gf { animation: swOutF .34s cubic-bezier(.32, .72, 0, 1) both; }
+.r-ghost.gb { z-index: 2; box-shadow: -12px 0 32px rgba(0, 0, 0, .45); animation: swOutB .34s cubic-bezier(.32, .72, 0, 1) both; }
+.reader.swap-f > .r-scroll, .reader.swap-f > .r-slides { background: #0A0A0A; box-shadow: -12px 0 32px rgba(0, 0, 0, .45); animation: swInF .34s cubic-bezier(.32, .72, 0, 1) both; }
+.reader.swap-b > .r-scroll, .reader.swap-b > .r-slides { animation: swInB .34s cubic-bezier(.32, .72, 0, 1) both; }
+@keyframes swOutF { to { transform: translateX(-30%); filter: brightness(.55); } }
+@keyframes swOutB { to { transform: translateX(100%); } }
+@keyframes swInF { from { transform: translateX(100%); } }
+@keyframes swInB { from { transform: translateX(-30%); filter: brightness(.55); } }
 @keyframes slideF { from { transform: translateX(44px); } }
 @keyframes slideB { from { transform: translateX(-32px); } }
 @media (prefers-reduced-motion: reduce) { #view.in-f > *, #view.in-b > *, #view.in > .vfix { animation: none !important; } }

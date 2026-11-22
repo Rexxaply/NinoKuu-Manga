@@ -11,6 +11,14 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
+## 1.8.10 — 22 Nov 2026
+
+### Ringkasan
+- Pindah chapter di pembaca tidak lagi tampak meloncat: halaman chapter lama digeser keluar sementara chapter baru masuk dari sisi lain (berikutnya dari kanan, sebelumnya dari kiri)
+- Komiku: situsnya mulai menolak server Ninokuu (Cloudflare). Di APK, Komiku kini otomatis diambil langsung lewat jaringan HP selama server ditolak (daftar, info komik, halaman chapter), lalu dicoba lewat server lagi setiap 30 menit
+
+---
+
 ## 1.8.9 — 22 Nov 2026
 
 ### Ringkasan

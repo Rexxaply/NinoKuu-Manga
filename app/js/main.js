@@ -134,8 +134,9 @@ async function render() {
     movingT = setTimeout(() => { holdFx(false); watchFx(); if (my === renderSeq) view.classList.remove("in", "in-f", "in-b"); }, 420);
     for (const c of view.children) c.classList.toggle("vfix", getComputedStyle(c).position === "fixed");
     // pindah chapter di pembaca: chapter berikutnya masuk dari kanan, chapter sebelumnya dari kiri
-    const f = route.name === "reader" && fromReader ? !rdBack : fwd;
-    void view.offsetWidth; view.classList.add("in", f ? "in-f" : "in-b");
+    // pindah chapter di pembaca: digeser oleh vReader sendiri (halaman lama keluar, chapter baru masuk)
+    if (route.name === "reader" && fromReader) return;
+    void view.offsetWidth; view.classList.add("in", fwd ? "in-f" : "in-b");
   };
   const job = (VIEWS[route.name] || VIEWS.home)(...route.params);
   if (view.childElementCount && !keepOld) animate();
@@ -958,7 +959,21 @@ async function vReader(src, id, chId) {
   });
 
   const animIn = !inReader && !shellShown && !matchMedia("(prefers-reduced-motion: reduce)").matches;
-  view.innerHTML = `<div class="reader ui ${animIn ? "enter" : ""} ${slide ? "slide" : ""}" id="rd">
+  // Pindah chapter: halaman chapter lama digeser keluar penuh sementara chapter baru masuk dari sisi lain (seperti
+  // membalik halaman). Dulu halaman lama langsung hilang lalu halaman baru meloncat 44px → terlihat seperti glitch.
+  let ghost = null;
+  const swap = inReader && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (swap) {
+    const ob = $("#rbox");
+    if (ob) {
+      const st = ob.scrollTop, sl = ob.scrollLeft;
+      ob.removeAttribute("id"); ob.querySelectorAll("[id]").forEach((x) => x.removeAttribute("id"));
+      ghost = document.createElement("div"); ghost.className = `r-ghost ${rdBack ? "gb" : "gf"}`;
+      ghost.setAttribute("aria-hidden", "true"); ghost.inert = true; ghost.append(ob);
+      ghost._pos = [st, sl];
+    }
+  }
+  view.innerHTML = `<div class="reader ui ${animIn ? "enter" : ""} ${slide ? "slide" : ""} ${ghost ? (rdBack ? "swap-b" : "swap-f") : ""}" id="rd">
   ${slide ? `<div class="r-slides" id="rbox" dir="${rtl ? "rtl" : "ltr"}">${imgs.map((im) => `<div class="r-slide">${im}</div>`).join("")}<div class="r-slide r-endslide"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span>${next ? `<button class="r-next-hint" id="rnext" data-act="cancelNext" hidden><span class="r-nbar"></span><span class="r-ntx"></span></button>` : ""}${isLocal ? "" : `${chLike(null)}<a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini</a>`}</div></div>`
     : `<div class="r-scroll" id="rbox"><div class="r-pages" id="rpages">${imgs.join("")}<div class="r-endtxt"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span>${next ? `<button class="r-next-hint" id="rnext" data-act="cancelNext" hidden><span class="r-nbar"></span><span class="r-ntx"></span></button>` : ""}${isLocal ? "" : `${chLike(null)}<a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini<span class="cm-n" id="rcmn"></span></a>`}</div></div></div>`}
   <div class="r-top">
@@ -989,6 +1004,11 @@ async function vReader(src, id, chId) {
       <button class="r-sq glass" data-act="next" aria-label="${next ? "Chapter berikutnya" : "Kembali ke info komik"}">${next ? icon("chev", 22, 2.2) : icon("home", 21, 2)}</button>
     </div></div></div>`;
   const rd = $("#rd"), box = $("#rbox"), pages = $("#rpages");
+  if (ghost) {
+    rd.prepend(ghost); const [st, sl] = ghost._pos; ghost.firstChild.scrollTop = st; ghost.firstChild.scrollLeft = sl;
+    const g = ghost, end = () => { g.remove(); rd.classList.remove("swap-f", "swap-b"); };
+    g.addEventListener("animationend", end, { once: true }); setTimeout(end, 700);
+  }
   // masuk pembaca dari info komik: halaman tampil dulu, bar atas & bawah baru meluncur masuk setelah gambar
   // halaman tujuan selesai dimuat & digambar (maks 2,5 dtk), supaya animasi tidak berjalan bersamaan dengan pemuatan
   if (animIn) {

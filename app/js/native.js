@@ -256,13 +256,104 @@ const WEST = (() => {
   };
 })();
 
+/* ---------- Komiku (HTML; cadangan bila Cloudflare Komiku menolak server) ---------- */
+// Komiku biasanya lewat server. Bila server ditolak Cloudflare (blocked), APK mengambil halamannya sendiri lewat
+// jaringan HP selama 30 menit, lalu mencoba server lagi.
+const KOMI = (() => {
+  const SITE = "https://komiku.org", API = "https://api.komiku.org";
+  const okHost = (u) => /(^|\.)komiku\.(org|to|id)$/.test(hostOf(u));
+  const html = async (u) => new DOMParser().parseFromString(await nget(u, { type: "text", headers: { Accept: "text/html,application/xhtml+xml,*/*;q=0.8", Referer: SITE + "/", "Sec-Fetch-Dest": "document", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Site": "same-origin" } }), "text/html");
+  const txt = (el) => (el?.textContent || "").replace(/\s+/g, " ").trim();
+  const absU = (v, base) => { try { return new URL(v, base).href; } catch { return ""; } };
+  const imgOf = (im, base) => { if (!im) return ""; for (const a of ["data-lazy-src", "data-src", "data-cfsrc", "data-original", "src"]) { const v = im.getAttribute(a); if (v && !/^data:/i.test(v) && !/\.(svg|gif)(\?|$)/i.test(v)) return absU(v, base); } return ""; };
+  const cover = (c, w) => { try { const u = new URL(c); const m = u.hostname.match(/^(thumbnail|img|cover)\.komiku\.([a-z]+)$/i); if (m) u.hostname = `${m[1].toLowerCase()}.komiku.org`; if (/^thumbnail\.komiku\./i.test(u.hostname)) { u.search = ""; u.searchParams.set("w", String(w)); } return u.href; } catch { return c; } };
+  const chNum = (name, url) => { const m = name.match(/(?:chapter|chap|ch\.?|bab|episode|ep\.?)\s*[-:#]?\s*(\d+(?:[.,]\d+)?)/i) || url.match(/(?:chapter|ch|bab|episode|ep)[-_]?(\d+(?:[-.]\d+)?)\/?$/i) || name.match(/(\d+(?:\.\d+)?)/); return m ? m[1].replace(/[,-]/, ".").replace(/^0+(?=\d)/, "") : null; };
+  const chTitle = (name) => (name.match(/^\s*(?:chapter|chap|ch\.?|bab|episode|ep\.?)?\s*[\d.,]+\s*[-–:]\s*(.+)$/i)?.[1] || "").trim();
+  const MON = { jan: 0, feb: 1, mar: 2, apr: 3, mei: 4, may: 4, jun: 5, jul: 6, agu: 7, agt: 7, aug: 7, sep: 8, okt: 9, oct: 9, nov: 10, des: 11, dec: 11 };
+  const date = (s) => {
+    const t = s.trim().toLowerCase(); let m;
+    if ((m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/))) return new Date(Date.UTC(+m[3], +m[2] - 1, +m[1])).toISOString();
+    if ((m = t.match(/(\d+)\s*(detik|menit|jam|hari|minggu|bulan|tahun)/))) return new Date(Date.now() - +m[1] * { detik: 1e3, menit: 6e4, jam: 36e5, hari: 864e5, minggu: 6048e5, bulan: 2592e6, tahun: 31536e6 }[m[2]]).toISOString();
+    if ((m = t.match(/(\d{1,2})\s+([a-z]{3})[a-z]*\.?,?\s+(\d{4})/)) && m[2] in MON) return new Date(Date.UTC(+m[3], MON[m[2]], +m[1])).toISOString();
+    const p = Date.parse(t); return isNaN(p) ? null : new Date(p).toISOString();
+  };
+  async function srcPage(sp, b) {
+    const u = new URL(API + "/manga/" + (sp > 1 ? `page/${sp}/` : ""));
+    if (b.q) u.searchParams.set("s", b.q);
+    u.searchParams.set("orderby", b.sort === "popular" ? "meta_value_num" : "modified");
+    if (b.type) u.searchParams.set("tipe", b.type);
+    const g = b.genres || [];
+    if (g[0]) u.searchParams.set("genre", g[0]);
+    if (g[1]) u.searchParams.set("genre2", g[1]);
+    if (b.status === "ongoing" || b.status === "completed") u.searchParams.set("statusmanga", b.status === "ongoing" ? "ongoing" : "end");
+    const d = await html(u.href), items = [];
+    for (const el of d.querySelectorAll(".bge")) {
+      const title = txt(el.querySelector("h3")), a = [...el.querySelectorAll("a[href]")].find((x) => x.querySelector("h3"));
+      if (!a || !title) continue;
+      const tp = (txt(el.querySelector(".tpe1_inf")).match(/\b(manga|manhwa|manhua)\b/i)?.[1] || b.type || "").toLowerCase();
+      items.push({ id: absU(a.getAttribute("href"), SITE), title, cover: cover(imgOf(el.querySelector("img"), SITE).replace(/\?.*$/, ""), 300), type: tp });
+    }
+    return { items, hasNext: !!d.querySelector("span[hx-get]") || items.length >= 10 };
+  }
+  const rows = (root, base) => [...root.querySelectorAll("tr")].map((tr) => {
+    const td = tr.querySelector(".judulseries"), a = td?.querySelector("a[href]") || (td && tr.querySelector("a[href]"));
+    if (!a) return null;
+    const url = absU(a.getAttribute("href"), base), name = txt(a);
+    return { id: url, ch: chNum(name, url), title: chTitle(name), url, at: date(txt(tr.querySelector(".tanggalseries"))) };
+  }).filter(Boolean);
+  const comicUrl = (id) => { if (!okHost(id)) throw new Error("Link bukan dari Komiku"); return id; };
+  return {
+    async browse(b) {
+      // halaman aplikasi (limit) disusun dari halaman situs (±10 komik per halaman)
+      const page = Math.max(1, Number(b.page) || 1), limit = Math.min(30, Number(b.limit) || 20), per = 10;
+      const start = (page - 1) * limit, end = start + limit, out = [];
+      let hasNext = false;
+      for (let sp = Math.floor(start / per) + 1; sp <= Math.floor((end - 1) / per) + 1; sp++) {
+        const r = await srcPage(sp, b), base = (sp - 1) * per;
+        r.items.forEach((it, i) => { if (base + i >= start && base + i < end) out.push(it); });
+        hasNext = r.hasNext;
+        if (!r.hasNext || !r.items.length) break;
+      }
+      return { ok: true, items: out, hasNext };
+    },
+    async detail(b) {
+      const url = comicUrl(b.comic_id), d = await html(url);
+      const row = (re) => { for (const td of d.querySelectorAll("td")) if (re.test(txt(td))) { const n = td.nextElementSibling; if (n?.tagName === "TD") return txt(n); } return ""; };
+      const title = txt(d.querySelector("h1")).replace(/^komik\s+/i, "") || d.querySelector('meta[property="og:title"]')?.getAttribute("content") || "";
+      const cv = imgOf(d.querySelector(".ims img") || d.querySelector('img[itemprop="image"]'), url).replace(/\?.*$/, "");
+      const desc = txt(d.querySelector("#Sinopsis p") || d.querySelector("p.desc"));
+      const tags = [...d.querySelectorAll("ul.genre li.genre")].map(txt).filter(Boolean).slice(0, 8);
+      const tbl = d.querySelector("#Daftar_Chapter");
+      return { ok: true, manga: { id: url, title, cover: cover(cv, 500), desc, tags, status: normStatus(row(/^status/i)), author: row(/^(pengarang|komikus|author)/i), url,
+        publisher: row(/^(penerbit|publisher|serialisasi|serialization)/i).slice(0, 120), views: toNum(row(/^(pembaca|dibaca|dilihat|views?)/i)), score: toScore(row(/^(skor|score|rating|nilai)/i)) },
+        chapters: tbl ? rows(tbl, url) : [], more: null };
+    },
+    async pages(b) {
+      const url = comicUrl(b.chapter_id), d = await html(url);
+      const box = d.querySelector("#Baca_Komik");
+      const images = [...(box?.querySelectorAll("img") || [])].map((im) => imgOf(im, url)).filter((u) => u && !/komiku-promosi/i.test(u)).map((u) => ({ u, direct: true }));
+      if (!images.length) throw new Error("Chapter ini tidak berisi gambar.");
+      return { ok: true, ref: url, images };
+    },
+    async latest(b) {
+      const r = await this.detail(b);
+      const top = r.chapters.reduce((x, c) => (!x || (parseFloat(c.ch) || -1) > (parseFloat(x.ch) || -1) ? c : x), null);
+      return { ok: true, source: "komiku", ch: top?.ch ?? null, at: top?.at ?? null };
+    },
+  };
+})();
+let komikuViaApp = 0;   // sampai kapan Komiku diambil lewat jaringan HP (server sedang ditolak Cloudflare)
+export const canDirectFallback = (src) => src === "komiku" && isApp && !!plugin("CapacitorHttp");
+export function serverBlocked(src) { if (src === "komiku") { komikuViaApp = Date.now() + 30 * 60e3; logDev("api", "Komiku menolak server; 30 menit ke depan diambil lewat jaringan HP"); } }
+
 export const DIRECT = isApp && plugin("CapacitorHttp") ? { shinigami: SHNG, westmanga: WEST } : {};
+const NAMES = { shinigami: "Shinigami", westmanga: "WestManga", komiku: "Komiku" };
 // dipanggil api.call(): kembalikan null bila sumber/aksi ini tetap lewat server
 export async function direct(action, body) {
-  const s = DIRECT[body?.source];
+  const s = DIRECT[body?.source] || (body?.source === "komiku" && Date.now() < komikuViaApp && canDirectFallback("komiku") ? KOMI : null);
   if (!s || typeof s[action] !== "function") return null;
   try { return await s[action](body); }
-  catch (e) { throw new Error(`${body.source === "shinigami" ? "Shinigami" : "WestManga"} tidak bisa dijangkau dari HP: ${e.message}`); }
+  catch (e) { throw new Error(`${NAMES[body.source] || body.source} tidak bisa dijangkau dari HP: ${e.message}`); }
 }
 
 /* ---------- Notifikasi (Firebase Cloud Messaging) ---------- */
