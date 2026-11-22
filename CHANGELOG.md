@@ -1,6 +1,7 @@
 # Changelog Ninokuu
 
 Catatan perubahan per versi. Versi terbaru di atas.
+**Cara menulis:** "### Ringkasan" dibaca pengguna (peringatan pembaruan, ninokuu.site/update, halaman rilis): bahasa sederhana, hanya yang penting, tanpa istilah teknis dan tanpa cara pengerjaannya. Awali poin dengan "Baru:" untuk fitur baru; perbaikan cukup sebut bagian yang diperbaiki (mis. "Perbaikan pada pembaca"). Rincian teknis hanya di "### Detail".
 Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambarnya di `app/img/new/`.
 
 **Aturan nomor versi** (`MAYOR.MINOR.PATCH`, berkas `VERSION`):
@@ -14,9 +15,8 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 ## 1.9.1 — 22 Nov 2026 (rilis global)
 
 ### Ringkasan
-- Notifikasi chapter baru Komiku jalan lagi walau situsnya menolak server: HP yang mengecek lalu melapor ke server (seperti Shinigami & WestManga)
-- Cek latar belakang (APK) di HP akun developer: semua komik Komiku, Shinigami, dan WestManga berlonceng milik semua pengguna dicek ±tiap 30 menit walau aplikasi ditutup (maks. 60 komik per putaran, yang paling lama tidak dicek dulu), jadi notifikasi tidak menunggu ada pengguna yang membuka aplikasi
-- Pengguna lain tetap ikut melapor saat aplikasinya dibuka (cadangan bila HP developer sedang mati)
+- Notifikasi chapter baru Komiku aktif kembali
+- Notifikasi chapter baru Komiku, Shinigami, dan WestManga kini terkirim lebih rutin, walau aplikasimu sedang ditutup
 
 ### Detail
 - Edge Function ninokuu-api 1.7.0: Komiku boleh dilaporkan HP (`REPORTABLE`); action baru `bg_key`, `bg_key_drop` (login, khusus developer), `bg_list`, `bg_report` (kunci latar belakang per akun developer, hanya hash-nya yang disimpan); laporan developer langsung dipercaya (tanpa pelapor kedua)
@@ -29,16 +29,16 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 ## 1.9.0 — 22 Nov 2026 (rilis global)
 
 ### Ringkasan
-Gabungan semua perubahan Dev 1.8.3 sampai 1.8.12 (rinciannya di bawah).
-- Gulir otomatis 1×/2×/3× dan lanjut otomatis ke chapter berikutnya (OFF · 1 · 2 · 3 · 5 detik)
-- Pindah chapter bergeser penuh sesuai arah (berikutnya dari kanan, sebelumnya dari kiri)
-- Skor komik ★ di info komik
-- Bersihkan cache di Lainnya, dengan perkiraan ukuran cache di HP
-- Layar penuh sampai ujung atas layar; bilah status yang ditarik muncul transparan lalu hilang sendiri
-- Komiku otomatis dibuka lewat jaringan HP saat situsnya menolak server
-- Panel Akun, Mode baca di Pengaturan, dialog gaya Ninokuu, kartu unduhan melayang
-- Perbaikan keamanan server (Edge Function ninokuu-api 1.6.1), database, unduhan, backup, dan chat
-- Perbaikan: pembaca lama (chapter yang sedang digeser keluar / pembaca yang sudah ditutup) tidak lagi ikut menyimpan posisi & riwayat
+- Baru: gulir otomatis saat membaca, dengan kecepatan 1×, 2×, atau 3×
+- Baru: lanjut otomatis ke chapter berikutnya di akhir chapter
+- Baru: skor komik di halaman info komik
+- Baru: Bersihkan cache di menu Lainnya, lengkap dengan perkiraan ukurannya
+- Baru: halaman Akun untuk foto profil, nama, email, dan password
+- Pindah chapter lebih mulus, tanpa layar hitam
+- Mode layar penuh kini sampai ujung atas layar
+- Komiku tetap bisa dibaca di aplikasi
+- Semua pengaturan baca kini ada di satu halaman Pengaturan
+- Keamanan akun dan data ditingkatkan
 
 ### Detail
 - WHATS_NEW 1.9.0 dengan 4 slide baru: gulir, skor, cache, setelan (app/img/new/)
