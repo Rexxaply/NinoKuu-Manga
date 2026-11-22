@@ -11,7 +11,7 @@
 // kalau satu sumber rusak, isi secret KOMIKU_SITE / KIRYUU_SITE / SHNGM_SITE / WEST_SITE dengan domain barunya.
 import { createClient } from "npm:@supabase/supabase-js@2.76.1";
 
-const VERSION = "1.6.0";
+const VERSION = "1.6.1";
 const NAME = "ninokuu-api";
 const SOURCES = ["komiku", "kiryuu", "shinigami", "westmanga"] as const;
 type Source = typeof SOURCES[number];
@@ -59,9 +59,15 @@ const webErr = (msg: string, status = 502) => Object.assign(new Error(msg), { st
 
 async function fetchT(u: string | URL, init: RequestInit, timeoutMs?: number) {
   const ctl = new AbortController();
+  // init.signal = pembatalan dari klien: bila klien putus, permintaan ke situs sumber (dan bacaan isinya) ikut dihentikan
+  const ext = init.signal;
+  if (ext) { if (ext.aborted) ctl.abort(); else ext.addEventListener("abort", () => ctl.abort(), { once: true }); }
   const t = timeoutMs ? setTimeout(() => ctl.abort(), timeoutMs) : null;
   try { return await fetch(u, { ...init, signal: ctl.signal }); }
-  catch (e: any) { throw webErr(e?.name === "AbortError" ? `timeout ${timeoutMs} ms` : `jaringan: ${e?.message || e}`); }
+  catch (e: any) {
+    if (ext?.aborted) throw webErr("dibatalkan", 499);
+    throw webErr(e?.name === "AbortError" ? `timeout ${timeoutMs} ms` : `jaringan: ${e?.message || e}`);
+  }
   finally { if (t) clearTimeout(t); }
 }
 // ikuti pengalihan (redirect) sendiri, maks. 5 kali: setiap tujuan dicek safeUrl SEBELUM diminta,
@@ -69,6 +75,7 @@ async function fetchT(u: string | URL, init: RequestInit, timeoutMs?: number) {
 async function fetchSafe(u: URL, init: RequestInit, timeoutMs?: number): Promise<{ r: Response; url: URL }> {
   let cur = u, opt: RequestInit = { ...init, redirect: "manual" };
   for (let hop = 0; hop <= 5; hop++) {
+    await assertPublicHost(cur);
     const r = await fetchT(cur, opt, timeoutMs);
     const loc = r.status >= 300 && r.status < 400 ? r.headers.get("Location") : null;
     if (!loc) return { r, url: cur };
@@ -103,13 +110,48 @@ function safeUrl(raw: string): URL {
   let u: URL;
   try { u = new URL(String(raw).trim()); } catch { throw webErr("Link tidak valid", 400); }
   if (u.protocol !== "https:" && u.protocol !== "http:") throw webErr("Link harus diawali http(s)://", 400);
-  const h = u.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  // titik di ujung ("localhost." / "example.com.") adalah nama yang sama; buang dulu sebelum diperiksa
+  const h = u.hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.+$/, "");
   if (u.username || u.password) throw webErr("Link tidak boleh berisi nama pengguna/sandi", 400);
-  if (!h.includes(".") || /(^|\.)(localhost|local|internal|lan|home|arpa)$/.test(h) || /^[\d.]+$/.test(h) || h.includes(":") || /(^|\.)supabase\.(co|in|net)$/.test(h))
+  if (!h.includes(".") || /(^|\.)(localhost|localdomain|local|internal|intranet|corp|lan|home|arpa|test|invalid|example|onion)$/.test(h)
+    || /^[\d.]+$/.test(h) || /\.(\d+|0x[0-9a-f]+)$/.test(h) || h.includes(":") || /(^|\.)supabase\.(co|in|net)$/.test(h))
     throw webErr("Alamat ini tidak diizinkan", 400);
   if (u.port && !["80", "443"].includes(u.port)) throw webErr("Port tidak diizinkan", 400);
+  if (u.hostname.replace(/^\[|\]$/g, "").toLowerCase() !== h) u.hostname = h;
   u.hash = "";
   return u;
+}
+// Alamat IP yang tidak boleh dituju server (loopback, privat, link-local, CGNAT, multicast, dll.)
+function isPrivateIp(ip: string): boolean {
+  const s = ip.toLowerCase();
+  const v4 = s.match(/^(?:::ffff:)?(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (v4) {
+    const a = +v4[1], b = +v4[2], c = +v4[3];
+    return a === 0 || a === 10 || a === 127 || a >= 224 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254)
+      || (a === 172 && b >= 16 && b <= 31) || (a === 192 && (b === 168 || (b === 0 && c === 0))) || (a === 198 && (b === 18 || b === 19));
+  }
+  const m = s.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);   // IPv4-mapped bentuk heksadesimal
+  if (m) { const hi = parseInt(m[1], 16), lo = parseInt(m[2], 16); return isPrivateIp(`${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`); }
+  if (s === "::" || s === "::1") return true;
+  return /^(fc|fd|fe[89a-f]|ff)/.test(s) || /^(64:ff9b:|2001:0?:|2001:db8:|2002:)/.test(s);
+}
+// Nama domain yang menunjuk ke IP privat (mis. 127.0.0.1) lolos pemeriksaan nama di safeUrl, jadi alamat hasil DNS
+// diperiksa juga sebelum setiap permintaan (termasuk tiap pengalihan). Hasil aman disimpan 5 menit.
+// Catatan: ini mengecilkan celah, bukan menutup total (DNS bisa berganti antara pemeriksaan dan koneksi).
+const dnsOk = new Map<string, number>();
+async function assertPublicHost(u: URL) {
+  const h = u.hostname.replace(/^\[|\]$/g, "");
+  if (isPrivateIp(h)) throw webErr("Alamat ini tidak diizinkan", 400);
+  if ((dnsOk.get(h) || 0) > Date.now()) return;
+  const resolve = (Deno as any).resolveDns;
+  if (typeof resolve !== "function") return;   // runtime tanpa API DNS: hanya pemeriksaan nama
+  const addrs: string[] = [];
+  for (const type of ["A", "AAAA"]) {
+    try { addrs.push(...((await resolve.call(Deno, h, type)) as string[])); } catch { /* tidak ada catatan jenis ini */ }
+  }
+  if (addrs.some(isPrivateIp)) throw webErr("Alamat ini tidak diizinkan", 400);
+  if (dnsOk.size > 500) dnsOk.clear();
+  dnsOk.set(h, Date.now() + 5 * 60e3);
 }
 async function webFetch(raw: string | URL, opt: { referer?: string; json?: boolean; method?: string; body?: BodyInit; headers?: Record<string, string>; timeout?: number } = {}) {
   const u = safeUrl(String(raw));
@@ -172,28 +214,76 @@ function komikuImgHost(u: URL): URL | null {
 // Sejak 1.4.0 aplikasi memuat gambar langsung dari situs aslinya; proxy hanya cadangan bila itu gagal.
 // Rem darurat lewat secret IMG_PROXY: "on" (bawaan) · "cover" (hanya sampul) · "off" (matikan semua).
 const IMG_PROXY = (Deno.env.get("IMG_PROXY") || "on").trim().toLowerCase();
-async function proxyImage(u: string, ref: string, sig: string, cover: boolean) {
+// batasi byte yang dialirkan ke klien: gambar yang ternyata lebih besar dari batas dihentikan di tengah jalan
+function capStream(body: ReadableStream<Uint8Array>, max: number) {
+  let n = 0;
+  return body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, ctl) { n += chunk.length; if (n > max) ctl.error(new Error("gambar terlalu besar")); else ctl.enqueue(chunk); },
+  }));
+}
+async function proxyImage(u: string, ref: string, sig: string, cover: boolean, signal?: AbortSignal) {
   if (IMG_PROXY === "off" || (IMG_PROXY === "cover" && !cover)) return json({ error: "proxy gambar dimatikan (IMG_PROXY)" }, 403);
   if (!u || !sig || !(await checkSig(u, ref, sig, cover))) return json({ error: "tanda tangan gambar tidak valid" }, 403);
   let url: URL;
   try { url = safeUrl(u); } catch (e: any) { return json({ error: e.message }, 400); }
-  const get = (x: URL) => fetchSafe(x, { headers: { "User-Agent": WEB_UA, Accept: "image/avif,image/webp,image/*,*/*;q=0.8", ...(ref ? { Referer: ref } : {}) } }, 25000).then((v) => v.r).catch(() => null);
+  const get = (x: URL) => fetchSafe(x, { signal, headers: { "User-Agent": WEB_UA, Accept: "image/avif,image/webp,image/*,*/*;q=0.8", ...(ref ? { Referer: ref } : {}) } }, 25000).then((v) => v.r).catch(() => null);
   let r = await get(url);
   // server gambar Komiku di domain lain (mis. thumbnail.komiku.to) sering gagal → coba domain .org yang stabil
   const alt = komikuImgHost(url);
   if ((!r || !r.ok) && alt) { await r?.body?.cancel().catch(() => {}); r = await get(alt); }
   if (!r || !r.ok) return json({ error: `gagal memuat gambar${r ? " (" + r.status + ")" : ""}` }, 502);
   const type = r.headers.get("Content-Type") || "";
-  if (!/^image\//i.test(type) && !/octet-stream/i.test(type)) return json({ error: "bukan file gambar" }, 415);
-  const buf = await r.arrayBuffer();
-  if (buf.byteLength > WEB_MAX_IMG) return json({ error: "gambar terlalu besar" }, 413);
-  return new Response(buf, { status: 200, headers: { ...CORS, "Content-Type": type || "image/jpeg", "Cache-Control": cover ? "public, max-age=604800" : "public, max-age=86400" } });
+  // SVG dapat memuat skrip dan dilayani dari domain Supabase kita: tolak
+  if ((!/^image\//i.test(type) && !/octet-stream/i.test(type)) || /svg/i.test(type)) { await r.body?.cancel().catch(() => {}); return json({ error: "bukan file gambar" }, 415); }
+  const len = Number(r.headers.get("Content-Length"));
+  if (Number.isFinite(len) && len > WEB_MAX_IMG) { await r.body?.cancel().catch(() => {}); return json({ error: "gambar terlalu besar" }, 413); }
+  if (!r.body) return json({ error: "gambar kosong" }, 502);
+  // dialirkan (tanpa menampung seluruh gambar di memori); Content-Length bisa dibohongi, jadi byte dihitung juga
+  return new Response(capStream(r.body, WEB_MAX_IMG), { status: 200, headers: {
+    ...CORS, "Content-Type": type || "image/jpeg", "Cache-Control": cover ? "public, max-age=604800" : "public, max-age=86400",
+    "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; sandbox",
+  } });
 }
 
 /* ---------- bantuan HTML ringan ---------- */
 const decodeEnt = (s: string) => s.replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(+n)).replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
   .replace(/&quot;/g, '"').replace(/&#039;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&");
-const stripTags = (s: string) => decodeEnt(s.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+// ASCII saja yang dihuruf-kecilkan (panjang teks tetap sama, jadi indeksnya cocok dengan teks asli)
+const lowerAscii = (s: string) => s.replace(/[A-Z]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 32));
+// Regex seperti <tag[\s\S]*?</tag> bisa menjadi kuadratik pada HTML yang sengaja tidak menutup tag. Dua pemindai di bawah
+// memakai indexOf (waktu linear); tag tanpa penutup menghentikan pemindaian.
+function dropBlocks(s: string, tag: string): string {
+  if (!s.includes("<")) return s;
+  const low = lowerAscii(s), out: string[] = []; let i = 0;
+  for (;;) {
+    const a = low.indexOf("<" + tag, i);
+    if (a < 0) { out.push(s.slice(i)); break; }
+    out.push(s.slice(i, a));
+    const b = low.indexOf("</" + tag, a), c = b < 0 ? -1 : low.indexOf(">", b);
+    if (c < 0) break;
+    i = c + 1;
+  }
+  return out.join("");
+}
+function* tagPairs(html: string, tag: string): Generator<{ attrs: string; inner: string }> {
+  const low = lowerAscii(html), open = "<" + tag, close = "</" + tag;
+  let i = 0;
+  for (;;) {
+    const a = low.indexOf(open, i);
+    if (a < 0) return;
+    const after = low.charAt(a + open.length);
+    if (after && !/[\s>/]/.test(after)) { i = a + open.length; continue; }   // bukan tag ini (mis. <table untuk "t")
+    const gt = low.indexOf(">", a);
+    if (gt < 0) return;
+    const e = low.indexOf(close, gt + 1);
+    if (e < 0) return;
+    const e2 = low.indexOf(">", e);
+    yield { attrs: html.slice(a + open.length, gt), inner: html.slice(gt + 1, e) };
+    if (e2 < 0) return;
+    i = e2 + 1;
+  }
+}
+const stripTags = (s: string) => decodeEnt(dropBlocks(s, "script").replace(/<[^<>]+>/g, " ")).replace(/\s+/g, " ").trim();
 function attr(tag: string, name: string) {
   const m = tag.match(new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i"));
   return m ? decodeEnt((m[1] ?? m[2] ?? m[3] ?? "").trim()) : null;
@@ -428,13 +518,13 @@ async function komikuDetail(id: string): Promise<Detail> {
 // baris chapter Komiku (<tr> berisi td.judulseries) dari potongan HTML mana pun
 function komikuRows(html: string, base: string): Chapter[] {
   const out: Chapter[] = [];
-  for (const tr of html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)) {
-    if (!/class=["'][^"']*\bjudulseries\b/i.test(tr[1])) continue;
-    const a = tr[1].match(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
+  for (const tr of tagPairs(html, "tr")) {
+    if (!/class=["'][^"']*\bjudulseries\b/i.test(tr.inner)) continue;
+    const a = tr.inner.match(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
     if (!a) continue;
     const url = abs(a[1], base), name = stripTags(a[2]);
     out.push({ id: url, ch: chNumFrom(name, url), title: chTitleFrom(name), url,
-      at: komikuDate(stripTags(tr[1].match(/class=["'][^"']*\btanggalseries\b[^"']*["'][^>]*>([\s\S]*?)<\/td>/i)?.[1] || "")) });
+      at: komikuDate(stripTags(tr.inner.match(/class=["'][^"']*\btanggalseries\b[^"']*["'][^>]*>([\s\S]*?)<\/td>/i)?.[1] || "")) });
   }
   return out;
 }
@@ -485,6 +575,7 @@ async function komikuMoreChapters(id: string, offset: number) {
 }
 async function komikuPages(id: string) {
   const page = await webFetch(komikuUrl(id), { referer: KOMIKU_SITE + "/" });
+  if (!/(^|\.)komiku\.(org|to|id)$/.test(new URL(page.url).hostname)) throw webErr("Link bukan dari Komiku", 400);
   const box = block(page.text, /<(?:div|section)[^>]*id=["']Baca_Komik["'][^>]*>/i);
   return { ref: page.url, images: [...box.matchAll(/<img\b[^>]*>/gi)].map((m) => imgSrc(m[0], page.url)).filter((u) => u && !/komiku-promosi/i.test(u)) };
 }
@@ -518,12 +609,12 @@ async function kiryuuSearchPage(srcPage: number, q: string, o: Opt, retry = true
   const html = (await webFetch(`${KIRYUU_SITE}/wp-admin/admin-ajax.php?action=advanced_search`, { method: "POST", body: fd, referer: KIRYUU_SITE + "/", headers: { "X-Requested-With": "XMLHttpRequest" } })).text;
   if (/nonce|invalid|forbidden/i.test(html) && !/\/manga\//.test(html) && retry) return await kiryuuSearchPage(srcPage, q, o, false);
   const slugs: string[] = [];
-  for (const m of html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)) {
-    if (!/<img\b/i.test(m[2])) continue;
-    const slug = (attr("<a " + m[1] + ">", "href") || "").match(/\/manga\/([^/?#]+)/)?.[1];
+  for (const m of tagPairs(html, "a")) {
+    if (!/<img\b/i.test(m.inner)) continue;
+    const slug = (attr("<a " + m.attrs + ">", "href") || "").match(/\/manga\/([^/?#]+)/)?.[1];
     if (slug && !slugs.includes(slug)) slugs.push(slug);
   }
-  const hasNext = /<button\b[^>]*>[\s\S]*?<svg/i.test(html);
+  const hasNext = [...tagPairs(html, "button")].some((b) => /<svg/i.test(b.inner));
   if (!slugs.length) return { items: [], hasNext: false };
   const p = new URLSearchParams({ per_page: String(slugs.length + 1), _embed: "1" });
   slugs.forEach((sl) => p.append("slug[]", sl));
@@ -539,14 +630,14 @@ const kiryuuId = (id: string) => { if (!/^\d{1,10}$/.test(id)) throw webErr("ID 
 async function kiryuuChapters(id: string): Promise<Chapter[]> {
   const html = (await webFetch(`${KIRYUU_SITE}/wp-admin/admin-ajax.php?manga_id=${kiryuuId(id)}&page=1&action=chapter_list`, { referer: KIRYUU_SITE + "/", headers: { "X-Requested-With": "XMLHttpRequest" } })).text;
   const out: Chapter[] = [];
-  for (const a of html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)) {
-    if (!/<time\b/i.test(a[2])) continue;
-    const href = attr("<a " + a[1] + ">", "href"); if (!href) continue;
+  for (const a of tagPairs(html, "a")) {
+    if (!/<time\b/i.test(a.inner)) continue;
+    const href = attr("<a " + a.attrs + ">", "href"); if (!href) continue;
     const url = abs(href, KIRYUU_SITE + "/");
-    const span = a[2].match(/<span\b[^>]*>([\s\S]*?)<\/span>/i)?.[1] || "";
+    const span = (a.inner.match(/<span\b[^>]*>([\s\S]*?)<\/span>/i)?.[1] || "").slice(0, 4000);
     const name = stripTags(span.replace(/<(\w+)\b[^>]*>[\s\S]*?<\/\1>/g, " ")) || stripTags(span);
-    const dt = attr(a[2].match(/<time\b[^>]*>/i)?.[0] || "", "datetime");
-    const at = dt && !isNaN(Date.parse(dt)) ? new Date(dt).toISOString() : parseWebDate(stripTags(a[2].match(/<time\b[^>]*>([\s\S]*?)<\/time>/i)?.[1] || ""));
+    const dt = attr(a.inner.match(/<time\b[^>]*>/i)?.[0] || "", "datetime");
+    const at = dt && !isNaN(Date.parse(dt)) ? new Date(dt).toISOString() : parseWebDate(stripTags(a.inner.match(/<time\b[^>]*>([\s\S]*?)<\/time>/i)?.[1] || ""));
     out.push({ id: url, ch: chNumFrom(name, url), title: chTitleFrom(name), at, url });
   }
   return out;
@@ -567,10 +658,26 @@ async function kiryuuDetail(id: string): Promise<Detail> {
     chapters,
   };
 }
+// Hanya domain Kiryuu yang dikenal: domain dari KIRYUU_SITE (bagian "kiryuu.xxx" ke kanan) + secret KIRYUU_HOSTS
+// (dipisah koma, mis. "kiryuu.id,kiryuu.co") bila situs pindah domain. Tanpa daftar ini siapa pun yang mendaftarkan
+// "kiryuu.apa-saja" bisa membuat server menandatangani gambar dari halaman buatannya.
+const KIRYUU_HOSTS = (() => {
+  const out: string[] = [];
+  try {
+    const labels = new URL(KIRYUU_SITE).hostname.toLowerCase().split(".");
+    const i = labels.findIndex((l) => l === "kiryuu");
+    out.push(labels.slice(i >= 0 ? i : 0).join("."));
+  } catch { /* KIRYUU_SITE tidak valid: hanya KIRYUU_HOSTS */ }
+  (Deno.env.get("KIRYUU_HOSTS") || "").split(",").map((x) => x.trim().toLowerCase().replace(/^\.+/, "")).filter(Boolean).forEach((x) => out.push(x));
+  return out;
+})();
+const kiryuuHostOk = (h: string) => KIRYUU_HOSTS.some((d) => h === d || h.endsWith("." + d));
 async function kiryuuPages(id: string) {
   const u = safeUrl(id);
-  if (!/(^|\.)kiryuu\.[a-z]+$/.test(u.hostname)) throw webErr("Link bukan dari Kiryuu", 400);
+  if (!kiryuuHostOk(u.hostname)) throw webErr("Link bukan dari Kiryuu", 400);
   const page = await webFetch(u.href, { referer: KIRYUU_SITE + "/" });
+  // pengalihan ke domain lain tidak boleh lolos: gambar yang ditandatangani harus dari halaman Kiryuu sungguhan
+  if (!kiryuuHostOk(new URL(page.url).hostname)) throw webErr("Link bukan dari Kiryuu", 400);
   const box = block(page.text, /<section\b[^>]*data-image-data[^>]*>/i);
   return { ref: page.url, images: [...box.matchAll(/<img\b[^>]*>/gi)].map((m) => imgSrc(m[0], page.url)).filter(Boolean) };
 }
@@ -651,16 +758,19 @@ async function westPages(id: string) {
 /* ---------- pintu per sumber ---------- */
 const srcPerPage: Record<string, number> = {};
 // Komiku & Kiryuu punya ukuran halaman sendiri: ambil halaman sumber yang menutupi rentang yang diminta lalu potong
-async function windowed(src: string, page: number, limit: number, fetchPage: (sp: number) => Promise<{ items: any[]; hasNext: boolean }>) {
+// canLearn: ukuran halaman sumber hanya dipelajari dari penelusuran tanpa kata kunci/filter, supaya satu
+// permintaan khusus tidak meracuni cache untuk semua orang.
+async function windowed(src: string, page: number, limit: number, fetchPage: (sp: number) => Promise<{ items: any[]; hasNext: boolean }>, canLearn = true) {
   const cache = new Map<number, { items: any[]; hasNext: boolean }>();
   const get = async (sp: number) => { if (!cache.has(sp)) cache.set(sp, await fetchPage(sp)); return cache.get(sp)!; };
   const start = (page - 1) * limit, end = start + limit;
-  if (!srcPerPage[src]) {
+  let per = srcPerPage[src];
+  if (!per) {
     const f = await get(1);
     if (!f.hasNext) return { items: f.items.slice(start, end), hasNext: f.items.length > end };
-    srcPerPage[src] = Math.max(1, f.items.length);
+    per = Math.min(100, Math.max(1, f.items.length));
+    if (canLearn) srcPerPage[src] = per;
   }
-  const per = srcPerPage[src];
   const out: any[] = [];
   let hasNext = false;
   for (let sp = Math.floor(start / per) + 1; sp <= Math.floor((end - 1) / per) + 1; sp++) {
@@ -673,8 +783,9 @@ async function windowed(src: string, page: number, limit: number, fetchPage: (sp
 }
 async function browse(src: Source, page: number, q: string, o: Opt) {
   if (src === "shinigami") return await shngBrowse(page, q, o);
-  if (src === "komiku") return await windowed("komiku", page, o.limit, (sp) => komikuPage(sp, q, o));
-  if (src === "kiryuu") return await windowed("kiryuu", page, o.limit, (sp) => kiryuuSearchPage(sp, q, o));
+  const plain = !q && !o.genres.length && !o.type && !o.status;
+  if (src === "komiku") return await windowed("komiku", page, o.limit, (sp) => komikuPage(sp, q, o), plain);
+  if (src === "kiryuu") return await windowed("kiryuu", page, o.limit, (sp) => kiryuuSearchPage(sp, q, o), plain);
   return await westBrowse(page, q, o);
 }
 /* ---------- daftar filter per sumber (genre asli dari penyedia) ---------- */
@@ -763,7 +874,8 @@ async function fcmSend(token: string, p: Push) {
   if (r.ok) return;
   const t = await r.text();
   // hanya token yang benar-benar tidak terdaftar lagi yang dihapus (bukan 404 karena proyek/kunci salah)
-  const gone = /UNREGISTERED|registration-token-not-registered/i.test(t);
+  // INVALID_ARGUMENT dipakai FCM juga untuk muatan yang salah, jadi hanya yang menyebut token tidak valid yang dihapus
+  const gone = /UNREGISTERED|registration-token-not-registered|not a valid FCM registration token/i.test(t);
   let msg = `FCM ${r.status}: ${t.replace(/\s+/g, " ").slice(0, 180)}`;
   if (/SENDER_ID_MISMATCH|SenderId mismatch/i.test(t)) msg = `Kunci FCM_SERVICE_ACCOUNT milik proyek Firebase "${a.project}", tapi aplikasi memakai proyek Firebase lain. Buat kunci dari proyek Firebase yang sama dengan google-services.json aplikasi.`;
   else if (r.status === 404 && !gone) msg = `Proyek Firebase "${a.project}" tidak ditemukan atau Firebase Cloud Messaging API belum aktif. Periksa FCM_SERVICE_ACCOUNT.`;
@@ -785,10 +897,23 @@ async function pushTokens(tokens: string[], p: Push) {
   }
   return { sent, errors };
 }
+// PostgREST membatasi satu balasan (db-max-rows, bawaan 1000 baris) tanpa pemberitahuan: daftar yang lebih panjang
+// terpotong diam-diam. fetchAll membaca halaman demi halaman sampai habis; query WAJIB punya order() yang tetap.
+async function fetchAll<T = any>(q: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>, max = 50000): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; from < max;) {
+    const { data, error } = await q(from, from + 999);
+    if (error) throw new Error(error.message);
+    if (!data?.length) break;
+    out.push(...data); from += data.length;
+  }
+  return out;
+}
+// maks. 10 perangkat per akun (dijaga database), jadi 100 akun per kueri tetap di bawah batas 1000 baris
 async function tokensOf(userIds: string[]) {
   const out: string[] = [];
-  for (let i = 0; i < userIds.length; i += 200) {
-    const { data } = await admin.from("devices").select("token").in("user_id", userIds.slice(i, i + 200));
+  for (let i = 0; i < userIds.length; i += 100) {
+    const { data } = await admin.from("devices").select("token").in("user_id", userIds.slice(i, i + 100)).order("token").limit(1000);
     (data || []).forEach((d: any) => out.push(d.token));
   }
   return out;
@@ -798,60 +923,109 @@ async function tokensOf(userIds: string[]) {
 // gambar notifikasi diunduh oleh setiap HP penerima: pakai alamat asli sampul, bukan proxy (hemat Egress)
 const rawImg = (u: string) => { try { const x = new URL(u); return /\/functions\/v1\/ninokuu-api(-dev)?$/.test(x.pathname) && x.searchParams.get("img") || u; } catch { return u; } };
 const deepLink = (src: string, id: string) => `ninokuu://comic/${src}/${encodeURIComponent(id)}`;
-async function notifyChapter(src: string, id: string, title: string, cover: string, ch: string) {
-  const { data: fol } = await admin.from("library").select("user_id").eq("source", src).eq("comic_id", id).eq("notify", true);
-  const users: string[] = [...new Set<string>((fol || []).map((f: any) => String(f.user_id)))];
-  if (!users.length) return { users: 0, sent: 0 };
-  const body = `Chapter ${ch} sudah rilis`;
-  for (let i = 0; i < users.length; i += 500) {
-    await admin.from("notifications").insert(users.slice(i, i + 500).map((u) => ({ user_id: u, title: title.slice(0, 200), body, source: src, comic_id: id, chapter: ch, cover })));
+// Gambar notifikasi diunduh oleh HP penerima, jadi hanya host sampul sumber yang dikenal (https, dan akar domainnya
+// salah satu kata kunci di bawah atau domain di secret IMG_HOSTS) yang dipakai; selain itu notifikasi tanpa gambar.
+const IMG_ROOTS = ["komiku", "kiryuu", "shngm", "shinigami", "westmanga"];
+const IMG_EXTRA = (Deno.env.get("IMG_HOSTS") || "").split(",").map((x) => x.trim().toLowerCase().replace(/^\.+/, "")).filter(Boolean);
+function imgHostOk(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "https:" || u.username || u.password || (u.port && u.port !== "443")) return false;
+    const h = u.hostname.toLowerCase().replace(/\.+$/, ""), l = h.split(".");
+    if (l.length < 2 || /^[\d.]+$/.test(h) || h.includes(":")) return false;
+    // akar domain = label sebelum TLD; untuk TLD dua huruf dengan SLD umum (co.id, com.sg) satu label lebih ke kiri
+    const sld = l.length >= 3 && l[l.length - 1].length === 2 && ["co", "com", "or", "ac", "go", "net", "org"].includes(l[l.length - 2]);
+    if (IMG_ROOTS.includes(l[l.length - (sld ? 3 : 2)])) return true;
+    return IMG_EXTRA.some((d) => h === d || h.endsWith("." + d));
+  } catch { return false; }
+}
+async function notifyChapter(src: string, id: string, ch: string) {
+  // Judul & sampul diambil dari koleksi MASING-MASING penerima. Satu pengguna tidak bisa menaruh judul/gambar
+  // buatannya ke notifikasi orang lain.
+  const fol = await fetchAll<any>((a, b) => admin.from("library").select("user_id,title,cover").eq("source", src).eq("comic_id", id).eq("notify", true)
+    .order("user_id").range(a, b));
+  const groups = new Map<string, { title: string; cover: string; users: string[] }>();
+  const seen = new Set<string>();
+  for (const f of fol) {
+    const uid = String(f.user_id);
+    if (seen.has(uid)) continue;
+    seen.add(uid);
+    const title = clip(f.title, 200).trim() || "Chapter baru";
+    const cover = imgHostOk(rawImg(String(f.cover || ""))) ? clip(f.cover, 1000) : "";
+    const k = title + "\n" + cover;
+    (groups.get(k) || groups.set(k, { title, cover, users: [] }).get(k)!).users.push(uid);
   }
-  const r = await pushTokens(await tokensOf(users), { title, body, url: deepLink(src, id), tag: `ch:${src}:${id}`.slice(0, 100), image: rawImg(cover) });
-  return { users: users.length, sent: r.sent };
+  if (!seen.size) return { users: 0, sent: 0 };
+  const body = `Chapter ${clip(ch, 40)} sudah rilis`;
+  let sent = 0;
+  for (const g of groups.values()) {
+    for (let i = 0; i < g.users.length; i += 500) {
+      await admin.from("notifications").insert(g.users.slice(i, i + 500).map((u) => ({ user_id: u, title: g.title, body, source: src, comic_id: id, chapter: clip(ch, 40), cover: g.cover || null })));
+    }
+    const r = await pushTokens(await tokensOf(g.users), { title: g.title, body, url: deepLink(src, id), tag: `ch:${src}:${id}`.slice(0, 100), image: g.cover ? rawImg(g.cover) : undefined });
+    sent += r.sent;
+  }
+  return { users: seen.size, sent };
+}
+// Nomor chapter dari sumber luar dibersihkan: hanya angka wajar (0 – 99999), dibulatkan 2 desimal.
+const safeNum = (ch: unknown): number | null => { const n = chNum(ch); return n != null && n >= 0 && n < 100000 ? Math.round(n * 100) / 100 : null; };
+// Klaim atomik di database (claim_chapter): dua cron / dua pelapor serentak tidak bisa sama-sama mengirim notifikasi.
+// Hanya yang mendapat claimed = true yang mengirim. Kunjungan pertama hanya dicatat. Status chapter dimiliki server;
+// judul/sampul dari pemanggil hanya dipakai saat baris dibuat dan tidak pernah dipakai untuk notifikasi orang lain.
+async function claimAndNotify(src: Source, id: string, meta: { title: string; cover: string }, label: string | null, num: number | null, maxJump?: number) {
+  const { data, error } = await admin.rpc("claim_chapter", {
+    p_source: src, p_comic: id, p_title: clip(meta.title, 300), p_cover: meta.cover ? clip(meta.cover, 1000) : null,
+    p_chapter: label == null ? null : clip(label, 40), p_num: num, p_max_jump: maxJump ?? null,
+  });
+  if (error) throw new Error("claim_chapter: " + error.message + " — jalankan ulang ninokuu-schema.sql versi terbaru di SQL Editor, lalu coba lagi.");
+  const c = (data || {}) as { claimed?: boolean };
+  const notified = c.claimed && label != null ? await notifyChapter(src, id, label) : null;
+  return { newest: label, notified };
 }
 // bandingkan daftar chapter dengan catatan terakhir; kirim notifikasi bila ada nomor yang lebih tinggi
-async function applyChapters(src: Source, id: string, list: Chapter[], meta: { title: string; cover: string }, prev: any, opt: { maxJump?: number } = {}) {
+async function applyChapters(src: Source, id: string, list: Chapter[], meta: { title: string; cover: string }, opt: { maxJump?: number } = {}) {
   const top = newestChapter(list);
-  const n = top ? chNum(top.ch) : null;
-  const now = new Date().toISOString();
-  const row: any = { source: src, comic_id: id, title: meta.title || prev?.title || "", cover: meta.cover || prev?.cover || null, checked_at: now, last_error: null };
-  let notified: { users: number; sent: number } | null = null;
-  if (n != null && (!prev || prev.last_num == null || n > Number(prev.last_num))) {
-    if (prev && prev.last_num != null && opt.maxJump != null && n - Number(prev.last_num) > opt.maxJump) {
-      row.last_error = `lompatan chapter mencurigakan (${prev.last_num} → ${n}), diabaikan`;
-    } else {
-      row.last_chapter = top.ch; row.last_num = n;
-      // kunjungan pertama hanya mencatat; notifikasi baru dikirim saat ada chapter yang lebih baru
-      if (prev && prev.last_num != null) notified = await notifyChapter(src, id, row.title, row.cover || "", String(top.ch));
-    }
-  }
-  await admin.from("comic_state").upsert(row, { onConflict: "source,comic_id" });
-  return { newest: top?.ch ?? null, notified };
+  const n = top ? safeNum(top.ch) : null;
+  return await claimAndNotify(src, id, meta, top && n != null ? String(top.ch) : null, n, opt.maxJump);
 }
 async function checkChapters() {
-  const { data: libs, error } = await admin.from("library").select("source, comic_id, title, cover").eq("notify", true).limit(20000);
-  if (error) throw new Error("library: " + error.message);
-  const comics = new Map<string, { source: Source; comic_id: string; title: string; cover: string }>();
-  for (const l of libs || []) if ((SOURCES as readonly string[]).includes(l.source)) comics.set(l.source + "|" + l.comic_id, l as any);
+  const libs = await fetchAll<any>((a, b) => admin.from("library").select("user_id, source, comic_id, title, cover").eq("notify", true)
+    .order("user_id").order("source").order("comic_id").range(a, b), 20000);
+  const byUser = new Map<string, any[]>();
+  const comics = new Set<string>();
+  for (const l of libs) {
+    if (!(SOURCES as readonly string[]).includes(l.source)) continue;
+    comics.add(l.source + "|" + l.comic_id);
+    (byUser.get(l.user_id) || byUser.set(l.user_id, []).get(l.user_id)!).push(l);
+  }
   if (!comics.size) return { comics: 0, checked: 0, notified: 0 };
-  const { data: states } = await admin.from("comic_state").select("*");
-  const stateOf = new Map<string, any>((states || []).map((s: any) => [s.source + "|" + s.comic_id, s]));
-  const queue = [...comics.entries()].sort((a, b) => {
-    const ta = Date.parse(stateOf.get(a[0])?.checked_at || "") || 0, tb = Date.parse(stateOf.get(b[0])?.checked_at || "") || 0;
-    return ta - tb;
-  }).slice(0, CHECK_PER_RUN);
+  const states = await fetchAll<any>((a, b) => admin.from("comic_state").select("source, comic_id, checked_at").order("source").order("comic_id").range(a, b), 100000);
+  const staleOf = new Map<string, number>(states.map((s: any) => [s.source + "|" + s.comic_id, Date.parse(s.checked_at || "") || 0]));
+  const stale = (l: any) => staleOf.get(l.source + "|" + l.comic_id) ?? 0;
+  // Antrean adil: tiap putaran mengambil komik paling lama tidak dicek dari TIAP pengguna secara bergiliran, jadi satu akun
+  // dengan ratusan lonceng tidak bisa menghabiskan jatah (CHECK_PER_RUN) yang seharusnya dibagi rata.
+  const lists = [...byUser.values()].map((a) => a.sort((x, y) => stale(x) - stale(y))).sort((a, b) => stale(a[0]) - stale(b[0]));
+  const cur = lists.map(() => 0), picked = new Set<string>(), queue: any[] = [];
+  for (let more = true; more && queue.length < CHECK_PER_RUN;) {
+    more = false;
+    for (let j = 0; j < lists.length && queue.length < CHECK_PER_RUN; j++) {
+      while (cur[j] < lists[j].length && picked.has(lists[j][cur[j]].source + "|" + lists[j][cur[j]].comic_id)) cur[j]++;
+      if (cur[j] >= lists[j].length) continue;
+      const c = lists[j][cur[j]++];
+      picked.add(c.source + "|" + c.comic_id); queue.push(c); more = true;
+    }
+  }
   let checked = 0, notified = 0;
   const errors: string[] = [];
-  for (const [key, c] of queue) {
-    const prev = stateOf.get(key);
+  for (const c of queue) {
     try {
-      const r = await applyChapters(c.source, c.comic_id, await chaptersOf(c.source, c.comic_id), { title: c.title, cover: c.cover }, prev);
+      const r = await applyChapters(c.source, c.comic_id, await chaptersOf(c.source, c.comic_id), { title: c.title, cover: c.cover });
       checked++;
       if (r.notified) notified += r.notified.users;
     } catch (e: any) {
       const msg = String(e?.message || e).slice(0, 300);
-      await admin.from("comic_state").upsert({ source: c.source, comic_id: c.comic_id, title: c.title || prev?.title || "", cover: c.cover || prev?.cover || null,
-        last_chapter: prev?.last_chapter ?? null, last_num: prev?.last_num ?? null, checked_at: new Date().toISOString(), last_error: msg }, { onConflict: "source,comic_id" });
+      // hanya waktu cek & galatnya yang dicatat; nomor chapter terakhir tidak disentuh (tidak bisa mundur lalu memicu notifikasi ganda)
+      await admin.from("comic_state").upsert({ source: c.source, comic_id: c.comic_id, checked_at: new Date().toISOString(), last_error: msg }, { onConflict: "source,comic_id" });
       if (errors.length < 5) errors.push(`${c.source}: ${msg}`);
     }
     await sleep(CHECK_DELAY);
@@ -867,8 +1041,8 @@ async function pushAnnouncements() {
     // tandai dulu agar tidak terkirim dua kali bila cron berjalan bersamaan
     const { data: claimed } = await admin.from("announcements").update({ pushed_at: new Date().toISOString() }).eq("id", a.id).is("pushed_at", null).select("id");
     if (!claimed?.length) continue;
-    const { data: users } = await admin.from("profiles").select("id").eq("banned", false).limit(100000);
-    const ids = (users || []).map((u: any) => u.id as string);
+    const users = await fetchAll<any>((x, y) => admin.from("profiles").select("id").eq("banned", false).order("id").range(x, y), 100000);
+    const ids = users.map((u: any) => u.id as string);
     for (let i = 0; i < ids.length; i += 500) {
       // announcement_id: notifikasi ikut terhapus bila pengumuman ditarik developer
       const rows = ids.slice(i, i + 500).map((u: string) => ({ user_id: u, title: String(a.title).slice(0, 200), body: String(a.body || "Pengumuman dari Developer").slice(0, 500), announcement_id: a.id }));
@@ -891,18 +1065,36 @@ async function cleanup() {
     const files = (Array.isArray(paths) ? paths : []).map((p: any) => (typeof p === "string" ? p : p?.chat_cleanup)).filter((p: any) => typeof p === "string" && p);
     for (let i = 0; i < files.length; i += 100) { await admin.storage.from("chat-images").remove(files.slice(i, i + 100)); images += Math.min(100, files.length - i); }
   }
+  // gambar yatim (tidak dipakai pesan mana pun, > 1 hari): hapus lewat Storage API, maks. 200 per jalan
+  let orphans = 0;
+  const { data: orph, error: orphErr } = await admin.rpc("chat_orphan_images", { p_limit: 200 });
+  if (!orphErr) {
+    const names = (Array.isArray(orph) ? orph : []).map((x: any) => (typeof x === "string" ? x : x?.chat_orphan_images)).filter((x: any) => typeof x === "string" && x);
+    for (let i = 0; i < names.length; i += 100) {
+      const { error: rmErr } = await admin.storage.from("chat-images").remove(names.slice(i, i + 100));
+      if (!rmErr) orphans += Math.min(100, names.length - i);
+    }
+  }
   const week = new Date(Date.now() - 7 * 864e5).toISOString();
   await admin.from("notifications").delete().lt("created_at", week);
-  return { chatError: error?.message || null, images };
+  await admin.from("chapter_reports").delete().lt("created_at", week);
+  return { chatError: error?.message || null, images, orphans, orphanError: orphErr?.message || null };
 }
 
 async function runCron(force: boolean) {
-  const { data: st, error } = await admin.from("server_state").select("v").eq("k", "cron").maybeSingle();
-  if (error) throw new Error("Tabel server_state belum ada. Jalankan ulang ninokuu-schema.sql versi terbaru. [" + error.message + "]");
-  const last = Date.parse(st?.v?.at || "") || 0;
-  if (!force && Date.now() - last < CRON_GAP) return { skipped: true, next_in_s: Math.ceil((CRON_GAP - (Date.now() - last)) / 1000) };
   const at = new Date().toISOString();
-  await admin.from("server_state").upsert({ k: "cron", v: { at, running: true }, updated_at: at });
+  if (force) {
+    await admin.from("server_state").upsert({ k: "cron", v: { at, running: true }, updated_at: at });
+  } else {
+    // klaim atomik: dua pemanggil serentak tidak bisa sama-sama menjalankan cron
+    const { data: ok, error } = await admin.rpc("cron_claim", { p_key: "cron", p_gap: `${Math.round(CRON_GAP / 1000)} seconds` });
+    if (error) throw new Error("cron_claim belum ada. Jalankan ulang ninokuu-schema.sql versi terbaru di SQL Editor. [" + error.message + "]");
+    if (!ok) {
+      const { data: st } = await admin.from("server_state").select("v").eq("k", "cron").maybeSingle();
+      const last = Date.parse(st?.v?.at || "") || 0;
+      return { skipped: true, next_in_s: Math.max(1, Math.ceil((CRON_GAP - (Date.now() - last)) / 1000)) };
+    }
+  }
   const result: any = { at };
   for (const [k, fn] of [["chapters", checkChapters], ["announcements", pushAnnouncements], ["cleanup", cleanup]] as const) {
     try { result[k] = await (fn as () => Promise<unknown>)(); } catch (e: any) { result[k] = { error: String(e?.message || e) }; }
@@ -921,6 +1113,7 @@ function cleanChapters(x: unknown): Chapter[] {
 }
 
 /* ---------- router ---------- */
+const testPushAt = new Map<string, number>();
 const isSource = (s: unknown): s is Source => (SOURCES as readonly string[]).includes(String(s));
 async function userOf(req: Request) {
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
@@ -937,7 +1130,7 @@ Deno.serve(async (req) => {
   try {
     if (req.method === "GET") {
       const img = url.searchParams.get("img");
-      if (img) return await proxyImage(img, url.searchParams.get("ref") || "", url.searchParams.get("sig") || "", url.searchParams.get("c") === "1");
+      if (img) return await proxyImage(img, url.searchParams.get("ref") || "", url.searchParams.get("sig") || "", url.searchParams.get("c") === "1", req.signal);
       let fcmProject: string | null = null;
       try { fcmProject = JSON.parse(Deno.env.get("FCM_SERVICE_ACCOUNT") || "null")?.project_id || null; } catch { fcmProject = "json-tidak-valid"; }
       return json({ ok: true, name: FN_NAME, dev: IS_DEV(), version: VERSION, sources: SOURCES, serverKey: !!SERVICE_KEY, fcm: !!Deno.env.get("FCM_SERVICE_ACCOUNT"), fcmProject });
@@ -992,23 +1185,88 @@ Deno.serve(async (req) => {
     const user = await userOf(req);
     if (!user) return json({ error: "Masuk dulu untuk memakai fitur ini." }, 401);
 
-    // APK melaporkan daftar chapter dari sumber yang menolak server (Shinigami/WestManga)
+    // Staf menghapus gambar chat dengan kunci server. Moderator tidak punya izin Storage atas folder orang lain, jadi tanpa
+    // ini gambar pesan yang disembunyikan / dihapus / milik akun yang diblokir tetap bisa dibuka lewat alamat publiknya.
+    //  { paths: [...] }  → hanya gambar yang pesannya sudah disembunyikan atau sudah tidak ada
+    //  { user_id }       → semua gambar akun yang sudah diblokir
+    // Hierarki sama dengan mod_restrict: moderator hanya untuk pengguna biasa, developer juga untuk moderator.
+    if (action === "purge_chat_images") {
+      const { data: me } = await admin.from("profiles").select("role, banned").eq("id", user.id).maybeSingle();
+      if (!me || me.banned || !["moderator", "developer"].includes(me.role)) return json({ error: "khusus moderator" }, 403);
+      const roleOf = new Map<string, { role: string; banned: boolean } | null>();
+      const allowed = async (uid: string) => {
+        if (uid === user.id) return true;
+        if (!roleOf.has(uid)) { const { data } = await admin.from("profiles").select("role, banned").eq("id", uid).maybeSingle(); roleOf.set(uid, data || null); }
+        const t = roleOf.get(uid);
+        return !t || t.role === "user" || (t.role === "moderator" && me.role === "developer");   // tanpa profil = akun sudah dihapus
+      };
+      const toRemove: string[] = []; let skipped = 0;
+      if (typeof body.user_id === "string") {
+        const uid = body.user_id;
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(uid) || uid === user.id || !(await allowed(uid))) return json({ error: "tidak boleh menindak akun ini" }, 403);
+        await allowed(uid);
+        if (!roleOf.get(uid)?.banned) return json({ error: "akun ini belum diblokir" }, 409);
+        for (let off = 0; off < 10000; off += 1000) {
+          const { data: files, error: lsErr } = await admin.storage.from("chat-images").list(uid, { limit: 1000, offset: off });
+          if (lsErr) return json({ error: "Storage: " + lsErr.message }, 502);
+          (files || []).forEach((f: any) => { if (f?.name) toRemove.push(`${uid}/${f.name}`); });
+          if ((files || []).length < 1000) break;
+        }
+      } else {
+        const paths = [...new Set<string>((Array.isArray(body.paths) ? body.paths : []).map((x: unknown) => String(x)))].slice(0, 50);
+        const valid = paths.filter((x) => /^[0-9a-f-]{36}\/[A-Za-z0-9._-]{1,200}$/.test(x));
+        skipped += paths.length - valid.length;
+        // pesan yang masih tampil tidak boleh kehilangan gambar lewat jalur ini
+        const { data: live } = valid.length ? await admin.from("chat_messages").select("image_path").in("image_path", valid).eq("hidden", false) : { data: [] as any[] };
+        const liveSet = new Set<string>((live || []).map((r: any) => String(r.image_path)));
+        for (const x of valid) {
+          if (liveSet.has(x) || !(await allowed(x.split("/")[0]))) skipped++; else toRemove.push(x);
+        }
+      }
+      let removed = 0;
+      for (let i = 0; i < toRemove.length; i += 100) {
+        const { error: rmErr } = await admin.storage.from("chat-images").remove(toRemove.slice(i, i + 100));
+        if (rmErr) return json({ ok: false, removed, skipped, error: "Storage: " + rmErr.message }, 502);
+        removed += Math.min(100, toRemove.length - i);
+      }
+      return json({ ok: true, removed, skipped });
+    }
+
+    // APK melaporkan daftar chapter dari sumber yang menolak server (Shinigami/WestManga).
+    // Laporan satu orang bisa salah/dipalsukan, jadi chapter baru baru diumumkan ke banyak orang setelah DUA pelapor berbeda
+    // (atau satu, bila hanya satu orang yang memantau komik itu: dampaknya hanya ke dirinya) melaporkan nomor setinggi itu.
     if (action === "report_chapters") {
       const src = body.source, id = clip(body.comic_id, 600);
       if (!isSource(src) || !BLOCKED.includes(src)) return json({ error: "sumber ini dicek langsung oleh server" }, 400);
       const { data: lib } = await admin.from("library").select("title, cover").eq("user_id", user.id).eq("source", src).eq("comic_id", id).maybeSingle();
       if (!lib) return json({ error: "Komik ini tidak ada di koleksimu" }, 404);
-      const { data: prev } = await admin.from("comic_state").select("*").eq("source", src).eq("comic_id", id).maybeSingle();
-      if (prev?.checked_at && Date.now() - Date.parse(prev.checked_at) < 5 * 60e3) return json({ ok: true, skipped: true });
+      const { data: mine } = await admin.from("chapter_reports").select("created_at").eq("source", src).eq("comic_id", id).eq("user_id", user.id).maybeSingle();
+      if (mine?.created_at && Date.now() - Date.parse(mine.created_at) < 5 * 60e3) return json({ ok: true, skipped: true });
       const list = cleanChapters(body.chapters);
       if (!list.length) return json({ ok: true, found: 0 });
-      return json({ ok: true, ...(await applyChapters(src, id, list, { title: lib.title, cover: lib.cover || "" }, prev, { maxJump: 20 })) });
+      const top = newestChapter(list), n = top ? safeNum(top.ch) : null;
+      if (!top || n == null) return json({ ok: true, found: list.length, newest: null });
+      const { error: upErr } = await admin.from("chapter_reports").upsert({ source: src, comic_id: id, user_id: user.id, num: n, chapter: clip(top.ch, 40), created_at: new Date().toISOString() }, { onConflict: "source,comic_id,user_id" });
+      if (upErr) return json({ error: "chapter_reports: " + upErr.message + " — jalankan ulang ninokuu-schema.sql versi terbaru." }, 500);
+      const { count } = await admin.from("library").select("user_id", { count: "exact", head: true }).eq("source", src).eq("comic_id", id).eq("notify", true);
+      const need = Math.min(2, Math.max(1, count || 1));
+      const since = new Date(Date.now() - 24 * 3600e3).toISOString();
+      const { data: reps } = await admin.from("chapter_reports").select("num, chapter").eq("source", src).eq("comic_id", id).gte("created_at", since)
+        .order("num", { ascending: false }).limit(need);
+      if (!reps || reps.length < need) return json({ ok: true, pending: true, newest: top.ch });
+      const agreed = reps[need - 1];   // nomor tertinggi yang sudah dilaporkan setidaknya `need` orang berbeda
+      return json({ ok: true, ...(await claimAndNotify(src, id, { title: lib.title, cover: lib.cover || "" }, String(agreed.chapter), Number(agreed.num), 20)) });
     }
 
     // Tes notifikasi ke HP sendiri (Lainnya → Kirim tes / Panel developer)
     if (action === "test_push") {
+      // tiap tes memanggil FCM sekali per perangkat: maks. 1 tes per 30 detik per akun
+      const nowMs = Date.now(), prevTest = testPushAt.get(user.id) || 0;
+      if (nowMs - prevTest < 30e3) return json({ ok: false, error: `Tunggu ${Math.ceil((30e3 - (nowMs - prevTest)) / 1000)} detik sebelum tes lagi.` }, 429);
+      if (testPushAt.size > 2000) testPushAt.clear();
+      testPushAt.set(user.id, nowMs);
       // baca langsung (bukan tokensOf) supaya error izin database terlihat, tidak dikira "belum terdaftar"
-      const { data: devs, error: dbErr } = await admin.from("devices").select("token").eq("user_id", user.id);
+      const { data: devs, error: dbErr } = await admin.from("devices").select("token").eq("user_id", user.id).order("updated_at", { ascending: false }).limit(10);
       if (dbErr) return json({ ok: false, devices: 0, error: `Server tidak bisa membaca tabel devices (${dbErr.message}). Jalankan ulang ninokuu-schema.sql di SQL Editor.` }, 500);
       const tokens = (devs || []).map((d: any) => String(d.token));
       if (!tokens.length) return json({ ok: false, devices: 0, error: "HP ini belum terdaftar untuk notifikasi. Buka aplikasi, izinkan notifikasi, lalu coba lagi." }, 404);
