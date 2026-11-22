@@ -1012,7 +1012,7 @@ async function vReader(src, id, chId) {
   // masuk pembaca dari info komik: halaman tampil dulu, bar atas & bawah baru meluncur masuk setelah gambar
   // halaman tujuan selesai dimuat & digambar (maks 2,5 dtk), supaya animasi tidak berjalan bersamaan dengan pemuatan
   if (animIn) {
-    const tgt = $$(".r-img", rd)[at0 - 1] || $(".r-img", rd);
+    const tgt = $$(".r-img", box)[at0 - 1] || $(".r-img", box);
     // gambar yang ditolak situs dicoba ulang lewat jalur lain (ui.js), jadi tunggu "load" yang berhasil, bukan "error"
     const ready = tgt && !(tgt.complete && tgt.naturalWidth) ? new Promise((r) => tgt.addEventListener("load", r, { once: true })) : Promise.resolve();
     Promise.race([ready, new Promise((r) => setTimeout(r, 2500))]).then(() =>
@@ -1035,7 +1035,7 @@ async function vReader(src, id, chId) {
   // EXP baca: hanya setelah chapter dibaca sampai habis (akhir chapter terlihat)
   let awarded = false;
   const finish = () => { if (awarded) return; awarded = true; DL.markRead(src, id, ch.id); if (!isLocal) S.awardRead(src, id, ch.ch); };
-  const endEl = $(".r-endtxt, .r-endslide", rd);
+  const endEl = $(".r-endtxt, .r-endslide", box);   // (box, bukan rd: rd sesaat juga berisi salinan chapter lama yang sedang digeser keluar)
   let endIo = null;
   if (endEl && "IntersectionObserver" in window) {
     endIo = new IntersectionObserver((es) => {
@@ -1285,7 +1285,7 @@ async function vReader(src, id, chId) {
   // #10 gambar gagal (server/internet): tombol muat ulang per halaman, menu "Muat ulang chapter",
   // dan otomatis dicoba lagi saat internet tersambung kembali
   const failed = new Set();
-  $$(".r-img", rd).forEach((im) => { im.dataset.o = im.getAttribute("src") || im.dataset.src || ""; });
+  $$(".r-img", box).forEach((im) => { im.dataset.o = im.getAttribute("src") || im.dataset.src || ""; });
   // muat halaman yang mendekati layar: 3 layar ke depan, 1 layar ke belakang (mode slide: 1 halaman ke kiri/kanan),
   // supaya saat digulir gambar berikutnya sudah siap tanpa jeda, tapi tetap tidak mengunduh seluruh chapter
   const loadImg = (im) => {
@@ -1299,7 +1299,7 @@ async function vReader(src, id, chId) {
   const loadNear = (im) => { const i = Number(im.dataset.i); [i, i + 1, i + 2].forEach((k) => { const x = $(`.r-img[data-i="${k}"]`, rd); if (x?.dataset.src) { loadImg(x); lazyIo.unobserve(x); } }); };
   const lazyIo = new IntersectionObserver((es) => es.forEach((x) => { if (x.isIntersecting) loadNear(x.target); }),
     { root: box, rootMargin: slide ? "0px 100%" : "100% 0px 300% 0px" });
-  $$(".r-img[data-src]", rd).forEach((im) => lazyIo.observe(im));
+  $$(".r-img[data-src]", box).forEach((im) => lazyIo.observe(im));
   // Tinggi sementara halaman yang belum dimuat = rasio gambar terakhir yang sudah tampil (halaman satu chapter
   // biasanya sama ukurannya), bukan 1 layar penuh. Jadi saat gambar datang, isi layar hampir tidak bergeser.
   rd.addEventListener("load", (e) => {
@@ -1369,14 +1369,14 @@ async function vReader(src, id, chId) {
     // selama 2 frame pertama halaman disembunyikan sampai posisinya pasti
     rd.classList.add("resuming"); jump();
     requestAnimationFrame(() => { jump(); requestAnimationFrame(() => rd.classList.remove("resuming")); });
-    if (!slide) $$(".r-img", rd).slice(0, resumeAt).forEach((im) => im.addEventListener("load", jump, { once: true }));   // semua halaman di atas tujuan: tingginya berubah saat termuat
+    if (!slide) $$(".r-img", box).slice(0, resumeAt).forEach((im) => im.addEventListener("load", jump, { once: true }));   // semua halaman di atas tujuan: tingginya berubah saat termuat
     toast(`Lanjut dari halaman ${resumeAt}`, 1800);
   }
   cleanup = () => { lazyIo.disconnect(); fsObs.disconnect(); clearTimeout(tapT); clearTimeout(nextT); cancelAnimationFrame(rafPos); endIo?.disconnect(); removeEventListener("online", onOnline); (parse().name === "reader" ? 0 : N.setFullscreen(false, false)); S.flushHistory(); };   // ke halaman lain: bilah status dikembalikan SEBELUM halaman baru digambar (tidak melompat setelahnya); pindah chapter: status layar tidak disentuh sama sekali sampai chapter baru tampil (dulu dilepas setelah 0,3 dtk → seluruh layar bergeser naik-turun saat chapter lambat dimuat)
   // jenis belum diketahui dari tag: periksa bentuk beberapa gambar pertama. Kebanyakan sangat tinggi
   // (tinggi > 1,8× lebar) → strip panjang manhwa/manhua: diingat, dan mode slide dialihkan ke scroll.
   if (!kind && !longStrip) {
-    const firsts = $$(".r-img", rd).slice(0, 4);
+    const firsts = $$(".r-img", box).slice(0, 4);
     const cekStrip = () => {
       const done = firsts.filter((im) => im.complete && im.naturalWidth);
       if (done.length < Math.min(2, firsts.length)) return;

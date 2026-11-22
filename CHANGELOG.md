@@ -11,6 +11,13 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
+## 1.8.11 — 22 Nov 2026
+
+### Ringkasan
+- Perbaikan: "Lanjut otomatis" ke chapter berikutnya tidak berjalan setelah pindah chapter (sejak animasi geser 1.8.10)
+
+---
+
 ## 1.8.10 — 22 Nov 2026
 
 ### Ringkasan
