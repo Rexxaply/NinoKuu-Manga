@@ -17,6 +17,7 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 - Layar penuh di pembaca (APK): bilah status yang ditarik dari atas kini muncul transparan di atas halaman lalu hilang sendiri setelah beberapa detik, tanpa perlu mengetuk halaman dua kali
 - Animasi pindah chapter mengikuti arah: chapter berikutnya masuk dari kanan, chapter sebelumnya dari kiri
 - Menu bacaan: tombol "Chapter" menampilkan nomor chapter yang sedang dibaca (bukan jumlah chapter)
+- Perbaikan keamanan dari audit: server (Edge Function 1.6.1: SSRF & proxy gambar, notifikasi atomik), skema database (hierarki moderasi, batas baris, nama aman), unduhan, restore backup, gambar chat (EXIF dibuang, gambar yatim dibersihkan), dan data lokal saat akun berganti
 
 ---
 
