@@ -296,18 +296,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # catatan rilis = bagian versi ini di CHANGELOG.md: ringkasan dulu (aplikasi menampilkan ±12 baris pertama
-          # di peringatan pembaruan), lalu rincian lengkap. Tanpa bagian itu: pesan commit terakhir.
+          # catatan rilis untuk pengguna = hanya "### Ringkasan" versi ini di CHANGELOG.md (bahasa sederhana, tanpa
+          # rincian teknis; "### Detail" hanya untuk developer). Tanpa bagian itu: pesan commit terakhir.
           SEC=$(awk -v v="## $APP_VERSION " 'index($0,v)==1{f=1;next} f&&/^## /{exit} f&&/^---/{exit} f' ../CHANGELOG.md 2>/dev/null || true)
           { if [ -n "$SEC" ]; then
               printf '%s\n' "$SEC" | awk '/^### Ringkasan/{f=1;next} f&&/^### /{exit} f' | grep -v '^<!--' | sed '/^[[:space:]]*$/d'
-              echo ""
-              printf '%s\n' "$SEC" | awk '/^### Ringkasan/{s=1;next} s&&/^### /{s=0} !s'
             else
               git log -1 --pretty=%B | grep -vE '^(Co-Authored-By|Claude-Session):' | sed '/^[[:space:]]*$/d'
             fi
             echo ""
-            echo "Dibangun otomatis dari commit ${{ github.sha }} · paket $APP_ID."
             echo "Unduh ninokuu.apk lalu pasang di HP Android. Pembaruan bisa dipasang langsung menimpa versi lama."; } > "$RUNNER_TEMP/notes.md"
           gh release delete apk-terbaru --repo "${{ github.repository }}" --yes --cleanup-tag || true
           gh release create apk-terbaru ninokuu.apk --repo "${{ github.repository }}" --target "${{ github.sha }}" \
