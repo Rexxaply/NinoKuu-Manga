@@ -20,6 +20,11 @@ const MAX_IMG = 30 * 1024 * 1024;
 const VB = `<span class="verif" title="Terverifikasi">${icon("check", 10, 3.2)}</span>`;
 const isStaff = () => ["developer", "moderator"].includes(S.state.profile?.role) && !S.state.settings.asUser;
 const isDev = () => S.state.profile?.role === "developer" && !S.state.settings.asUser;
+// Gambar pesan yang dimoderasi dihapus oleh server: moderator tidak punya izin Storage atas folder orang lain, jadi tanpa ini
+// gambarnya tetap bisa dibuka lewat alamat publik. Dipanggil SETELAH aksi moderasinya berhasil; bila gagal, aksinya tidak
+// dibatalkan (cron menyapu gambar yatim berkala).
+const purgeImages = (paths) => { const p = (paths || []).filter(Boolean); return p.length ? api.call("purge_chat_images", { paths: p }).catch(() => {}) : Promise.resolve(); };
+const purgeUser = (uid) => api.call("purge_chat_images", { user_id: uid }).catch(() => {});
 
 // teks ||spoiler|| → tombol yang menutup teks sampai diketuk
 const revealed = new Set();
@@ -264,10 +269,10 @@ export async function vChat(view, ctx, opt = {}) {
     else if (a === "selcut") { const [i, s0, s1, t] = sel(); navigator.clipboard?.writeText(t).catch(() => {}); i.value = i.value.slice(0, s0) + i.value.slice(s1); i.setSelectionRange(s0, s0); i.dispatchEvent(new Event("input")); toast("Teks dipotong"); }
     else if (a === "mcopy") { const t = plain(m?.body); if (t) navigator.clipboard?.writeText(t).catch(() => {}); sheet(""); toast(t ? "Pesan disalin" : "Pesan ini hanya berisi gambar"); }
     else if (a === "mreport") run(() => api.rest("chat_reports", { method: "POST", body: { message_id: m.id }, prefer: "resolution=ignore-duplicates,return=minimal" }), "Pesan dilaporkan. Terima kasih, moderator akan meninjaunya.");
-    else if (a === "mdel") { if (!(await ask("Hapus pesan ini?", { ok: "Hapus", danger: true }))) return; run(async () => { await api.rest(`chat_messages?id=eq.${m.id}`, { method: "DELETE" }); if (m.image_path && (m.user_id === me || isDev())) await api.removeFile("chat-images", m.image_path).catch(() => {}); }, "Pesan dihapus"); }
-    else if (a === "mhide") run(() => api.rpc("mod_set_hidden", { p_message: m.id, p_hidden: !m.hidden }), m.hidden ? "Pesan ditampilkan lagi" : "Pesan disembunyikan dari semua pengguna");
+    else if (a === "mdel") { if (!(await ask("Hapus pesan ini?", { ok: "Hapus", danger: true }))) return; run(async () => { await api.rest(`chat_messages?id=eq.${m.id}`, { method: "DELETE" }); if (m.image_path) await (m.user_id === me ? api.removeFile("chat-images", m.image_path).catch(() => {}) : purgeImages([m.image_path])); }, "Pesan dihapus"); }
+    else if (a === "mhide") run(async () => { await api.rpc("mod_set_hidden", { p_message: m.id, p_hidden: !m.hidden }); if (!m.hidden && m.image_path && m.user_id !== me) await purgeImages([m.image_path]); }, m.hidden ? "Pesan ditampilkan lagi" : "Pesan disembunyikan dari semua pengguna");
     else if (a === "mmute") run(() => api.rpc("mod_restrict", { p_user: m.user_id, p_mute_minutes: 60 }), `${m.name} dibisukan 1 jam`);
-    else if (a === "mban") { if (!(await ask(`Blokir ${m.name}? Semua pesannya disembunyikan dan dia tidak bisa menulis di chat publik.`, { ok: "Blokir", danger: true }))) return; run(() => api.rpc("mod_restrict", { p_user: m.user_id, p_ban: true }), `${m.name} diblokir dari chat`); }
+    else if (a === "mban") { if (!(await ask(`Blokir ${m.name}? Semua pesannya disembunyikan dan dia tidak bisa menulis di chat publik.`, { ok: "Blokir", danger: true }))) return; run(async () => { await api.rpc("mod_restrict", { p_user: m.user_id, p_ban: true }); await purgeUser(m.user_id); }, `${m.name} diblokir dari chat`); }
     else if (a === "pinx") b.classList.toggle("open");
     else if (a === "unpin") { if (!(await ask("Lepas pengumuman ini dari chat publik untuk semua pengguna?", { ok: "Lepas" }))) return; run(() => api.rest(`announcements?id=eq.${pin.id}`, { method: "PATCH", body: { pinned: false }, prefer: "return=minimal" }), "Pengumuman dilepas dari chat untuk semua pengguna"); }
     else if (a === "pinhide") { hidePin(pin.id); pin = null; draw(); toast("Pengumuman disembunyikan dari layarmu selama 24 jam", 3000); }
@@ -446,7 +451,7 @@ export async function vDev(view, ctx) {
   <section class="col g10"><h2 class="cap m0">Laporan chat · ${repMsgs.length}</h2>
     ${repMsgs.length ? repMsgs.map((m) => `<div class="card col g10 ${m.hidden ? "" : "rep-open"}"><span class="row g8 xs"><b class="sm">${esc(m.name)}</b><span class="rep-n">${counts[m.id]} laporan</span>${m.room && m.room !== "public" ? `<span class="mu">${m.room.startsWith("ch:") ? "Komentar chapter" : "Komentar komik"}</span>` : ""}<span class="mu" style="margin-left:auto">${m.hidden ? "Disembunyikan" : "Masih tampil"}</span></span>
       <span class="sm">${esc(plain(m.body) || "Gambar")}</span>
-      <div class="row g6 wrap"><button class="btn ghost sm" data-d="hide" data-id="${m.id}" data-h="${m.hidden}">${m.hidden ? "Tampilkan lagi" : "Sembunyikan"}</button><button class="btn ghost sm" data-d="del" data-id="${m.id}">Hapus</button>
+      <div class="row g6 wrap"><button class="btn ghost sm" data-d="hide" data-id="${m.id}" data-h="${m.hidden}" data-p="${esc(m.image_path || "")}">${m.hidden ? "Tampilkan lagi" : "Sembunyikan"}</button><button class="btn ghost sm" data-d="del" data-id="${m.id}" data-p="${esc(m.image_path || "")}">Hapus</button>
         ${m.role === "developer" ? "" : `<button class="btn ghost sm" data-d="mute" data-u="${m.user_id}" data-n="${esc(m.name)}">Bisukan 1 jam</button><button class="btn ghost sm red" data-d="ban" data-u="${m.user_id}" data-n="${esc(m.name)}">Blokir</button>`}</div></div>`).join("")
       : `<div class="card center mu sm">Tidak ada laporan. Chat aman.</div>`}</section>
   <section class="col g10"><h2 class="cap m0">Laporan komik · ${(bugs || []).length}</h2>
@@ -488,10 +493,10 @@ export async function vDev(view, ctx) {
     }
     if (a === "cron") run(async () => { b.disabled = true; await api.call("run_cron"); }, "Cron selesai dijalankan");
     if (a === "test") run(() => api.call("test_push"), "Tes notifikasi dikirim");
-    if (a === "hide") run(() => api.rpc("mod_set_hidden", { p_message: Number(b.dataset.id), p_hidden: b.dataset.h !== "true" }), "Status pesan diperbarui");
-    if (a === "del") { if (!(await ask("Hapus pesan ini untuk semua?", { ok: "Hapus", danger: true }))) return; run(() => api.rest(`chat_messages?id=eq.${b.dataset.id}`, { method: "DELETE" }), "Pesan dihapus"); }
+    if (a === "hide") run(async () => { const hide = b.dataset.h !== "true"; await api.rpc("mod_set_hidden", { p_message: Number(b.dataset.id), p_hidden: hide }); if (hide) await purgeImages([b.dataset.p]); }, "Status pesan diperbarui");
+    if (a === "del") { if (!(await ask("Hapus pesan ini untuk semua?", { ok: "Hapus", danger: true }))) return; run(async () => { await api.rest(`chat_messages?id=eq.${b.dataset.id}`, { method: "DELETE" }); await purgeImages([b.dataset.p]); }, "Pesan dihapus"); }
     if (a === "mute") run(() => api.rpc("mod_restrict", { p_user: b.dataset.u, p_mute_minutes: 60 }), `${b.dataset.n} dibisukan 1 jam`);
-    if (a === "ban") { if (!(await ask(`Blokir ${b.dataset.n} dari chat?`, { ok: "Blokir", danger: true }))) return; run(() => api.rpc("mod_restrict", { p_user: b.dataset.u, p_ban: true }), `${b.dataset.n} diblokir`); }
+    if (a === "ban") { if (!(await ask(`Blokir ${b.dataset.n} dari chat?`, { ok: "Blokir", danger: true }))) return; run(async () => { await api.rpc("mod_restrict", { p_user: b.dataset.u, p_ban: true }); await purgeUser(b.dataset.u); }, `${b.dataset.n} diblokir`); }
     if (a === "clean") {
       const kind = b.dataset.k, sel = root.querySelector(`select[data-k="${kind}"]`), days = sel ? Number(sel.value) : 1;
       const item = CLEAN.find((c) => c[0] === kind);
