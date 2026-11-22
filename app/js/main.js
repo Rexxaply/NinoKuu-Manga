@@ -2153,7 +2153,15 @@ screen.orientation?.addEventListener?.("change", checkOrientation);
 window.addEventListener("orientationchange", () => setTimeout(checkOrientation, 50));
 let oriT = 0; window.addEventListener("resize", () => { clearTimeout(oriT); oriT = setTimeout(() => { if (!kbOpen) checkOrientation(); }, 120); });
 
-api.onAuth((s) => { if (!s) S.clearUserData(); });
+// Data lokal dibersihkan saat keluar, dan juga saat akun berganti TANPA keluar (mis. sesi diganti oleh tautan #access_token):
+// tanpa ini, syncAfterLogin() akan mengunggah koleksi/riwayat akun lama ke akun yang baru.
+// Tamu → masuk (uid null → akun) tetap menggabungkan data tamu seperti biasa.
+let authUid = api.userId();
+api.onAuth((s) => {
+  const uid = s?.user?.id || null;
+  if (!s || (authUid && uid && uid !== authUid)) S.clearUserData();
+  authUid = uid;
+});
 if (S.loggedIn()) { S.loadProfile().catch(() => {}); S.pull().catch(() => {}); }
 // perubahan data beruntun (mis. 12 komik dicek chapter terbarunya) digabung jadi 1 gambar ulang per frame
 let favSubRaf = 0;
