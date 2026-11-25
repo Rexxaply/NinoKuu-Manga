@@ -1168,6 +1168,7 @@ function cropPick(srcUrls, init, label) {
     host.className = "crop-host"; host.setAttribute("role", "dialog"); host.setAttribute("aria-label", "Pilih bagian gambar");
     host.innerHTML = `<div class="crop-top"><b>Pilih bagian · ${esc(label)}</b><span class="mu xs">Seret garis untuk mengatur, seret kotak untuk memindahkan</span></div>
   <div class="crop-sc"><div class="crop-wrap">${srcUrls.map((u) => `<img class="crop-img" src="${esc(u)}" alt="" draggable="false">`).join("")}
+    <b class="crop-dim"></b><b class="crop-dim"></b><b class="crop-dim"></b><b class="crop-dim"></b>
     <div class="crop-box"><i class="ch-t"></i><i class="ch-b"></i><i class="ch-l"></i><i class="ch-r"></i></div></div></div>
   <div class="crop-bar"><button class="btn ghost" data-c="no">Batal</button><button class="btn ghost" data-c="all">Seluruh</button><button class="btn primary" data-c="ok">${icon("share", 17)}Bagikan</button></div>`;
     document.body.append(host);
@@ -1175,7 +1176,15 @@ function cropPick(srcUrls, init, label) {
     host.addEventListener("selectstart", (e) => e.preventDefault()); host.addEventListener("contextmenu", (e) => e.preventDefault());
     let c = { ...init };
     if (c.h > 0.98 && c.w > 0.98) c = { x: 0, y: 0, w: 1, h: 1 };
-    const paint = () => { boxEl.style.left = c.x * 100 + "%"; boxEl.style.top = c.y * 100 + "%"; boxEl.style.width = c.w * 100 + "%"; boxEl.style.height = c.h * 100 + "%"; };
+    // bagian di luar pilihan digelapkan dengan 4 lapisan (atas, bawah, kiri, kanan) yang menutupi seluruh tumpukan
+    // halaman; dulu bayangan kotak yang jangkauannya terbatas, sehingga halaman panjang di bawahnya tetap putih
+    const dims = $$(".crop-dim", host);
+    const pos = (el, l, t, w, h) => { el.style.left = l + "%"; el.style.top = t + "%"; el.style.width = w + "%"; el.style.height = h + "%"; };
+    const paint = () => {
+      pos(boxEl, c.x * 100, c.y * 100, c.w * 100, c.h * 100);
+      pos(dims[0], 0, 0, 100, c.y * 100); pos(dims[1], 0, (c.y + c.h) * 100, 100, (1 - c.y - c.h) * 100);
+      pos(dims[2], 0, c.y * 100, c.x * 100, c.h * 100); pos(dims[3], (c.x + c.w) * 100, c.y * 100, (1 - c.x - c.w) * 100, c.h * 100);
+    };
     paint();
     const center = () => { const H = wrap.offsetHeight; sc.scrollTop = Math.max(0, (c.y + c.h / 2) * H - sc.clientHeight / 2); };
     // pilihan awal (bagian yang terlihat di pembaca) muat utuh di layar, garis atas & bawahnya langsung terlihat:
@@ -1591,6 +1600,8 @@ async function vReader(src, id, chId) {
       addEventListener("nk:sharing", soon, { once: true });
       try { await fn(); } catch (e) { toast(e?.message || "Gagal membagikan gambar", 4000); } finally { if (w.isConnected) off(); }
     };
+    // berkas halaman mulai diunduh sekarang (selagi memilih), supaya Bagikan tidak lama menunggu
+    DL.prefetchPage(im, p.ref || ""); set.forEach((k) => { if (k !== i) DL.prefetchPage(p.images[k - 1], p.ref || ""); });
     openSheet(`<span class="sheet-ttl">Halaman ${i} dari ${total}</span><span class="sheet-prev">${esc(title)} · Chapter ${esc(ch.ch)}</span>
       ${ready ? `<img class="pg-prev" src="${esc(el.currentSrc)}" alt="Pratinjau halaman ${i}">` : ""}
       ${ready ? `<button class="sh-row" data-s="crop"><span class="redt">${icon("share", 19)}</span><span class="grow col"><b>Pilih bagian lalu bagikan</b><span class="mu xs">Mulai dari yang terlihat di layar, bisa melewati batas halaman</span></span></button>` : ""}

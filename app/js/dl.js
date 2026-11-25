@@ -181,8 +181,18 @@ async function pageBytes(im, ref) {
 }
 // Bagikan satu halaman chapter (tekan lama gambar di pembaca). APK: simpan di cache lalu lembar bagikan Android;
 // web: Web Share API (file) atau unduh.
-const bytesOf = (im, ref) => (im.local ? (async () => { const r = await fetch(im.u); return { u8: new Uint8Array(await r.arrayBuffer()), type: r.headers.get("content-type") || "image/jpeg" }; })()
-  : retry(() => pageBytes(im, ref), 2));
+// Berkas halaman untuk dibagikan diingat sebentar (maks 6), dan mulai diunduh begitu lembar bagikan / layar pilih
+// bagian dibuka (prefetchPage) — saat tombol Bagikan ditekan biasanya sudah siap, tidak menunggu unduhan lagi.
+const bytesMem = new Map();
+const bytesOf = (im, ref) => {
+  const k = im.u; if (bytesMem.has(k)) return bytesMem.get(k);
+  const pr = (im.local ? (async () => { const r = await fetch(im.u); return { u8: new Uint8Array(await r.arrayBuffer()), type: r.headers.get("content-type") || "image/jpeg" }; })()
+    : retry(() => pageBytes(im, ref), 2));
+  pr.catch(() => bytesMem.delete(k));
+  bytesMem.set(k, pr); if (bytesMem.size > 6) bytesMem.delete(bytesMem.keys().next().value);
+  return pr;
+};
+export const prefetchPage = (im, ref) => { bytesOf(im, ref).catch(() => {}); };
 export async function sharePage(im, ref, name, text) {
   const { u8, type } = await bytesOf(im, ref);
   return shareBytes(u8, type, name, text);
@@ -198,7 +208,7 @@ export async function sharePages(ims, ref, name, text, crop, sizes) {
     let acc = 0; const need = hs.map((h) => { const a = acc; acc += h; return a + h > crop.y * H && a < (crop.y + crop.h) * H; });
     (await Promise.all(ims.map(async (im, i) => (need[i] ? createImageBitmap(new Blob([(await bytesOf(im, ref)).u8])) : null)))).forEach((b) => bms.push(b));
     let sx = crop.x * W, sy = crop.y * H, sw = crop.w * W, sh = crop.h * H;
-    const k = Math.min(1, 12000 / sh, 4096 / sw);                                  // batas ukuran kanvas HP
+    const k = Math.min(1, 12000 / sh, 1600 / sw);                                  // batas ukuran (cukup untuk dibagikan, lebih cepat)
     const cv = document.createElement("canvas"); cv.width = Math.max(1, Math.round(sw * k)); cv.height = Math.max(1, Math.round(sh * k));
     const g = cv.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, cv.width, cv.height); g.imageSmoothingQuality = "high";
     let top = 0;
@@ -210,7 +220,7 @@ export async function sharePages(ims, ref, name, text, crop, sizes) {
       }
       top += h;
     });
-    const bl = await new Promise((r) => cv.toBlob(r, "image/jpeg", 0.92));
+    const bl = await new Promise((r) => cv.toBlob(r, "image/jpeg", 0.9));
     if (!bl) throw new Error("Gagal memotong gambar");
     return shareBytes(new Uint8Array(await bl.arrayBuffer()), "image/jpeg", name, text);
   } finally { bms.forEach((b) => b?.close?.()); }

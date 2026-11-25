@@ -1655,7 +1655,8 @@ body[data-screen="reader"] .dl-pop { display: none; }
 .crop-sc { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 18px 0; }
 .crop-wrap { position: relative; width: calc(100% - 36px); max-width: 640px; margin: 0 auto; }
 .crop-img { display: block; width: 100%; height: auto; -webkit-user-drag: none; user-select: none; -webkit-touch-callout: none; pointer-events: none; }
-.crop-box { position: absolute; box-shadow: 0 0 0 100vmax rgba(4, 6, 10, .72); outline: 2px solid #fff; touch-action: none; cursor: move; }
+.crop-dim { position: absolute; background: rgba(4, 6, 10, .72); pointer-events: none; }
+.crop-box { position: absolute; outline: 2px solid #fff; touch-action: none; cursor: move; }
 .crop-box i { position: absolute; touch-action: none; }
 .crop-box .ch-t, .crop-box .ch-b { left: 0; right: 0; height: 36px; cursor: ns-resize; }
 .crop-box .ch-t { top: -18px; } .crop-box .ch-b { bottom: -18px; }
