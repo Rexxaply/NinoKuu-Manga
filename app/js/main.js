@@ -1728,8 +1728,11 @@ async function vReader(src, id, chId) {
   // tiap kejadian membuat gambar bergetar/goyang). Saat dilepas, regangan kembali dengan peredam yang lebih pelan.
   let pan = null, panRaf = 0, rubRaf = 0, rubT = 0;
   let rub = { x: 0, y: 0, tx: 0, ty: 0, el: null, sc: null, ex: 0, ey: 0, sl: 0, st: 0 };
-  const rubber = (o, dim) => Math.sign(o) * (1 - 1 / ((Math.abs(o) * 0.55) / dim + 1)) * dim;
-  const inv0 = (r, dim) => (r ? (Math.sign(r) * dim * (1 / (1 - Math.min(0.95, Math.abs(r) / dim)) - 1)) / 0.55 : 0);
+  // Batas regangan: tarikan sejauh apa pun paling banyak meregangkan gambar ±9% (RUB = 18% layar sebagai batas
+  // tarikan, regangan = setengahnya). Makin jauh ditarik makin berat, dan berhenti di batas itu (dulu sampai ±50%).
+  const RUB = 0.18;
+  const rubber = (o, dim) => { const L = dim * RUB; return Math.sign(o) * (1 - 1 / ((Math.abs(o) * 0.55) / L + 1)) * L; };
+  const inv0 = (r, dim) => { const L = dim * RUB; return r ? (Math.sign(r) * L * (1 / (1 - Math.min(0.95, Math.abs(r) / L)) - 1)) / 0.55 : 0; };
   const rubPaint = () => {
     const el = rub.el, sc = rub.sc; if (!el || !sc) return;
     if (Math.abs(rub.x) < 0.25 && Math.abs(rub.y) < 0.25) { el.style.transform = el.style.transformOrigin = ""; return; }
