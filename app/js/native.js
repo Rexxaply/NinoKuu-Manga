@@ -488,6 +488,19 @@ export async function bgEnsure(uid, call, url, apikey) {
   try { localStorage.setItem(k, url); } catch {}
   logDev("bg", "cek latar belakang aktif (±tiap 30 menit)");
 }
+// Bot Termux yang aktif (melapor ≤ 30 menit terakhir) sudah mengecek tiap 5 menit, jadi worker di HP ini dimatikan
+// (dobel: boros baterai & kuota). Bila Termux berhenti melapor, worker HP ini dinyalakan lagi sebagai cadangan
+// saat aplikasi dibuka berikutnya.
+export async function bgAuto(uid, call, url, apikey) {
+  if (!cachePlugin() || !uid) return;
+  let info = null;
+  try { info = await call("bg_key_info", {}); } catch { return; }
+  const live = !!info?.termux && !!info.used_at && Date.now() - Date.parse(info.used_at) < 30 * 60e3;
+  if (!live) return bgEnsure(uid, call, url, apikey);
+  let on = false;
+  try { on = !!localStorage.getItem("ninokuu:bgKey:" + uid); } catch {}
+  if (on) { await bgStop(call); logDev("bg", "cek latar belakang HP dimatikan: bot Termux aktif"); }
+}
 export async function bgStop(call) {
   const p = cachePlugin();
   try { for (const k of Object.keys(localStorage)) if (k.startsWith("ninokuu:bgKey:")) localStorage.removeItem(k); } catch {}
