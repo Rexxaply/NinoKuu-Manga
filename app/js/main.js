@@ -275,8 +275,8 @@ async function browse(src, opt) {
 }
 // Urutan di Beranda: hanya yang didukung sumbernya (sama dengan Edge Function / ekstensi Mihon)
 const SORT_NAME = { update: "Update terbaru", popular: "Populer", az: "Judul A-Z", za: "Judul Z-A", rating: "Rating tertinggi" };
-const NO_SCORE = new Set(["komiku", "kiryuu"]);
-const SRC_SORTS = { komiku: ["update", "popular"], kiryuu: ["update", "popular", "az", "za"], shinigami: ["update", "popular", "rating"], westmanga: ["update", "popular", "az", "za"] };
+const NO_SCORE = new Set(["komiku"]);
+const SRC_SORTS = { komiku: ["update", "popular"], kiryuu: ["update", "popular", "az", "za", "rating"], shinigami: ["update", "popular", "rating"], westmanga: ["update", "popular", "az", "za"] };
 const homeSortOf = (src) => { const v = (S.state.settings.homeSort || {})[src]; return (SRC_SORTS[src] || ["update"]).includes(v) ? v : "update"; };
 // daftar Beranda yang sudah dimuat (per sumber + urutan): kembali dari halaman komik → daftar & posisi gulir utuh
 const homeMem = new Map();
@@ -669,7 +669,7 @@ async function vDetail(src, id) {
     const heroCol = X.cachedCoverColor(m.cover);
     const ST = { ongoing: ["Berlangsung", "ok"], completed: ["Tamat", "blue"], hiatus: ["Hiatus", "gold"], dropped: ["Dihentikan", "red"] }[m.status];
     const views = Number(m.views) > 0 ? compactNum(m.views) : "";
-    // Komiku dan Kiryuu tidak punya skor komik (data lama di cache bisa masih membawa skor yang salah)
+    // Komiku tidak punya skor komik (data lama di cache bisa masih membawa skor yang salah)
     const score = !NO_SCORE.has(src) && Number(m.score) > 0 ? (Math.round(Number(m.score) * 10) / 10).toFixed(1).replace(".", ",") : "";
     const age = src === "komiku" && /^\d{1,2}\+$/.test(String(m.age || "")) ? String(m.age) : "";
     // satu baris info ringkas di bawah judul; yang tidak tersedia dari sumber tidak ditampilkan

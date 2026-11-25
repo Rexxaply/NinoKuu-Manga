@@ -349,9 +349,9 @@ function newestChapter(list: any[]) {
 
 type Status = "" | "ongoing" | "completed" | "hiatus";
 // Urutan yang didukung tiap sumber (dari ekstensi Mihon/Keiyoushi; yang tidak didukung → "update"):
-// komiku: update, popular · kiryuu: update, popular, az, za · shinigami: update, popular, rating · westmanga: update, popular, az, za
+// komiku: update, popular · kiryuu: update, popular, az, za, rating · shinigami: update, popular, rating · westmanga: update, popular, az, za
 type Sort = "update" | "popular" | "az" | "za" | "rating";
-const SORTS: Record<string, Sort[]> = { komiku: ["update", "popular"], kiryuu: ["update", "popular", "az", "za"], shinigami: ["update", "popular", "rating"], westmanga: ["update", "popular", "az", "za"] };
+const SORTS: Record<string, Sort[]> = { komiku: ["update", "popular"], kiryuu: ["update", "popular", "az", "za", "rating"], shinigami: ["update", "popular", "rating"], westmanga: ["update", "popular", "az", "za"] };
 type Opt = { sort: Sort; type: "" | "manga" | "manhwa" | "manhua"; limit: number; genres: string[]; status: Status };
 type Chapter = { id: string; ch: string | null; title: string; at: string | null; url: string };
 type Detail = { manga: { id: string; title: string; cover: string; desc: string; status: string; tags: string[]; author: string; url: string; views?: number | null; score?: number | null; age?: string | null; publisher?: string }; chapters: Chapter[]; more?: { offset: number } | null };
@@ -658,7 +658,8 @@ async function kiryuuDetail(id: string): Promise<Detail> {
       desc: stripTags(String(m.content?.rendered || "").replace(/<\/p>\s*<p[^>]*>/gi, "\n\n")).trim(),
       tags: [...kiryuuTerms(m, "genre"), ...kiryuuTerms(m, "type")].slice(0, 8), status: kiryuuTerms(m, "status").map((s) => KIRYUU_STATUS[s] || normStatus(s)).find(Boolean) || "",
       author: kiryuuTerms(m, "series-author").join(", "), url: m.link || `${KIRYUU_SITE}/manga/${m.slug}/`,
-      views: pickViews(m, m.meta, m.acf), score: null, // Kiryuu tidak punya skor komik (meta.score selalu kosong)
+      // skor ada di metadata.meta.score (mis. "7"); kosong bila belum dinilai
+      views: pickViews(m.metadata?.meta, m, m.meta, m.acf), score: pickScore(m.metadata?.meta, m, m.meta, m.acf),
       publisher: ["series-publisher", "series-serialization", "serialization", "publisher"].map((t) => kiryuuTerms(m, t).join(", ")).find(Boolean) || pickPublisher(m.meta) || pickPublisher(m.acf),
     },
     chapters,
