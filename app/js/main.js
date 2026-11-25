@@ -1159,6 +1159,63 @@ document.addEventListener("pointerdown", (e) => {
   if (src && ch && src !== "local") pagesLoad(src, ch).catch(() => {});
 }, { capture: true, passive: true });
 let readerSeq = 0;
+// Memilih bagian gambar untuk dibagikan: gambar selebar layar (bisa digulir), kotak pilihan dengan garis atas/bawah/
+// kiri/kanan yang bisa diseret, kotak bisa digeser utuh. Hasil: pecahan { x, y, w, h } dari gambar, atau null (batal).
+let cropClose = null;
+function cropPick(srcUrl, init, label) {
+  return new Promise((done) => {
+    const host = document.createElement("div");
+    host.className = "crop-host"; host.setAttribute("role", "dialog"); host.setAttribute("aria-label", "Pilih bagian gambar");
+    host.innerHTML = `<div class="crop-top"><b>Pilih bagian · ${esc(label)}</b><span class="mu xs">Seret garis untuk mengatur, seret kotak untuk memindahkan</span></div>
+  <div class="crop-sc"><div class="crop-wrap"><img class="crop-img" src="${esc(srcUrl)}" alt="" draggable="false">
+    <div class="crop-box"><i class="ch-t"></i><i class="ch-b"></i><i class="ch-l"></i><i class="ch-r"></i></div></div></div>
+  <div class="crop-bar"><button class="btn ghost" data-c="no">Batal</button><button class="btn ghost" data-c="all">Seluruh</button><button class="btn primary" data-c="ok">${icon("share", 17)}Bagikan</button></div>`;
+    document.body.append(host);
+    const sc = $(".crop-sc", host), wrap = $(".crop-wrap", host), boxEl = $(".crop-box", host), img = $(".crop-img", host);
+    let c = { ...init };
+    if (c.h > 0.98 && c.w > 0.98) c = { x: 0, y: 0, w: 1, h: 1 };
+    const paint = () => { boxEl.style.left = c.x * 100 + "%"; boxEl.style.top = c.y * 100 + "%"; boxEl.style.width = c.w * 100 + "%"; boxEl.style.height = c.h * 100 + "%"; };
+    paint();
+    const center = () => { const H = wrap.offsetHeight; sc.scrollTop = Math.max(0, (c.y + c.h / 2) * H - sc.clientHeight / 2); };
+    if (img.complete) center(); else img.addEventListener("load", center, { once: true });
+    const finish = (v) => { cropClose = null; host.classList.add("out"); setTimeout(() => host.remove(), 200); done(v); };
+    cropClose = () => finish(null);
+    host.addEventListener("click", (e) => { const b = e.target.closest("[data-c]"); if (!b) return;
+      finish(b.dataset.c === "ok" ? { ...c } : b.dataset.c === "all" ? { x: 0, y: 0, w: 1, h: 1 } : null); });
+    // seret: garis tepi (t/b/l/r) atau kotak utuh (m). Dekat tepi atas/bawah layar → gulir otomatis (halaman panjang).
+    let dr = null, auto = 0;
+    const MIN = 36;
+    const apply = (x, y) => {
+      const W = wrap.offsetWidth, H = wrap.offsetHeight, r = wrap.getBoundingClientRect();
+      const px = Math.max(0, Math.min(W, x - r.left)), py = Math.max(0, Math.min(H, y - r.top));
+      let { x: L, y: T, w, h } = dr.c0; L *= W; T *= H; w *= W; h *= H; let R = L + w, B = T + h;
+      if (dr.k === "m") { L = Math.max(0, Math.min(W - w, L + (x - r.left) - dr.px0)); T = Math.max(0, Math.min(H - h, T + (y - r.top) - dr.py0)); R = L + w; B = T + h; }
+      else if (dr.k === "t") T = Math.min(py, B - MIN);
+      else if (dr.k === "b") B = Math.max(py, T + MIN);
+      else if (dr.k === "l") L = Math.min(px, R - MIN);
+      else if (dr.k === "r") R = Math.max(px, L + MIN);
+      c = { x: L / W, y: T / H, w: (R - L) / W, h: (B - T) / H }; paint();
+    };
+    const loop = () => {
+      if (!dr) { auto = 0; return; }
+      const v = sc.getBoundingClientRect(), edge = 70;
+      const sp = dr.y < v.top + edge ? -(v.top + edge - dr.y) / 4 : dr.y > v.bottom - edge ? (dr.y - (v.bottom - edge)) / 4 : 0;
+      if (sp && dr.k !== "l" && dr.k !== "r") { sc.scrollTop += sp; apply(dr.x, dr.y); }
+      auto = requestAnimationFrame(loop);
+    };
+    boxEl.addEventListener("pointerdown", (e) => {
+      const t = e.target.className, k = t === "ch-t" ? "t" : t === "ch-b" ? "b" : t === "ch-l" ? "l" : t === "ch-r" ? "r" : "m";
+      const r = wrap.getBoundingClientRect();
+      dr = { k, c0: { ...c }, px0: e.clientX - r.left, py0: e.clientY - r.top, x: e.clientX, y: e.clientY };
+      try { boxEl.setPointerCapture(e.pointerId); } catch {}
+      e.preventDefault(); if (!auto) auto = requestAnimationFrame(loop);
+    });
+    boxEl.addEventListener("pointermove", (e) => { if (!dr) return; dr.x = e.clientX; dr.y = e.clientY; apply(e.clientX, e.clientY); });
+    const up = () => { dr = null; };
+    boxEl.addEventListener("pointerup", up); boxEl.addEventListener("pointercancel", up);
+    addEventListener("hashchange", () => { if (host.isConnected) finish(null); }, { once: true });
+  });
+}
 async function vReader(src, id, chId) {
   const shell = (inner) => `<div class="reader ui enter" id="rd" data-shell="1">${inner}<div class="r-top"><button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 22, 2)}</button><div class="r-pill glass"><b class="t1">Memuat…</b></div><span class="r-sp"></span></div></div>`;
   // Halaman sebelumnya tetap terlihat selama data chapter dimuat; layar tunggu dipasang bila butuh > 0,3 dtk (dulu 1,2 dtk:
@@ -1496,15 +1553,27 @@ async function vReader(src, id, chId) {
   const pageSheet = (i) => {
     const im = p.images[i - 1]; if (!im) return;
     const el = $(`.r-img[data-i="${i}"]`, box), title = d.manga?.title || "";
-    openSheet(`<span class="sheet-ttl">Halaman ${i} dari ${total}</span><span class="sheet-prev">${esc(title)} · Chapter ${esc(ch.ch)}</span>
-      ${el?.currentSrc ? `<img class="pg-prev" src="${esc(el.currentSrc)}" alt="Pratinjau halaman ${i}">` : ""}
-      <button class="sh-row" data-s="share"><span class="redt">${icon("share", 19)}</span><span class="grow">Bagikan gambar ini</span></button>`,
-    async (b) => {
-      if (b.dataset.s !== "share") return;
-      closeSheet(); toast("Menyiapkan gambar…", 6000);
-      const name = ("ninokuu-" + title.slice(0, 40) + "-ch" + ch.ch + "-" + i).toLowerCase().replace(/[^a-z0-9.]+/g, "-").replace(/^-+|-+$/g, "");
-      try { await DL.sharePage(im, p.ref || "", name, `${title} · Chapter ${ch.ch} — dibaca di Ninokuu`); }
+    const ready = !!el?.currentSrc && el.complete && el.naturalWidth > 0;
+    // bagian halaman yang sedang terlihat di layar = pilihan awal saat memilih bagian
+    let init = { x: 0, y: 0, w: 1, h: 1 };
+    if (ready) {
+      const r = el.getBoundingClientRect(), vb = box.getBoundingClientRect();
+      const t = Math.max(r.top, vb.top), bt = Math.min(r.bottom, vb.bottom);
+      if (bt > t && r.height > 0) init = { x: 0, y: (t - r.top) / r.height, w: 1, h: (bt - t) / r.height };
+    }
+    const name = ("ninokuu-" + title.slice(0, 40) + "-ch" + ch.ch + "-" + i).toLowerCase().replace(/[^a-z0-9.]+/g, "-").replace(/^-+|-+$/g, "");
+    const go = async (crop) => {
+      toast("Menyiapkan gambar…", 6000);
+      try { await DL.sharePage(im, p.ref || "", name, `${title} · Chapter ${ch.ch} — dibaca di Ninokuu`, crop); }
       catch (e) { toast(e?.message || "Gagal membagikan gambar", 4000); }
+    };
+    openSheet(`<span class="sheet-ttl">Halaman ${i} dari ${total}</span><span class="sheet-prev">${esc(title)} · Chapter ${esc(ch.ch)}</span>
+      ${ready ? `<img class="pg-prev" src="${esc(el.currentSrc)}" alt="Pratinjau halaman ${i}">` : ""}
+      ${ready ? `<button class="sh-row" data-s="crop"><span class="redt">${icon("share", 19)}</span><span class="grow col"><b>Pilih bagian lalu bagikan</b><span class="mu xs">Atur sendiri panel mana yang diambil</span></span></button>` : ""}
+      <button class="sh-row" data-s="share"><span class="redt">${icon("share", 19)}</span><span class="grow">Bagikan seluruh halaman</span></button>`,
+    async (b) => {
+      if (b.dataset.s === "share") { closeSheet(); go(null); }
+      else if (b.dataset.s === "crop") { closeSheet(); const c = await cropPick(el.currentSrc, init, `Halaman ${i}`); if (c) go(c); }
     });
   };
   const lpCancel = () => { if (lp) { clearTimeout(lp.t); lp = null; } };
@@ -1680,6 +1749,29 @@ async function vReader(src, id, chId) {
   const lazyIo = new IntersectionObserver((es) => es.forEach((x) => { if (x.isIntersecting) loadNear(x.target); }),
     { root: box, rootMargin: slide ? "0px 100%" : "100% 0px 400% 0px" });
   $$(".r-img[data-src]", box).forEach((im) => lazyIo.observe(im));
+  // Gambar macet: tidak selesai & tidak gagal (server situs menggantung, tidak pernah memberi galat). Halaman di dekat
+  // posisi baca yang > 8 dtk belum tampil dicoba lewat jalur lain (APK: jaringan HP; lalu proxy), lalu dimuat ulang,
+  // maksimal 3×. Dulu halaman seperti ini tetap hitam selamanya, bahkan setelah "Muat ulang chapter".
+  $$(".r-img", box).forEach((im) => { if (!im.dataset.src && !im.dataset.t0) im.dataset.t0 = String(Date.now()); });
+  const stuckT = setInterval(() => {
+    if (!rd.isConnected) { clearInterval(stuckT); return; }
+    const now = Date.now();
+    for (const im of $$(".r-img.wait", box)) {
+      const i = Number(im.dataset.i);
+      if (im.dataset.src || im.classList.contains("fail") || (im.complete && im.naturalWidth) || i < curPage - 1 || i > curPage + 3) continue;
+      const t0 = Number(im.dataset.t0 || 0), n = Number(im.dataset.wd || 0);
+      if (!t0 || now - t0 < 8000 || n >= 3) continue;
+      im.dataset.wd = String(n + 1); im.dataset.t0 = String(now);
+      if (!n) N.logDev("img", `halaman ${i} macet > 8 dtk, dicoba jalur lain`, `${src} · ${(im.dataset.o || "").slice(0, 120)}`);
+      N.imgFallback(im).then((ok) => {
+        if (ok || !im.isConnected) return;
+        const u = im.dataset.o; if (!u) return;
+        // ulang dari awal: alamat langsung diberi penanda supaya tidak memakai permintaan lama yang menggantung
+        const busted = u === im.dataset.d ? u + (u.includes("?") ? "&" : "?") + "nkr=" + now : u;
+        im.removeAttribute("src"); requestAnimationFrame(() => { im.src = busted; });
+      }).catch(() => {});
+    }
+  }, 2000);
   // Tinggi sementara halaman yang belum dimuat = rasio gambar terakhir yang sudah tampil (halaman satu chapter
   // biasanya sama ukurannya), bukan 1 layar penuh. Jadi saat gambar datang, isi layar hampir tidak bergeser.
   rd.addEventListener("load", (e) => {
@@ -1761,7 +1853,7 @@ async function vReader(src, id, chId) {
     if (!slide) $$(".r-img", box).slice(0, resumeAt).forEach((im) => im.addEventListener("load", jump, { once: true }));   // semua halaman di atas tujuan: tingginya berubah saat termuat
     toast(`Lanjut dari halaman ${resumeAt}`, 1800);
   }
-  cleanup = () => { lazyIo.disconnect(); fsObs.disconnect(); clearTimeout(tapT); clearTimeout(nextT); cancelAnimationFrame(rafPos); endIo?.disconnect(); removeEventListener("online", onOnline); (parse().name === "reader" ? 0 : N.setFullscreen(false, false)); S.flushHistory(); };   // ke halaman lain: bilah status dikembalikan SEBELUM halaman baru digambar (tidak melompat setelahnya); pindah chapter: status layar tidak disentuh sama sekali sampai chapter baru tampil (dulu dilepas setelah 0,3 dtk → seluruh layar bergeser naik-turun saat chapter lambat dimuat)
+  cleanup = () => { lazyIo.disconnect(); clearInterval(stuckT); fsObs.disconnect(); clearTimeout(tapT); clearTimeout(nextT); cancelAnimationFrame(rafPos); endIo?.disconnect(); removeEventListener("online", onOnline); (parse().name === "reader" ? 0 : N.setFullscreen(false, false)); S.flushHistory(); };   // ke halaman lain: bilah status dikembalikan SEBELUM halaman baru digambar (tidak melompat setelahnya); pindah chapter: status layar tidak disentuh sama sekali sampai chapter baru tampil (dulu dilepas setelah 0,3 dtk → seluruh layar bergeser naik-turun saat chapter lambat dimuat)
   // jenis belum diketahui dari tag: periksa bentuk beberapa gambar pertama. Kebanyakan sangat tinggi
   // (tinggi > 1,8× lebar) → strip panjang manhwa/manhua: diingat, dan mode slide dialihkan ke scroll.
   if (!kind && !longStrip) {
@@ -2450,6 +2542,7 @@ function startApp() {
     if (ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName) && document.body.classList.contains("chfoc")) { ae.blur(); return; }
     if (closeAsk()) return;   // dialog konfirmasi terbuka → tombol kembali = Batal
     const flt = $(".flt-host [data-f=close]"); if (flt) { flt.click(); return; }
+    if (cropClose) { cropClose(); return; }
     if (sheetEl) { closeSheet(); return; }
     if (document.getElementById("notif")) { closeNotif(); return; }
     const chatSheet = $("#host [data-c=close]"); if (chatSheet) { chatSheet.click(); return; }

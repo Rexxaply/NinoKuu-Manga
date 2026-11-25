@@ -1641,3 +1641,22 @@ body[data-screen="reader"] .dl-pop { display: none; }
 .cf-card.on .cf-crown { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .cf-in, .cf-crown, .cf-card::before { transition: none; } }
 
+
+/* ---------- pilih bagian gambar untuk dibagikan ---------- */
+.crop-host { position: fixed; inset: 0; z-index: 120; display: flex; flex-direction: column; background: #07090d; animation: fadeIn .18s ease; }
+.crop-host.out { opacity: 0; transition: opacity .18s; }
+.crop-top { display: flex; flex-direction: column; gap: 3px; padding: calc(env(safe-area-inset-top, 0px) + 14px) 18px 12px; }
+.crop-top b { font-size: 16px; }
+.crop-sc { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 18px 0; }
+.crop-wrap { position: relative; width: calc(100% - 36px); max-width: 640px; margin: 0 auto; }
+.crop-img { display: block; width: 100%; height: auto; -webkit-user-drag: none; user-select: none; -webkit-touch-callout: none; pointer-events: none; }
+.crop-box { position: absolute; box-shadow: 0 0 0 100vmax rgba(4, 6, 10, .72); outline: 2px solid #fff; touch-action: none; cursor: move; }
+.crop-box i { position: absolute; touch-action: none; }
+.crop-box .ch-t, .crop-box .ch-b { left: 0; right: 0; height: 36px; cursor: ns-resize; }
+.crop-box .ch-t { top: -18px; } .crop-box .ch-b { bottom: -18px; }
+.crop-box .ch-l, .crop-box .ch-r { top: 30px; bottom: 30px; width: 32px; cursor: ew-resize; }
+.crop-box .ch-l { left: -16px; } .crop-box .ch-r { right: -16px; }
+.crop-box .ch-t::after, .crop-box .ch-b::after { content: ""; position: absolute; left: 50%; top: 50%; width: 46px; height: 6px; margin: -3px 0 0 -23px; border-radius: 3px; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, .5); }
+.crop-box .ch-l::after, .crop-box .ch-r::after { content: ""; position: absolute; left: 50%; top: 50%; width: 6px; height: 40px; margin: -20px 0 0 -3px; border-radius: 3px; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, .5); }
+.crop-bar { display: flex; gap: 8px; padding: 12px 14px calc(env(safe-area-inset-bottom, 0px) + 12px); background: #0d1017; border-top: 1px solid rgba(255, 255, 255, .06); }
+.crop-bar .btn { flex: 1 1 0; min-height: 46px; justify-content: center; padding: 0 8px; font-size: 13.5px; }

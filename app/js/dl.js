@@ -181,9 +181,21 @@ async function pageBytes(im, ref) {
 }
 // Bagikan satu halaman chapter (tekan lama gambar di pembaca). APK: simpan di cache lalu lembar bagikan Android;
 // web: Web Share API (file) atau unduh.
-export async function sharePage(im, ref, name, text) {
-  const { u8, type } = im.local ? await (async () => { const r = await fetch(im.u); return { u8: new Uint8Array(await r.arrayBuffer()), type: r.headers.get("content-type") || "image/jpeg" }; })()
+export async function sharePage(im, ref, name, text, crop = null) {
+  let { u8, type } = im.local ? await (async () => { const r = await fetch(im.u); return { u8: new Uint8Array(await r.arrayBuffer()), type: r.headers.get("content-type") || "image/jpeg" }; })()
     : await retry(() => pageBytes(im, ref), 2);
+  // hanya bagian yang dipilih (pecahan 0–1 dari lebar/tinggi gambar): dipotong dari berkas aslinya (bukan dari <img> di
+  // layar, yang bisa "tercemar" lintas situs), lalu disimpan sebagai JPEG
+  if (crop) {
+    const bm = await createImageBitmap(new Blob([u8], { type }));
+    const sx = Math.round(crop.x * bm.width), sy = Math.round(crop.y * bm.height);
+    const sw = Math.max(1, Math.min(bm.width - sx, Math.round(crop.w * bm.width))), sh = Math.max(1, Math.min(bm.height - sy, Math.round(crop.h * bm.height)));
+    const cv = document.createElement("canvas"); cv.width = sw; cv.height = sh;
+    const g = cv.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, sw, sh); g.drawImage(bm, sx, sy, sw, sh, 0, 0, sw, sh); bm.close?.();
+    const bl = await new Promise((r) => cv.toBlob(r, "image/jpeg", 0.92));
+    if (!bl) throw new Error("Gagal memotong gambar");
+    u8 = new Uint8Array(await bl.arrayBuffer()); type = "image/jpeg";
+  }
   const ext = /png/i.test(type) ? "png" : /webp/i.test(type) ? "webp" : /gif/i.test(type) ? "gif" : "jpg";
   const file = `${name}.${ext}`;
   const C = N.isApp ? window.Capacitor : null;
