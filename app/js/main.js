@@ -1592,7 +1592,18 @@ latestSoon(5000);
 setInterval(() => latestSoon(0), 5 * 60e3);
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") latestSoon(1500); });
 const FAV_SORTS = [["update", "Update terbaru"], ["added", "Terakhir ditambah"], ["az", "Judul A-Z"], ["za", "Judul Z-A"]];
-let fav = { tab: "lib", q: "", filter: "all" };
+let fav = { tab: "lib", q: "", filter: "all", bar: false };
+// Bilah atas Favorit yang menempel: muncul begitu pilihan Koleksi/Riwayat/Unduhan di atas halaman tergulir keluar layar.
+// Isinya hanya pilihan tab + tombol cari (menyatu di kotak yang sama); tombol cari membuka kolom pencarian koleksi.
+let favBarOn = false;
+function favBarTick() {
+  const bar = $("#favbar"), anchor = $("#favtop");
+  if (!bar || !anchor) return;
+  const on = fav.bar || anchor.getBoundingClientRect().bottom < 8;
+  if (on !== favBarOn || bar.classList.contains("on") !== on) { favBarOn = on; bar.classList.toggle("on", on); bar.setAttribute("aria-hidden", String(!on)); bar.inert = !on; }
+}
+window.addEventListener("scroll", favBarTick, { passive: true });
+window.addEventListener("resize", favBarTick, { passive: true });
 // perilaku tab Unduhan dilepas setiap kali Favorit digambar ulang (tidak menumpuk)
 let favDlOff = null, favShell = "";
 const FAV_CARDS = "<!--kartu-->";
@@ -1666,8 +1677,15 @@ function vFav(tab, soft = false) {
   } else {
     body = DL.favTab();
   }
-  const shell = `
-<div class="page-h"><h1>Favorit</h1>${seg([{ id: "lib", name: "Koleksi" }, { id: "hist", name: "Riwayat" }, { id: "dl", name: "Unduhan" }], fav.tab, "tab")}</div>
+  const TABS = [{ id: "lib", name: "Koleksi" }, { id: "hist", name: "Riwayat" }, { id: "dl", name: "Unduhan" }];
+  if (fav.tab !== "lib") fav.bar = false;
+  const barOn = fav.bar || favBarOn;
+  // kotak pilihan di bilah atas: tab + tombol cari (hanya di Koleksi) menyatu; mode cari: kolom pencarian + tombol tutup
+  const favBar = `<div class="fav-bar${barOn ? " on" : ""}" id="favbar" aria-hidden="${!barOn}"${barOn ? "" : " inert"}>${fav.bar
+    ? `<label class="search box fb-search"><span class="mu">${icon("search", 18)}</span><span class="sr">Cari di koleksi</span><input id="fbq" type="search" enterkeyhint="search" autocomplete="off" placeholder="Cari di koleksimu" value="${esc(fav.q)}"><button type="button" class="fb-x" data-act="fbx" aria-label="Tutup pencarian">${icon("x", 17, 2.2)}</button></label>`
+    : `<div class="seg s2 fb-seg" role="tablist">${TABS.map((x) => `<button role="tab" aria-selected="${x.id === fav.tab}" data-act="tab" data-v="${x.id}">${x.name}</button>`).join("")}${fav.tab === "lib" ? `<button type="button" class="seg-ic" data-act="fbs" aria-label="Cari di koleksi">${icon("search", 18, 2.2)}</button>` : ""}</div>`}</div>`;
+  const shell = `${favBar}
+<div class="page-h" id="favtop"><h1>Favorit</h1>${seg(TABS, fav.tab, "tab")}</div>
 ${!S.loggedIn() && fav.tab !== "dl" ? `<div class="note mx">${icon("cloud", 18)}<span>Tersimpan di HP ini saja. <a href="#/more">Masuk</a> agar tersinkron di semua perangkat.</span></div>` : ""}
 <div class="px s14">${body}</div><div class="pad-nav"></div>`;
   // Gambar ulang karena data berubah di belakang layar (chapter terbaru tiap komik, sinkron riwayat):
@@ -1690,8 +1708,17 @@ ${!S.loggedIn() && fav.tab !== "dl" ? `<div class="note mx">${icon("cloud", 18)}
   const lst = cards && view.querySelector(":scope > .px > .favg, :scope > .px > .frows"); if (lst) lst._cards = cards;
   const fq = $("#fq");
   if (fq) fq.addEventListener("input", () => { fav.q = fq.value; const pos = fq.selectionStart; vFav(); const n = $("#fq"); n.focus(); n.setSelectionRange(pos, pos); });
+  const fbq = $("#fbq");
+  if (fbq) {
+    fbq.addEventListener("input", () => { fav.q = fbq.value; const pos = fbq.selectionStart; vFav(); const n = $("#fbq"); if (n) { n.focus({ preventScroll: true }); n.setSelectionRange(pos, pos); } });
+    fbq.addEventListener("keydown", (e) => { if (e.key === "Enter") fbq.blur(); if (e.key === "Escape") { fav.bar = false; vFav(); } });
+  }
+  favBarTick();
   setActs({
-    tab: (el) => { fav.tab = el.dataset.v; vFav(); },
+    // dari bilah atas: halaman digulir ke awal daftar supaya isi tab baru langsung terlihat di bawah bilah
+    tab: (el) => { const fromBar = !!el.closest("#favbar"); fav.tab = el.dataset.v; vFav(); if (fromBar) { const t = $("#favtop"); if (t) scrollTo({ top: t.offsetTop + t.offsetHeight - 4, behavior: "auto" }); favBarTick(); } },
+    fbs: () => { fav.bar = true; vFav(); const n = $("#fbq"); if (n) { n.focus({ preventScroll: true }); const l = n.value.length; n.setSelectionRange(l, l); } },
+    fbx: () => { fav.bar = false; if (fav.q) fav.q = ""; vFav(); },
     ff: (el) => { fav.filter = el.dataset.v; vFav(); },
     fview: () => S.setSetting("favView", grid ? "list" : "grid"),
     fsort: () => sortSheet("Urutkan koleksi", FAV_SORTS, fs, (v) => S.setSetting("favSort", v)),
