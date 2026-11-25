@@ -12,7 +12,7 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
-## 1.11.0 — belum dirilis
+## 1.11.0 — 25 Nov 2026
 
 ### Ringkasan
 - Baru: rak di Koleksi, untuk mengelompokkan komik sendiri (misalnya Sedang dibaca, Nanti, Tamat)
