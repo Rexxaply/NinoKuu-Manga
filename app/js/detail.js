@@ -29,7 +29,7 @@ export async function getDetail(src, id, force = false) {
 }
 // Buka chapter sesudah chapter yang terakhir dibaca (dipakai lencana +N di Koleksi & tombol di Riwayat).
 // Memakai detail yang tersimpan dulu; bila chapter berikutnya belum ada di situ, ambil daftar terbaru.
-async function openNextChapter(src, id, chId, chNum, el) {
+export async function openNextChapter(src, id, chId, chNum, el) {
   if (el?.classList.contains("busy")) return;
   el?.classList.add("busy");
   const find = (d) => { const chs = d?.chapters || []; let i = chId ? chs.findIndex((c) => c.id === chId) : -1; if (i < 0 && chNum != null && chNum !== "") i = chs.findIndex((c) => String(c.ch) === String(chNum)); return i >= 0 ? chs[i + 1] || null : undefined; };

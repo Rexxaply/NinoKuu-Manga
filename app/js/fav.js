@@ -5,6 +5,7 @@ import * as S from "./store.js";
 import * as N from "./native.js";
 import * as DL from "./dl.js";
 import { sortSheet } from "./home.js";
+import { openNextChapter } from "./detail.js";
 import { esc, icon, $, $$, toast, ago, srcName, typeName, cover, comicHref, readHref, ask } from "./ui.js";
 
 // dari main.js (router, lembar, pengaturan, halaman lain) — diisi sekali lewat bindFav() sebelum halaman pertama tampil
@@ -56,7 +57,9 @@ latestSoon(5000);
 setInterval(() => latestSoon(0), 5 * 60e3);
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") latestSoon(1500); });
 const FAV_SORTS = [["update", "Update terbaru"], ["added", "Terakhir ditambah"], ["az", "Judul A-Z"], ["za", "Judul Z-A"]];
-let fav = { tab: "lib", q: "", filter: "all", bar: false };
+let fav = { tab: "lib", q: "", hq: "", filter: "all", bar: false };
+// kata kunci tab aktif: Koleksi (q) dan Riwayat (hq) punya pencarian masing-masing
+const qKey = () => (fav.tab === "hist" ? "hq" : "q");
 // Bilah atas Favorit yang menempel: muncul begitu pilihan Koleksi/Riwayat/Unduhan di atas halaman tergulir keluar layar.
 // Isinya hanya pilihan tab + tombol cari (menyatu di kotak yang sama); tombol cari membuka kolom pencarian koleksi.
 let favBarOn = false;
@@ -90,9 +93,28 @@ export function vFav(tab, soft = false) {
     : (a, b) => (tsOf(b.latestAt) || tsOf(b.added_at)) - (tsOf(a.latestAt) || tsOf(a.added_at)) || byTitle(a, b));   // dibanding sebagai waktu (format tanggal tiap sumber berbeda)
   const lib = libAll.filter((m) => (!fav.q || m.title.toLowerCase().includes(fav.q.toLowerCase()))
     && (fav.filter === "all" || (fav.filter === "new" ? isFresh(m) : fav.filter.startsWith("r:") ? m.shelf === fav.filter.slice(2) : m.type === fav.filter)));
-  const hist = S.history();
+  const histAll = S.history();
+  const hq = fav.hq.trim().toLowerCase();
+  const hist = hq ? histAll.filter((x) => String(x.title || "").toLowerCase().includes(hq)) : histAll;
   // baris riwayat: judul, sumber · waktu, "Ch. 23 · hal 12/48" + bar halaman; tombol Lanjut (ke halaman terakhir)
   // atau Berikutnya (bila chapter itu sudah selesai dibaca)
+  const histBtn = (x, cls = "") => {
+    const done = x.pages && x.page >= x.pages;
+    return !x.chapter_id ? "" : done
+      ? `<button class="hl-go nx${cls}" type="button" data-next data-src="${esc(x.source)}" data-id="${esc(x.comic_id)}" data-ch="${esc(x.chapter_id)}" data-n="${esc(x.chapter ?? "")}">Berikutnya${icon("chev", 13, 2.6)}</button>`
+      : `<button class="hl-go${cls}" type="button" data-go="${esc(readHref(x.source, x.comic_id, x.chapter_id))}">${icon("play", 12, 2.6)}${cls ? "Lanjut baca" : "Lanjut"}</button>`;
+  };
+  // "Terakhir dibuka": kartu besar untuk komik terakhir, tombol Lanjut baca / Berikutnya
+  const histHero = (x) => {
+    const done = x.pages && x.page >= x.pages;
+    return `<a class="hl-hero" href="${comicHref(x.source, x.comic_id)}">${cover(x.cover, x.title, "sm")}<span class="fa-mid">
+      <b class="hl-ht">${esc(x.title)}</b>
+      <span class="fa-meta"><i class="fa-dot s-${esc(x.source)}"></i>${esc(srcName(x.source))}<span class="fa-sep">·</span>${esc(ago(x.read_at))}</span>
+      <span class="fa-meta"><b class="fa-rd">Ch. ${esc(x.chapter)}</b>${x.pages ? `<span class="fa-sep">·</span>${done ? "selesai" : `hal ${Number(x.page) || 1} / ${Number(x.pages) || 0}`}` : ""}</span>
+      <span class="fa-bar"><i style="width:${pct(x.page || 1, x.pages || 0) || 4}%"></i></span>
+      <span class="hl-hb">${histBtn(x, " lg")}</span>
+    </span><button class="hl-more" type="button" data-act="hmenu" data-src="${esc(x.source)}" data-id="${esc(x.comic_id)}" aria-label="Pilihan untuk ${esc(x.title)}">${icon("dots", 20, 2.4)}</button></a>`;
+  };
   const histRow = (x) => {
     const done = x.pages && x.page >= x.pages;
     const btn = !x.chapter_id ? "" : done
@@ -103,7 +125,7 @@ export function vFav(tab, soft = false) {
       <span class="fa-meta"><i class="fa-dot s-${esc(x.source)}"></i>${esc(srcName(x.source))}<span class="fa-sep">·</span>${esc(ago(x.read_at))}</span>
       <span class="fa-meta"><b class="fa-rd">Ch. ${esc(x.chapter)}</b>${x.pages ? `<span class="fa-sep">·</span>${done ? "selesai" : `hal ${Number(x.page) || 1} / ${Number(x.pages) || 0}`}` : ""}</span>
       <span class="fa-bar"><i style="width:${pct(x.page || 1, x.pages || 0) || 4}%"></i></span>
-    </span>${btn}</a>`;
+    </span>${btn}<button class="hl-more" type="button" data-act="hmenu" data-src="${esc(x.source)}" data-id="${esc(x.comic_id)}" aria-label="Pilihan untuk ${esc(x.title)}">${icon("dots", 20, 2.4)}</button></a>`;
   };
   const srcType = (m) => esc(srcName(m.source)) + (m.type ? " · " + esc(typeName(m.type)) : "");
   // baris koleksi (tampilan daftar), ramping: judul 1 baris, sumber · chapter (chapter yang dibaca ditebalkan), bar progres tipis;
@@ -141,21 +163,26 @@ export function vFav(tab, soft = false) {
         ${isFresh(m) ? `<span class="new-up">NEW UPDATE</span>` : ""}${m.notify ? `<span class="bell-b">${icon("bellF", 12)}</span>` : ""}</span>
         <b class="fg-t">${esc(m.title)}</b><span class="mu xs">${srcType(m)}</span></a>`; }) : lib.map(favRow);
   } else if (fav.tab === "hist") {
-    cards = hist.map(histRow);
-    body = hist.length ? `<div class="sec-h"><span class="mu xs">Terbaru di atas</span><button class="link-red" data-act="clearHist">Bersihkan</button></div>
-  <div class="frows">${FAV_CARDS}</div>`
-      : `<div class="empty"><span class="empty-ic">${icon("clock", 24)}</span><b>Belum ada riwayat</b><span>Chapter yang kamu baca akan muncul di sini.</span></div>`;
+    // tanpa kata kunci: "Terakhir dibuka" (kartu besar) lalu "Bacaan sebelumnya"; saat mencari: semua hasil dalam satu daftar
+    const top = !hq && hist.length ? hist[0] : null, rest = top ? hist.slice(1) : hist;
+    cards = rest.map(histRow);
+    const searchRow = `<label class="search box"><span class="mu">${icon("search", 19)}</span><span class="sr">Cari di riwayat</span><input id="hqi" type="search" enterkeyhint="search" autocomplete="off" placeholder="Cari di riwayat" value="${esc(fav.hq)}">${fav.hq ? `<button type="button" class="fb-x" data-act="hqclr" aria-label="Hapus kata kunci">${icon("x", 16, 2.2)}</button>` : ""}</label>`;
+    body = !histAll.length ? `<div class="empty"><span class="empty-ic">${icon("clock", 24)}</span><b>Belum ada riwayat</b><span>Chapter yang kamu baca akan muncul di sini.</span></div>`
+      : `${searchRow}
+  ${top ? `<div class="sec-h hl-sec"><h2>Terakhir dibuka</h2></div>${histHero(top)}` : ""}
+  <div class="sec-h hl-sec"><h2>${hq ? "Hasil pencarian" : "Bacaan sebelumnya"}</h2><span class="mu xs">${rest.length} judul</span><button class="link-red sm" data-act="clearHist">Bersihkan</button></div>
+  ${rest.length ? `<div class="frows">${FAV_CARDS}</div>` : `<div class="empty"><b>${hq ? "Tidak ada yang cocok" : "Belum ada bacaan lain"}</b>${hq ? "<span>Ubah kata kunci.</span>" : ""}</div>`}`;
   } else {
     body = DL.favTab();
   }
   const TABS = [{ id: "lib", name: "Koleksi" }, { id: "hist", name: "Riwayat" }, { id: "dl", name: "Unduhan" }];
-  if (fav.tab !== "lib") fav.bar = false;
+  if (fav.tab === "dl") fav.bar = false;
   const barOn = fav.bar || favBarOn;
   // kotak pilihan di bilah atas: tab + tombol cari (hanya di Koleksi) menyatu; mode cari: kolom pencarian + tombol tutup
   // tombol cari menyatu di kotak pilihan; saat diketuk kolom pencarian muncul di BAWAH kotak (pilihan tab tetap ada)
   const favBar = `<div class="fav-bar${barOn ? " on" : ""}" id="favbar" aria-hidden="${!barOn}"${barOn ? "" : " inert"}>
-    <div class="seg s2 fb-seg" role="tablist">${TABS.map((x) => `<button role="tab" aria-selected="${x.id === fav.tab}" data-act="tab" data-v="${x.id}">${x.name}</button>`).join("")}${fav.tab === "lib" ? `<button type="button" class="seg-ic${fav.bar ? " on" : ""}" data-act="${fav.bar ? "fbx" : "fbs"}" aria-label="${fav.bar ? "Tutup pencarian" : "Cari di koleksi"}" aria-expanded="${fav.bar}">${icon(fav.bar ? "x" : "search", 18, 2.2)}</button>` : ""}</div>
-    ${fav.bar ? `<label class="search box fb-search"><span class="mu">${icon("search", 18)}</span><span class="sr">Cari di koleksi</span><input id="fbq" type="search" enterkeyhint="search" autocomplete="off" placeholder="Cari di koleksimu" value="${esc(fav.q)}">${fav.q ? `<button type="button" class="fb-x" data-act="fbclr" aria-label="Hapus kata kunci">${icon("x", 16, 2.2)}</button>` : ""}</label>` : ""}</div>`;
+    <div class="seg s2 fb-seg" role="tablist">${TABS.map((x) => `<button role="tab" aria-selected="${x.id === fav.tab}" data-act="tab" data-v="${x.id}">${x.name}</button>`).join("")}${fav.tab !== "dl" ? `<button type="button" class="seg-ic${fav.bar ? " on" : ""}" data-act="${fav.bar ? "fbx" : "fbs"}" aria-label="${fav.bar ? "Tutup pencarian" : fav.tab === "hist" ? "Cari di riwayat" : "Cari di koleksi"}" aria-expanded="${fav.bar}">${icon(fav.bar ? "x" : "search", 18, 2.2)}</button>` : ""}</div>
+    ${fav.bar ? `<label class="search box fb-search"><span class="mu">${icon("search", 18)}</span><span class="sr">${fav.tab === "hist" ? "Cari di riwayat" : "Cari di koleksi"}</span><input id="fbq" type="search" enterkeyhint="search" autocomplete="off" placeholder="${fav.tab === "hist" ? "Cari di riwayat" : "Cari di koleksimu"}" value="${esc(fav[qKey()])}">${fav[qKey()] ? `<button type="button" class="fb-x" data-act="fbclr" aria-label="Hapus kata kunci">${icon("x", 16, 2.2)}</button>` : ""}</label>` : ""}</div>`;
   const shell = `${favBar}
 <div class="page-h" id="favtop"><h1>Favorit</h1>${seg(TABS, fav.tab, "tab")}</div>
 ${!S.loggedIn() && fav.tab !== "dl" ? `<div class="note mx">${icon("cloud", 18)}<span>Tersimpan di HP ini saja. <a href="#/more">Masuk</a> agar tersinkron di semua perangkat.</span></div>` : ""}
@@ -182,16 +209,39 @@ ${!S.loggedIn() && fav.tab !== "dl" ? `<div class="note mx">${icon("cloud", 18)}
   if (fq) fq.addEventListener("input", () => { fav.q = fq.value; const pos = fq.selectionStart; vFav(); const n = $("#fq"); n.focus(); n.setSelectionRange(pos, pos); });
   const fbq = $("#fbq");
   if (fbq) {
-    fbq.addEventListener("input", () => { fav.q = fbq.value; const pos = fbq.selectionStart; vFav(); const n = $("#fbq"); if (n) { n.focus({ preventScroll: true }); n.setSelectionRange(pos, pos); } });
+    fbq.addEventListener("input", () => { fav[qKey()] = fbq.value; const pos = fbq.selectionStart; vFav(); const n = $("#fbq"); if (n) { n.focus({ preventScroll: true }); n.setSelectionRange(pos, pos); } });
     fbq.addEventListener("keydown", (e) => { if (e.key === "Enter") fbq.blur(); if (e.key === "Escape") { fav.bar = false; vFav(); } });
+  }
+  const hqi = $("#hqi");
+  if (hqi) {
+    hqi.addEventListener("input", () => { fav.hq = hqi.value; const pos = hqi.selectionStart; vFav(); const n = $("#hqi"); if (n) { n.focus({ preventScroll: true }); n.setSelectionRange(pos, pos); } });
+    hqi.addEventListener("keydown", (e) => { if (e.key === "Enter") hqi.blur(); });
   }
   favBarTick();
   setActs({
     // dari bilah atas: halaman digulir ke awal daftar supaya isi tab baru langsung terlihat di bawah bilah
     tab: (el) => { const fromBar = !!el.closest("#favbar"); fav.tab = el.dataset.v; vFav(); if (fromBar) { const t = $("#favtop"); if (t) scrollTo({ top: t.offsetTop + t.offsetHeight - 4, behavior: "auto" }); favBarTick(); } },
     fbs: () => { fav.bar = true; vFav(); const n = $("#fbq"); if (n) { n.focus({ preventScroll: true }); const l = n.value.length; n.setSelectionRange(l, l); } },
-    fbx: () => { fav.bar = false; if (fav.q) fav.q = ""; vFav(); },
-    fbclr: () => { fav.q = ""; vFav(); const n = $("#fbq"); if (n) n.focus({ preventScroll: true }); },
+    fbx: () => { fav.bar = false; fav[qKey()] = ""; vFav(); },
+    fbclr: () => { fav[qKey()] = ""; vFav(); const n = $("#fbq"); if (n) n.focus({ preventScroll: true }); },
+    hqclr: () => { fav.hq = ""; vFav(); const n = $("#hqi"); if (n) n.focus({ preventScroll: true }); },
+    // ⋯ di baris riwayat: lanjut/berikutnya, buka komik, hapus dari riwayat
+    hmenu: (el, e) => {
+      e?.preventDefault?.();
+      const x = S.histItem(el.dataset.src, el.dataset.id); if (!x) return;
+      const done = x.pages && x.page >= x.pages;
+      openSheet(`<span class="sheet-ttl">${esc(x.title)}</span><div class="col g4">
+        ${x.chapter_id ? `<button class="sh-row" data-s="${done ? "next" : "go"}">${icon(done ? "chev" : "play", 18, 2.2)}<span class="grow">${done ? "Baca chapter berikutnya" : `Lanjut baca Ch. ${esc(x.chapter)}`}</span></button>` : ""}
+        <button class="sh-row" data-s="open">${icon("book", 18, 2)}<span class="grow">Buka halaman komik</span></button>
+        <button class="sh-row redt" data-s="del">${icon("trash", 18, 2)}<span class="grow">Hapus dari riwayat</span></button></div>`,
+      async (b) => {
+        const a = b.dataset.s; closeSheet();
+        if (a === "go") location.hash = readHref(x.source, x.comic_id, x.chapter_id);
+        else if (a === "next") openNextChapter(x.source, x.comic_id, x.chapter_id, x.chapter);
+        else if (a === "open") location.hash = comicHref(x.source, x.comic_id);
+        else if (a === "del") { try { await S.removeHistory(x.source, x.comic_id); toast("Dihapus dari riwayat"); } catch (er) { toast(er.message); } }
+      });
+    },
     ff: (el) => { fav.filter = el.dataset.v; vFav(); },
     shelfNew: async () => {
       const v = await promptText("Rak baru", { placeholder: "mis. Sedang dibaca, Nanti, Tamat" }); if (!v) return;

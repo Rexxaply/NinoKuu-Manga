@@ -143,6 +143,13 @@ export async function clearHistory() {
   state.hist = new Map(); saveLocal(); emit();
   if (loggedIn()) await api.rest("history?source=neq.__", { method: "DELETE" }).catch((e) => { state.hist = old; saveLocal(); emit(); throw e; });
 }
+// hapus satu komik dari riwayat (HP + akun). Gagal di server → dikembalikan.
+export async function removeHistory(src, id) {
+  const k = keyOf(src, id), row = state.hist.get(k); if (!row) return;
+  state.hist.delete(k); histDirty.delete(k); saveLocal(); emit();
+  if (loggedIn()) await api.rest(`history?source=eq.${encodeURIComponent(src)}&comic_id=eq.${encodeURIComponent(id)}`, { method: "DELETE" })
+    .catch((e) => { state.hist.set(k, row); saveLocal(); emit(); throw e; });
+}
 export const histItem = (src, id) => state.hist.get(keyOf(src, id));
 // Chapter yang pernah dibuka, per komik (disimpan di HP). Dipakai untuk tanda "sudah dibaca" di daftar chapter:
 // hanya chapter yang benar-benar dibuka yang bertanda, bukan semua chapter di bawah chapter terakhir dibaca.

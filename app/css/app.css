@@ -1676,3 +1676,17 @@ body[data-screen="reader"] .dl-pop { display: none; }
 .gl-chat.on .onl-n { display: inline-flex; }
 .gl-chat .onl-n i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px rgba(93, 211, 158, .22); }
 .gl-chat .c-dot { top: 7px; right: auto; left: 27px; }   /* titik pesan baru menempel di ikon, tidak menutupi angka */
+
+/* Riwayat: kolom cari, "Terakhir dibuka" (kartu besar) + "Bacaan sebelumnya", tombol ⋯ per baris */
+.hl-sec { margin: 18px 0 8px; align-items: baseline; }
+.hl-sec h2 { font-size: 18px; flex: 1; }
+.hl-sec .link-red { margin-left: 4px; }
+.hl-hero { display: flex; align-items: flex-start; gap: 14px; padding: 4px 2px 14px; border-bottom: 1px solid var(--line); }
+.hl-hero .cover.sm { width: 84px; height: 118px; border-radius: 11px; flex: none; }
+.hl-ht { font-size: 16px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.hl-hb { margin-top: 8px; }
+.hl-go.lg { padding: 9px 16px; font-size: 13px; }
+.hl-more { flex: none; position: relative; width: 34px; height: 34px; margin-right: -6px; display: grid; place-items: center; border: 0; border-radius: 50%; background: none; color: var(--mu); }
+.hl-more::before { content: ""; position: absolute; inset: -6px; }
+.hl-more:active { background: rgba(255, 255, 255, .08); }
+.fa-row .hl-go { margin-right: -2px; }

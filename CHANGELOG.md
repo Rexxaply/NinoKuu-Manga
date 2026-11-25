@@ -20,6 +20,7 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 - Baru: bagian "Mirip ini" di halaman komik, berisi komik populer dengan genre yang sama
 - Baru: tekan lama gambar saat membaca untuk membagikan halaman itu
 - Baru: tampilan Top 10 di Beranda berupa carousel, dengan kartu tengah yang besar dan menyala
+- Baru: Riwayat bisa dicari, dengan bagian "Terakhir dibuka" dan tombol ⋯ untuk menghapus satu komik dari riwayat
 
 ### Detail
 - Rak: kolom `library.shelf` (maks. 30 huruf, satu rak per komik; skema + constraint `library_shelf_len`), ikut sinkron (`pull` memilih `shelf`, mundur tanpa kolom bila database lama). Rak kosong disimpan di `settings.shelves`. Store: `shelves`, `addShelf`, `setShelf`, `renameShelf`, `deleteShelf` (PATCH massal per nama rak). Koleksi: chip rak (ikon folder) di antara New update dan jenis komik, chip "+ Rak", baris "Rak X · Ubah nama · Hapus rak". Info komik: tombol "Simpan di rak" (lembar pilih rak / rak baru). `promptText` (kotak isian di `ask`)
@@ -54,6 +55,7 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
   - Efek jeli (uji Dev 72): saat ditarik, gambar digeser sehingga latar hitam pembaca terlihat di sampingnya. Kini meniru regangan gulir bawaan Android di halaman mentok: gambar DIREGANGKAN (`scale`) dari tepi yang ditarik — tepi itu tetap di tempatnya, tidak ada latar hitam. Berlaku saat diperbesar untuk tepi kiri/kanan (dorong ke samping) dan juga awal/akhir chapter (tarik naik/turun); arah ditentukan setelah 8 px sehingga gulir tegak yang miring tidak meregang ke samping. Diuji: tepi kiri & atas tetap di posisi 0 saat ditarik
   - Pilih bagian: bagian bawah tumpukan halaman tetap putih (tidak digelapkan) karena penggelap berupa bayangan kotak yang jangkauannya terbatas (100vmax). Kini 4 lapisan penggelap (atas/bawah/kiri/kanan) menutupi seluruh tumpukan. Menyiapkan gambar lebih cepat: berkas halaman mulai diunduh begitu lembar bagikan dibuka (selagi memilih bagian) dan diingat sebentar; hasil potongan maks lebar 1600 px, JPEG 90%
   - Info komik: "Simpan di rak" & "Pindah sumber" sama lebar dan memenuhi baris (sejajar baris Mulai baca, diuji 360 & 412 px), tinggi 44 px; tanpa koleksi tombolnya "Cari di sumber lain" selebar baris
+  - Riwayat: kolom "Cari di riwayat" (kata kunci sendiri `fav.hq`, terpisah dari Koleksi; tombol cari di bilah atas yang menempel kini juga ada di tab Riwayat), bagian "Terakhir dibuka" (kartu besar: sampul 84×118, judul 2 baris, progres, Lanjut baca / Berikutnya) dan "Bacaan sebelumnya · N judul · Bersihkan"; saat mencari semua hasil dalam satu daftar "Hasil pencarian". Tombol ⋯ per komik → lembar Lanjut baca / Baca chapter berikutnya, Buka halaman komik, Hapus dari riwayat (`S.removeHistory`: hapus lokal + `DELETE history?source=eq&comic_id=eq` bila masuk, dikembalikan bila gagal). `openNextChapter` diekspor dari detail.js
 
 ---
 
