@@ -412,6 +412,9 @@ const shngJson = async (path: string) =>
 const shngCover = (o: any) => String(o?.cover_portrait_url || o?.cover_image_url || "");
 const SHNG_STATUS: Record<number, string> = { 1: "ongoing", 2: "completed", 3: "hiatus" };
 const shngId = (id: string) => { if (!/^[\w-]{6,64}$/.test(id)) throw webErr("ID Shinigami tidak valid", 400); return id; };
+// judul alternatif dari API (nama kolomnya berbeda-beda), untuk menyaring hasil pencarian di aplikasi
+const altOf = (m: any) => [m?.alternative_title, m?.alternative_titles, m?.alternative_name, m?.alternative, m?.alt_title, m?.native_title, m?.title_alt]
+  .flat().filter((x) => typeof x === "string" && x.trim()).join(" · ").slice(0, 400);
 async function shngBrowse(page: number, q: string, o: Opt) {
   const p = new URLSearchParams({ limit: String(o.limit), offset: String((page - 1) * o.limit), sort: o.sort === "popular" ? "popularity" : o.sort === "rating" ? "rating" : "latest", sort_order: "desc" });
   if (q) p.set("q", q);
@@ -420,7 +423,7 @@ async function shngBrowse(page: number, q: string, o: Opt) {
   if (o.status) p.set("status", o.status);
   const j = await shngJson(`/v1/manga/list?${p}`);
   const items = await Promise.all((j?.data || []).filter((m: any) => m?.manga_id).map(async (m: any) => ({
-    id: String(m.manga_id), title: String(m.title || ""), cover: await coverUrl(shngCover(m), SHNGM_SITE + "/"), type: o.type || "", score: pickScore(m, m.stats),
+    id: String(m.manga_id), title: String(m.title || ""), cover: await coverUrl(shngCover(m), SHNGM_SITE + "/"), type: o.type || "", score: pickScore(m, m.stats), alt: altOf(m),
   })));
   const more = j?.meta?.has_next;
   return { items, hasNext: typeof more === "boolean" ? more : items.length >= o.limit };
@@ -833,7 +836,7 @@ async function westBrowse(page: number, q: string, o: Opt) {
   o.genres.forEach((g) => p.append("genre[]", g));
   const j = await westApi(`/api/contents?${p}`);
   const items = await Promise.all((j?.data || []).filter((m: any) => m?.slug).map(async (m: any) => ({
-    id: String(m.slug), title: String(m.title || m.slug), cover: await coverUrl(westAbs(m.cover), westBase + "/"), type: WEST_TYPE[String(m.country_id || "")] || o.type || "", score: pickScore(m, m.stats),
+    id: String(m.slug), title: String(m.title || m.slug), cover: await coverUrl(westAbs(m.cover), westBase + "/"), type: WEST_TYPE[String(m.country_id || "")] || o.type || "", score: pickScore(m, m.stats), alt: altOf(m),
   })));
   const pg = j?.paginator || {};
   const last = pg.last_page != null ? Number(pg.last_page) : null;

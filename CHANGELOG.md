@@ -12,6 +12,16 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
+## 1.10.2 — belum dirilis
+
+### Ringkasan
+- Pencarian di Shinigami dan WestManga kini tepat sasaran, tidak lagi menampilkan komik yang hanya cocok sebagian kata
+
+### Detail
+- Pencarian: API Shinigami & WestManga mencocokkan per kata (mis. "Genius Hitter" memunculkan semua judul berisi "Genius"). Hasil kedua sumber itu kini disaring di aplikasi (`LOOSE_SEARCH`, `matchQ`): setiap kata harus ada sebagai awal kata di judul atau judul alternatif (huruf besar/kecil, aksen, dan tanda kutip diabaikan). Bila satu halaman kosong setelah disaring, sampai 2 halaman berikutnya dicoba. Item daftar membawa `alt` (judul alternatif) dari Edge (`altOf`) dan jalur HP (native.js)
+
+---
+
 ## 1.10.1 — 25 Nov 2026 (rilis global)
 
 ### Ringkasan

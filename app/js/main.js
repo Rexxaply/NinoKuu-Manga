@@ -466,6 +466,15 @@ function setSrc(v) {
 }
 // hasil Pencarian yang sudah dimuat: kembali dari halaman komik → daftar & posisi gulir utuh
 let sMem = null;
+// Shinigami & WestManga mencari per kata ("Genius Hitter" ikut memunculkan semua judul berisi "Genius"). Hasilnya
+// disaring di aplikasi: setiap kata yang dicari harus ada sebagai awal kata di judul atau judul alternatif, seperti
+// pencarian Komiku/Kiryuu/BacaKomik yang sudah tepat sasaran.
+const LOOSE_SEARCH = new Set(["shinigami", "westmanga"]);
+const normQ = (s) => String(s || "").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[’'`]/g, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+const matchQ = (q) => {
+  const ws = normQ(q).split(" ").filter(Boolean);
+  return (it) => { const hay = " " + normQ(it.title + " " + (it.alt || "")) + " "; return ws.every((w) => hay.includes(" " + w)); };
+};
 const sKey = () => JSON.stringify([sState.src, sState.q, sState.type, sState.status, sState.genres]);
 async function vSearch(type) {
   if (type !== undefined) sState.type = TYPES.some((t) => t.id === type) ? type : "";
@@ -505,9 +514,16 @@ async function vSearch(type) {
     const nf = (sState.status ? 1 : 0) + sState.genres.length;
     $("#sinfo").textContent = (sState.q ? `Hasil “${sState.q}” di ${srcName(sState.src)}` : `Terbaru di ${srcName(sState.src)}${sState.type ? " · " + typeName(sState.type) : ""}`) + (nf ? ` · ${nf} filter` : "");
     try {
-      const r = await api.call("browse", { source: sState.src, q: sState.q, type: sState.type, status: sState.status, genres: sState.genres, sort: "update", page, limit: 24 });
+      const ask = () => api.call("browse", { source: sState.src, q: sState.q, type: sState.type, status: sState.status, genres: sState.genres, sort: "update", page, limit: 24 });
+      let r = await ask(), got = r.items;
+      if (sState.q && LOOSE_SEARCH.has(sState.src)) {
+        const ok = matchQ(sState.q);
+        got = r.items.filter(ok);
+        // halaman ini tidak ada yang cocok tapi masih ada halaman lain: coba sampai 2 halaman berikutnya
+        for (let n = 0; !got.length && r.hasNext && n < 2 && my === seq; n++) { page++; r = await ask(); got = r.items.filter(ok); }
+      }
       if (my !== seq || !$("#sres")) return;
-      items = more ? items.concat(r.items) : r.items;
+      items = more ? items.concat(got) : got;
       sMem = { key: sKey(), items, page, hasNext: !!r.hasNext, at: Date.now() };
       draw();
       $("#sMore").hidden = !r.hasNext;
