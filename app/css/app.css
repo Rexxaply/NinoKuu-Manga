@@ -1604,6 +1604,9 @@ body[data-screen="reader"] .dl-pop { display: none; }
   /* ruang atas/bawah untuk mahkota & cahaya kartu tengah (area gulir memotong apa pun di luar padding) */
   padding: 40px calc(50% - var(--cw) / 2) 34px; margin: -14px 0 -18px; overscroll-behavior-x: contain; }
 .cf::-webkit-scrollbar { display: none; }
+/* kartu sudah dimuat: tidak lagi barisan bergulir, tiap kartu ditumpuk di tengah lalu ditempatkan lewat transform */
+.cf.cfx { display: block; position: relative; padding: 0; height: calc(var(--cw) * 1.425 + 78px); }
+.cf.cfx .cf-card { position: absolute; top: 40px; left: calc(50% - var(--cw) / 2); will-change: transform; }
 .cf-sk { flex: none; width: var(--cw); aspect-ratio: 2 / 2.85; border-radius: 22px; }
 .cf-sk:not(:first-child) { transform: scale(.85); opacity: .5; }
 .cf-card { --rc: rgba(255, 255, 255, .5); --rg: rgba(255, 255, 255, .12); position: relative; flex: none; width: var(--cw); -webkit-user-drag: none;

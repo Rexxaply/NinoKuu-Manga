@@ -314,59 +314,60 @@ function sortSheet(title, list, cur, onPick) {
 // loop = jumlah kartu asli (daftar digambar 3×) → berputar tanpa ujung (lompat diam-diam ke salinan tengah).
 // Ringan: jarak kartu diukur sekali, hanya ±3 kartu di sekitar tengah yang diubah per frame & dijadikan lapisan GPU.
 function coverflow(box, loop = 0) {
-  const cards = [...box.querySelectorAll(".cf-card")]; if (!cards.length) return;
-  // "Hapus animasi" di HP: luncuran dipersingkat, tapi skala kartu tetap mengikuti jari (bukan animasi otomatis)
-  const still = false, short = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  let step = 0, on = null, touched = [], anim = 0, drag = null, moved = false;
-  const measure = () => { step = cards.length > 1 ? cards[1].offsetLeft - cards[0].offsetLeft : cards[0].offsetWidth || 1; };
+  // Carousel tanpa gulir: posisi "pos" (indeks kartu, pecahan saat bergeser) diubah oleh jari/luncuran, lalu tiap kartu
+  // ditempatkan dengan transform. Berputar: jarak kartu ke tengah dihitung melingkar (modulo jumlah kartu), jadi
+  // dari #10 ke #1 tidak ada lompatan posisi / salinan kartu (dulu daftar digambar 3× dan scrollLeft dilompatkan
+  // diam-diam di ujung → di WebView sempat 1 frame kartu bertumpuk & mahkota berkedip).
+  const cards = [...box.querySelectorAll(".cf-card")], n = cards.length; if (!n) return;
+  box.classList.add("cfx");
+  const short = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let step = 0, pos = 0, on = null, anim = 0, drag = null, moved = false;
+  const measure = () => { step = (cards[0].offsetWidth || 200) + 10; };
+  const off = (k) => { let d = k - pos; if (loop) { d = ((d % n) + n) % n; if (d > n / 2) d -= n; } return d; };
   const tick = () => {
-    if (!step) measure(); if (!step) return;
-    const c = box.scrollLeft / step, i0 = Math.round(c), now = [];
-    for (let k = Math.max(0, i0 - 3); k <= Math.min(cards.length - 1, i0 + 3); k++) {
-      const el = cards[k], d = Math.min(1, Math.abs(k - c));
-      if (!still) { el.style.transform = `translateZ(0) scale(${(1 - d * 0.15).toFixed(4)})`; el.style.opacity = (1 - d * 0.5).toFixed(3); }
-      now.push(el);
+    if (!step) measure();
+    for (let k = 0; k < n; k++) {
+      const el = cards[k], d = off(k), a = Math.abs(d);
+      if (a > 2.6) { if (el.style.visibility !== "hidden") el.style.visibility = "hidden"; continue; }
+      el.style.visibility = "";
+      const m = Math.min(1, a);
+      el.style.transform = `translate3d(${(d * step).toFixed(2)}px,0,0) scale(${(1 - m * 0.15).toFixed(4)})`;
+      el.style.opacity = (1 - m * 0.5).toFixed(3); el.style.zIndex = String(10 - Math.round(a * 2));
     }
-    for (const el of touched) if (!now.includes(el)) { el.style.transform = ""; el.style.opacity = ""; }
-    touched = now;
-    const best = cards[Math.max(0, Math.min(cards.length - 1, i0))];
+    const i = loop ? ((Math.round(pos) % n) + n) % n : Math.max(0, Math.min(n - 1, Math.round(pos)));
+    const best = cards[i];
     if (best !== on) { on?.classList.remove("on"); best.classList.add("on"); on = best; }
   };
-  const wrap = () => {
-    if (!loop || !step) return;
-    const i = Math.round(box.scrollLeft / step);
-    if (i < loop || i >= loop * 2) { box.scrollLeft += (i < loop ? loop : -loop) * step; tick(); }
-  };
+  const norm = () => { if (loop) pos = ((pos % n) + n) % n; };
   const ease = (t) => 1 - Math.pow(1 - t, 3);
-  const glide = (to, ms = 380) => {
+  const glide = (to) => {
     cancelAnimationFrame(anim);
-    const from = box.scrollLeft, dist = to - from;
-    if (still || Math.abs(dist) < 1) { box.scrollLeft = to; tick(); wrap(); return; }
-    const t0 = performance.now(), dur = short ? 140 : Math.min(520, Math.max(240, ms * Math.min(1.6, Math.abs(dist) / step)));
+    if (!loop) to = Math.max(0, Math.min(n - 1, to));
+    const from = pos, dist = to - from;
+    if (Math.abs(dist) < 0.002) { pos = to; norm(); tick(); return; }
+    const t0 = performance.now(), dur = short ? 140 : Math.min(520, Math.max(260, 380 * Math.min(1.6, Math.abs(dist))));
     const frame = (t) => {
       const k = Math.min(1, (t - t0) / dur);
-      box.scrollLeft = from + dist * ease(k); tick();
-      if (k < 1) anim = requestAnimationFrame(frame); else { anim = 0; wrap(); }
+      pos = from + dist * ease(k); tick();
+      if (k < 1) anim = requestAnimationFrame(frame); else { anim = 0; pos = to; norm(); tick(); }
     };
     anim = requestAnimationFrame(frame);
   };
-  const to = (i) => glide(Math.max(0, Math.min(cards.length - 1, i)) * step);
-  // Geser dengan jari. Sentuhan memakai touch events dengan touchmove tidak-pasif: begitu gerakan condong mendatar,
-  // gulir halaman dicegah (preventDefault) dan kartu mengikuti jari. Dulu pointer events + touch-action: pan-y, tapi
-  // WebView Android sering keburu memutuskan gulir vertikal (sedikit gerakan miring saja) sehingga kartu tidak bergeser.
-  // Mouse (web) tetap memakai pointer events.
-  const start = (x, y) => { cancelAnimationFrame(anim); anim = 0; drag = { x, y, sl: box.scrollLeft, h: false, v: false, pts: [[x, performance.now()]] }; moved = false; };
+  // Geser dengan jari: touch events, touchmove tidak-pasif. Begitu gerakan condong mendatar, gulir halaman dicegah
+  // dan kartu mengikuti jari; gerakan condong tegak dibiarkan menggulir halaman. Mouse (web) lewat pointer events.
+  const start = (x, y) => { cancelAnimationFrame(anim); anim = 0; drag = { x, y, p: pos, h: false, v: false, pts: [[x, performance.now()]] }; moved = false; };
   const move = (x, y, e) => {
     if (!drag || drag.v) return;
     const dx = x - drag.x, dy = y - drag.y;
     if (!drag.h) {
       if (Math.abs(dx) < 7 && Math.abs(dy) < 7) return;
-      // condong mendatar (sudut < ±50°) → milik carousel; selain itu biarkan halaman bergulir
       if (Math.abs(dx) < Math.abs(dy) * 0.85) { drag.v = true; return; }
-      drag.h = true; moved = true; drag.x = x; drag.sl = box.scrollLeft;
+      drag.h = true; moved = true; drag.x = x; drag.p = pos;
     }
     if (e?.cancelable) e.preventDefault();
-    box.scrollLeft = drag.sl - (x - drag.x); tick();
+    let p = drag.p - (x - drag.x) / step;
+    if (!loop) p = p < 0 ? p / 3 : p > n - 1 ? n - 1 + (p - n + 1) / 3 : p;   // ujung: tertahan seperti karet
+    pos = p; tick();
     drag.pts.push([x, performance.now()]); if (drag.pts.length > 6) drag.pts.shift();
   };
   box.addEventListener("touchstart", (e) => { if (e.touches.length !== 1) { drag = null; return; } const t = e.touches[0]; start(t.clientX, t.clientY); }, { passive: true });
@@ -378,22 +379,21 @@ function coverflow(box, loop = 0) {
   function release() {
     if (!drag) return;
     const d = drag; drag = null;
-    if (!d.h) return;
+    if (!d.h) { if (anim === 0 && pos !== Math.round(pos)) glide(Math.round(pos)); return; }
     const [a, b] = [d.pts[0], d.pts[d.pts.length - 1]], v = (b[0] - a[0]) / Math.max(1, b[1] - a[1]);   // px/ms
-    const cur = box.scrollLeft / step, base = Math.round(cur);
-    let i = Math.abs(v) > 0.35 ? (v < 0 ? Math.floor(cur) + 1 : Math.ceil(cur) - 1) : base;
+    let i = Math.abs(v) > 0.35 ? (v < 0 ? Math.floor(pos) + 1 : Math.ceil(pos) - 1) : Math.round(pos);
     if (Math.abs(v) > 1.4) i += v < 0 ? 1 : -1;                    // kibasan cepat: sampai 2 kartu
-    to(i);
+    glide(i);
   }
   box.addEventListener("dragstart", (e) => e.preventDefault());
   box.addEventListener("click", (e) => {
     if (moved) { e.preventDefault(); e.stopPropagation(); moved = false; return; }   // akhir geseran bukan ketukan
     const c = e.target.closest(".cf-card"); if (!c || e.target.closest(".cv-re")) return;
     if (c.classList.contains("on")) return;
-    e.preventDefault(); to(cards.indexOf(c));
+    e.preventDefault(); glide(pos + Math.round(off(cards.indexOf(c))));
   });
-  addEventListener("resize", () => { if (!box.isConnected) return; measure(); box.scrollLeft = Math.round(box.scrollLeft / (step || 1)) * step; tick(); }, { passive: true });
-  measure(); box.scrollLeft = loop * step; tick();
+  addEventListener("resize", () => { if (!box.isConnected) return; measure(); tick(); }, { passive: true });
+  measure(); tick();
 }
 async function vHome() {
   const name = S.state.profile?.name || (S.loggedIn() ? "" : "Pembaca");
@@ -465,12 +465,9 @@ ${last ? `<section class="sec s16"><h2 class="cap">Lanjut baca</h2>
         <span class="cf-rank" aria-hidden="true">${i + 1}</span>${scoreTag(it, src)}
         <span class="cf-info"><b class="cf-t">${esc(it.title)}</b>${stars ? `<span class="cf-stars" style="--p:${Math.round(sc * 10)}%" aria-hidden="true">★★★★★</span>` : `<span class="cf-sub">${esc(typeName(it.type) || srcName(src))}</span>`}</span></span></a>`;
       };
-      // berputar tanpa ujung: daftar digambar 3× (salinan kiri & kanan tersembunyi dari pembaca layar), posisi
-      // dilompatkan diam-diam ke salinan tengah saat gulir berhenti di salinan pinggir
-      const one = top.map(card).join("");
-      pop.innerHTML = !top.length ? `<span class="mu sm px">Belum ada data</span>`
-        : top.length < 3 ? one : one.replace(/<a class="cf-card/g, '<a aria-hidden="true" tabindex="-1" class="cf-card') + one + one.replace(/<a class="cf-card/g, '<a aria-hidden="true" tabindex="-1" class="cf-card');
-      coverflow(pop, top.length >= 3 ? top.length : 0);
+      // berputar tanpa ujung (≥ 4 kartu): cukup digambar sekali, posisinya melingkar (lihat coverflow)
+      pop.innerHTML = !top.length ? `<span class="mu sm px">Belum ada data</span>` : top.map(card).join("");
+      if (top.length) coverflow(pop, top.length >= 4 ? top.length : 0);
     } catch (e) { if (src === homeSrc && $("#pop")) $("#pop").innerHTML = `<span class="mu sm px">${esc(e.blocked ? "Sumber ini menolak server. Pilih sumber lain di bawah." : e.message)}</span>`; }
   };
   setActs({
@@ -1141,11 +1138,31 @@ async function vChapters(src, id) {
 }
 
 /* ---------- Pembaca (gulir atau slide), tampilan sama seperti prototipe ---------- */
-const pagesMem = new Map();
+const pagesMem = new Map(), pagesWait = new Map();
+// daftar halaman chapter: dari ingatan (30 mnt), atau ikut menunggu permintaan yang sedang berjalan (mis. dimulai saat
+// jari baru menyentuh baris chapter), atau minta ke server. Dipakai pembaca & pengambilan awal.
+function pagesLoad(src, chId) {
+  const pk = src + "|" + chId, pc = pagesMem.get(pk);
+  if (pc && Date.now() - pc.t < 30 * 60e3) return Promise.resolve(pc.p);
+  if (pagesWait.has(pk)) return pagesWait.get(pk);
+  const pr = api.call("pages", { source: src, chapter_id: chId }).then((p) => {
+    if (p?.images?.length) { pagesMem.set(pk, { p, t: Date.now() }); if (pagesMem.size > 12) pagesMem.delete(pagesMem.keys().next().value); }
+    return p;
+  }).finally(() => pagesWait.delete(pk));
+  pagesWait.set(pk, pr); return pr;
+}
+// Masuk chapter terasa lebih cepat: daftar halaman mulai diambil begitu jari menyentuh tautan chapter (±100–300 md
+// sebelum ketukan selesai & halaman pindah), bukan setelah pembaca dibuka.
+document.addEventListener("pointerdown", (e) => {
+  const a = e.target.closest?.('a[href^="#/r/"]'); if (!a) return;
+  const [, , src, , ch] = a.getAttribute("href").split("/").map(decodeURIComponent);
+  if (src && ch && src !== "local") pagesLoad(src, ch).catch(() => {});
+}, { capture: true, passive: true });
 let readerSeq = 0;
 async function vReader(src, id, chId) {
   const shell = (inner) => `<div class="reader ui enter" id="rd" data-shell="1">${inner}<div class="r-top"><button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 22, 2)}</button><div class="r-pill glass"><b class="t1">Memuat…</b></div><span class="r-sp"></span></div></div>`;
-  // Halaman sebelumnya tetap terlihat selama data chapter dimuat; layar "Memuat…" baru dipasang bila butuh > 1,2 dtk
+  // Halaman sebelumnya tetap terlihat selama data chapter dimuat; layar tunggu dipasang bila butuh > 0,3 dtk (dulu 1,2 dtk:
+  // ketukan terasa tidak ditanggapi/berat)
   // (sebelumnya langsung tampil layar gelap kosong sekejap sebelum halaman komik → terlihat seperti kedipan)
   const myR = ++readerSeq;
   // Animasi bar meluncur masuk HANYA saat masuk dari luar pembaca (mis. info komik), dan baru setelah halaman siap.
@@ -1162,7 +1179,7 @@ async function vReader(src, id, chId) {
       <b class="rw-t">${chN !== "" ? `Chapter ${esc(chN)}` : "Membuka chapter"}</b><span class="mu sm">Menyiapkan halaman…</span><span class="rw-bar" aria-hidden="true"><i></i></span></div></div>`)
       .replace('class="reader ui enter"', 'class="reader ui"').replace("<b class=\"t1\">Memuat…</b>", `<b class="t1">${esc(cd?.manga?.title || "Memuat…")}</b>`);
     shellShown = true;
-  }, 1200);
+  }, 300);
   // Pindah chapter di dalam pembaca (lanjut otomatis, tombol lanjut/sebelumnya, daftar chapter): bila chapter baru belum
   // siap dalam 0,25 dtk (jaringan lambat), langsung pindah ke layar tunggu chapter baru (chapter lama bergeser keluar),
   // jadi tidak terlihat macet di chapter lama. Koneksi cepat tetap langsung ke halaman baru tanpa layar tunggu.
@@ -1224,12 +1241,7 @@ async function vReader(src, id, chId) {
   if (!p) {
     if (isLocal) { fail(new Error("File unduhan tidak ditemukan di HP.")); return; }
     // daftar halaman disimpan sebentar di memori: kembali ke chapter yang sama (mis. dari info komik) langsung tampil
-    const pk = src + "|" + chId, pc = pagesMem.get(pk);
-    if (pc && Date.now() - pc.t < 30 * 60e3) p = pc.p;
-    else {
-      try { p = await api.call("pages", { source: src, chapter_id: chId }); } catch (e) { fail(e); return; }
-      pagesMem.set(pk, { p, t: Date.now() }); if (pagesMem.size > 12) pagesMem.delete(pagesMem.keys().next().value);
-    }
+    try { p = await pagesLoad(src, chId); } catch (e) { fail(e); return; }
   }
   if (parse().name !== "reader" || myR !== readerSeq) return;
   const st = S.state.settings, total = p.images.length;
@@ -1723,8 +1735,7 @@ async function vReader(src, id, chId) {
     // selama hitung mundur, daftar halaman chapter berikutnya diambil duluan (kecil, tanpa gambar) supaya chapter baru
     // lebih cepat siap saat waktunya habis; chapter yang sudah diunduh tidak perlu
     const npk = src + "|" + next.id;
-    if (!isLocal && !pagesMem.has(npk)) api.call("pages", { source: src, chapter_id: next.id })
-      .then((np) => { if (np?.images?.length && !pagesMem.has(npk)) { pagesMem.set(npk, { p: np, t: Date.now() }); if (pagesMem.size > 12) pagesMem.delete(pagesMem.keys().next().value); } }).catch(() => {});
+    if (!isLocal && !pagesMem.has(npk)) pagesLoad(src, next.id).catch(() => {});
     nextT = setTimeout(() => { nextT = null; if (parse().name === "reader" && atEnd) goReplace(readHref(src, id, next.id)); else autoNextStop(); }, sec * 1000);
   }
   // #2 kembali ke halaman terakhir dibaca. Mode gulir: halaman sebelumnya dimuat dulu supaya posisinya tepat;
