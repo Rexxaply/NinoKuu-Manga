@@ -12,7 +12,7 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
-## 1.10.1 — belum dirilis
+## 1.10.1 — 25 Nov 2026
 
 ### Ringkasan
 - Baru: di Favorit, pilihan Koleksi/Riwayat/Unduhan tetap terlihat di atas saat menggulir, lengkap dengan tombol cari
