@@ -527,10 +527,18 @@ async function vSearch(type) {
       const ask = () => api.call("browse", { source: sState.src, q: sState.q, type: sState.type, status: sState.status, genres: sState.genres, sort: "update", page, limit: 24 });
       let r = await ask(), got = r.items;
       if (sState.q && LOOSE_SEARCH.has(sState.src)) {
+        // Hasil Shinigami/WestManga yang cocok sebagian kata dibuang. Halaman berikutnya diambil sendiri (maks. 3 lagi)
+        // selama masih ada yang dibuang dan hasil cocok belum 24; "Muat lagi" hanya tampil bila halaman terakhir yang
+        // diambil seluruhnya cocok (berarti hasil yang tepat memang masih berlanjut).
         const ok = matchQ(sState.q);
         got = r.items.filter(ok);
-        // halaman ini tidak ada yang cocok tapi masih ada halaman lain: coba sampai 2 halaman berikutnya
-        for (let n = 0; !got.length && r.hasNext && n < 2 && my === seq; n++) { page++; r = await ask(); got = r.items.filter(ok); }
+        let mixed = got.length < r.items.length;
+        for (let n = 0; mixed && r.hasNext && got.length < 24 && n < 3 && my === seq; n++) {
+          page++; r = await ask();
+          const g = r.items.filter(ok); got = got.concat(g); mixed = g.length < r.items.length;
+        }
+        if (mixed) r = { ...r, hasNext: false };
+        const seen = new Set(more ? items.map((x) => x.id) : []); got = got.filter((x) => !seen.has(x.id) && seen.add(x.id));
       }
       if (my !== seq || !$("#sres")) return;
       items = more ? items.concat(got) : got;

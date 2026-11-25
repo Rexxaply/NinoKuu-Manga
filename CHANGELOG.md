@@ -12,6 +12,16 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
+## 1.10.4 — belum dirilis
+
+### Ringkasan
+- Tombol Muat lagi di pencarian Shinigami dan WestManga tidak lagi muncul bila hasil yang cocok sudah habis
+
+### Detail
+- Pencarian Shinigami/WestManga: halaman berikutnya diambil otomatis (maks. 3) selama masih ada hasil cocok-sebagian yang dibuang dan hasil cocok < 24; `hasNext` dipaksa false bila halaman terakhir masih campuran (API memberi `has_next` karena masih ada judul lain yang memuat salah satu kata). Hasil digabung tanpa duplikat
+
+---
+
 ## 1.10.3 — 25 Nov 2026
 
 ### Ringkasan
