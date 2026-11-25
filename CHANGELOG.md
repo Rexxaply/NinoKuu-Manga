@@ -12,14 +12,21 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
-## 1.10.1 — 25 Nov 2026
+## 1.10.1 — 25 Nov 2026 (rilis global)
 
 ### Ringkasan
+- Baru: sumber komik BacaKomik
+- Baru: skor komik tampil di pojok sampul pada daftar dan Top 10
 - Baru: di Favorit, pilihan Koleksi/Riwayat/Unduhan tetap terlihat di atas saat menggulir, lengkap dengan tombol cari
-- Pindah chapter (termasuk lanjut otomatis) tidak lagi terlihat macet saat jaringan lambat: langsung pindah ke chapter berikutnya dengan layar tunggu
+- Baru: Komiku menampilkan batas umur pembaca (misalnya 13+ atau 18+)
+- Label NEW UPDATE di Koleksi muncul lebih cepat untuk semua sumber, tanpa harus membuka komiknya dulu
+- Notifikasi chapter baru Komiku, Shinigami, dan WestManga lebih cepat
+- Pindah chapter (termasuk lanjut otomatis) tidak lagi terlihat macet saat jaringan lambat
+- Skor komik Kiryuu kini tampil, dan pilihan sumber dirapikan
 
 ### Detail
 - Favorit: `#favbar` (fixed, kaca buram) muncul saat `#favtop` tergulir keluar layar (`favBarTick` di scroll/resize); isinya kotak segmen tab + tombol cari `.seg-ic` yang menyatu (hanya di Koleksi). Ketuk cari → kolom `#fbq` muncul di bawah kotak pilihan (tab tetap ada; fokus otomatis, sinkron dengan `fav.q`); tombol cari berubah jadi ✕ untuk menutup & menghapus kata kunci, ✕ kecil di kolom hanya menghapus teks; selama mode cari bilah tetap tampil. Pindah tab dari bilah menggulir ke awal daftar. Diuji di Chrome 390 px (tampil saat digulir, cari mengetik & menyaring)
+- Rilis global ini membawa juga semua isi 1.10.0 (lihat di bawah). "Yang baru" 1.10.0 + slide `bacakomik`, `favbar`, `tunggu` (screenshot aplikasi dengan data contoh)
 - Pembaca: pindah chapter di dalam pembaca yang belum siap dalam 0,25 dtk → chapter lama bergeser keluar (animasi swap yang sama) dan layar tunggu `.r-wait` masuk (cincin putar, "Chapter N", bilah berjalan; 6 dtk: "Jaringan lambat, masih memuat…"; 15 dtk: tombol Coba lagi); dulu chapter lama dibiarkan tampil sampai chapter baru siap sehingga terlihat macet. Galat chapter baru tampil di layar tunggu. Selama hitung mundur lanjut otomatis, daftar halaman chapter berikutnya diambil duluan ke `pagesMem`
 
 ---
