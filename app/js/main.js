@@ -564,6 +564,8 @@ async function vSearch(type) {
     else { api.lsSet(HK, []); pop.classList.remove("on"); }
   });
   inp.addEventListener("focus", () => showHist(true));
+  // ketuk kolom yang sudah fokus (fokus tidak berpindah, jadi event focus tidak terpanggil) tetap memunculkan riwayat
+  inp.addEventListener("click", () => showHist(true));
   inp.addEventListener("blur", () => pop.classList.remove("on"));
   $("#sres").addEventListener("click", (e) => { if (e.target.closest("a") && sState.q) saveQ(sState.q); });
   inp.addEventListener("input", () => {

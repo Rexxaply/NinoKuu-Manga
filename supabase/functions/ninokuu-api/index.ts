@@ -1243,7 +1243,7 @@ async function reportChapters(uid: string, body: any, trusted = false): Promise<
     ? await admin.from("library").select("title, cover").eq("source", src).eq("comic_id", id).eq("notify", true).limit(1).maybeSingle()
     : await admin.from("library").select("title, cover").eq("user_id", uid).eq("source", src).eq("comic_id", id).maybeSingle();
   if (!lib) return json({ error: "Komik ini tidak ada di koleksimu" }, 404);
-  const { data: mine } = await admin.from("chapter_reports").select("created_at").eq("source", src).eq("comic_id", id).eq("user_id", uid).maybeSingle();
+  const { data: mine } = await admin.from("chapter_reports").select("created_at, num").eq("source", src).eq("comic_id", id).eq("user_id", uid).maybeSingle();
   if (mine?.created_at && Date.now() - Date.parse(mine.created_at) < 5 * 60e3) return json({ ok: true, skipped: true });
   const list = cleanChapters(body.chapters);
   if (!list.length) return json({ ok: true, found: 0 });
@@ -1251,6 +1251,9 @@ async function reportChapters(uid: string, body: any, trusted = false): Promise<
   if (!top || n == null) return json({ ok: true, found: list.length, newest: null });
   const { error: upErr } = await admin.from("chapter_reports").upsert({ source: src, comic_id: id, user_id: uid, num: n, chapter: clip(top.ch, 40), created_at: new Date().toISOString() }, { onConflict: "source,comic_id,user_id" });
   if (upErr) return json({ error: "chapter_reports: " + upErr.message + " — jalankan ulang ninokuu-schema.sql versi terbaru." }, 500);
+  // Hemat kuota database: chapter terbaru sama dengan laporan pelapor ini sebelumnya → tidak ada yang baru, berhenti di
+  // sini (dulu tiap laporan menjalankan 3 kueri lagi + klaim chapter; pengecek Termux melapor semua komik tiap 5 menit)
+  if (trusted && mine && Number(mine.num) === n) return json({ ok: true, found: list.length, newest: top.ch, same: true });
   const { count } = await admin.from("library").select("user_id", { count: "exact", head: true }).eq("source", src).eq("comic_id", id).eq("notify", true);
   const need = trusted ? 1 : Math.min(2, Math.max(1, count || 1));
   const since = new Date(Date.now() - 24 * 3600e3).toISOString();

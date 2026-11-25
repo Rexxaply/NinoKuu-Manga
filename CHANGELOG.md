@@ -22,7 +22,9 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 ### Detail
 - Muat lagi: penyebab sebenarnya `.btn { display: inline-flex }` menimpa atribut `hidden` (server sudah mengirim `hasNext: false`); ditambah `.btn[hidden] { display: none }` (juga untuk tombol Coba lagi di layar tunggu pembaca)
 - Riwayat pencarian: tampil juga saat kolom berisi (maks. 5 yang memuat teks itu, selain yang persis sama); dulu hanya saat kolom kosong
-- Kinerja: `saveLocal` (seluruh koleksi + riwayat diubah ke JSON, riwayat diurutkan) dulu berjalan di setiap ganti halaman pembaca dan setiap pembaruan koleksi; kini digabung paling sering 1× per 400 ms dan langsung ditulis saat `pagehide`/aplikasi ke latar belakang (`flushLocal`). Lencana skor sampul tanpa `backdrop-filter` (puluhan blur per halaman berat di WebView). Pencarian: cache hasil per sumber/kata kunci/filter (`sCache`, 10 menit, 12 entri) sehingga pindah sumber bolak-balik langsung tampil tanpa memuat ulang
+- Riwayat pencarian: `.s-wrap`/`.sh-pop` diberi z-index (pilihan sumber yang bisa digeser bisa menjadi lapisan sendiri di WebView Android dan menutupi panel), dan riwayat juga muncul saat kolom yang sudah fokus diketuk lagi
+- Kuota database: laporan chapter dari pengecek latar belakang (Termux/APK) berhenti setelah 2 kueri bila chapter terbarunya sama dengan laporan sebelumnya (dulu 6 kueri + klaim per komik tiap putaran)
+- Kinerja: `saveLocal` (seluruh koleksi + riwayat diubah ke JSON, riwayat diurutkan) dulu berjalan di setiap ganti halaman pembaca dan setiap pembaruan koleksi; kini digabung paling sering 1× per 400 ms dan langsung ditulis saat `pagehide`/aplikasi ke latar belakang (`flushLocal`). Pencarian: cache hasil per sumber/kata kunci/filter (`sCache`, 10 menit, 12 entri) sehingga pindah sumber bolak-balik langsung tampil tanpa memuat ulang
 
 ---
 
