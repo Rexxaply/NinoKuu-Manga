@@ -19,12 +19,14 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 - Baru: pindah sumber, untuk memindahkan komik ke sumber lain beserta posisi baca, lonceng, dan raknya
 - Baru: bagian "Mirip ini" di halaman komik, berisi komik populer dengan genre yang sama
 - Baru: tekan lama gambar saat membaca untuk membagikan halaman itu
+- Baru: tampilan Top 10 di Beranda berupa carousel, dengan kartu tengah yang besar dan menyala
 
 ### Detail
 - Rak: kolom `library.shelf` (maks. 30 huruf, satu rak per komik; skema + constraint `library_shelf_len`), ikut sinkron (`pull` memilih `shelf`, mundur tanpa kolom bila database lama). Rak kosong disimpan di `settings.shelves`. Store: `shelves`, `addShelf`, `setShelf`, `renameShelf`, `deleteShelf` (PATCH massal per nama rak). Koleksi: chip rak (ikon folder) di antara New update dan jenis komik, chip "+ Rak", baris "Rak X · Ubah nama · Hapus rak". Info komik: tombol "Simpan di rak" (lembar pilih rak / rak baru). `promptText` (kotak isian di `ask`)
 - Pindah sumber: tombol "Pindah sumber" (dari koleksi) / "Sumber lain" di info komik. Judul diringkas (`titleQ`), dicari paralel di 4 sumber lain, hasil diurutkan (judul persis / judul alternatif → semua kata cocok), maks. 4 per sumber. `migrateComic`: tambah koleksi baru (+lonceng, +rak), tanda baca & posisi baca dicocokkan lewat nomor chapter (`mergeReadChs`, `saveHistory`), lalu koleksi lama dilepas. Diuji: Kiryuu → Shinigami (koleksi, rak, Ch. 3, tanda Ch. 2–3 ikut)
 - Mirip ini: genre komik dicocokkan dengan daftar filter sumber (`loadFilters`), `browse` populer dengan 2 genre pertama (cukup 1 bila hasil < 6; Komiku 1 genre), tanpa komik itu sendiri, maks. 12, dimuat saat bagiannya hampir terlihat (IntersectionObserver), cache 30 komik; judul maks. 2 baris utuh dengan elipsis (`.sim-row .t2`, tidak memakai tinggi 34 px milik Top 10)
 - Bagikan halaman: tekan lama gambar ±0,55 dtk (batal bila jari bergeser, cubit, atau menggulir; tidak saat diperbesar) → lembar berisi pratinjau + "Bagikan gambar ini". `DL.sharePage`: gambar diambil seperti unduhan (APK lewat jaringan HP, cadangan proxy; chapter unduhan dari file), APK: cache + plugin Share; web: Web Share API (file) atau unduh. Ketukan yang mengakhiri tekan lama tidak memunculkan menu; menu tekan lama bawaan browser dimatikan pada gambar
+- Top 10 (gaya NinoNime): `.cf` carousel snap-tengah, kartu `min(60vw, 236px)` rasio 2:2,85; `coverflow()` mengatur skala (−15%) & redup (−50%) kartu sesuai jarak ke tengah per rAF, kartu tengah `.on` berbingkai + cahaya warna peringkat (emas/perak/perunggu, lainnya putih), mahkota di atas peringkat 1 saat di tengah; judul 2 baris + bintang (skor/2, isi parsial) di dalam kartu; nomor peringkat kotak kiri atas, skor kanan atas; kartu samping yang diketuk digeser ke tengah dulu
 - Ikon baru: `plus`, `swap`, `spark`
 
 ---

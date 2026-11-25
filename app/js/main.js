@@ -308,6 +308,31 @@ function sortSheet(title, list, cur, onPick) {
   openSheet(`<span class="sheet-ttl">${esc(title)}</span><div class="col g4" role="radiogroup">${list.map(([k, n]) => `<button class="sh-row" role="radio" aria-checked="${k === cur}" data-s="pick" data-v="${esc(k)}"><span class="grow">${esc(n)}</span>${k === cur ? `<span class="redt">${icon("check", 18, 2.4)}</span>` : ""}</button>`).join("")}</div>`,
     (b) => { if (b.dataset.s === "pick") { closeSheet(); onPick(b.dataset.v); } });
 }
+// carousel tengah (Top 10): skala & redup kartu mengikuti jaraknya ke tengah; kartu samping yang diketuk digeser ke
+// tengah dulu (bukan langsung dibuka)
+function coverflow(box) {
+  const cards = [...box.querySelectorAll(".cf-card")]; if (!cards.length) return;
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let raf = 0;
+  const tick = () => {
+    raf = 0;
+    const mid = box.scrollLeft + box.clientWidth / 2; let best = null, bd = 1e9;
+    for (const c of cards) {
+      const w = c.offsetWidth || 1, d = Math.min(1.2, Math.abs(c.offsetLeft + w / 2 - mid) / w);
+      if (!still) { c.style.transform = `scale(${(1 - Math.min(d, 1) * 0.15).toFixed(3)})`; c.style.opacity = (1 - Math.min(d, 1) * 0.5).toFixed(3); }
+      if (d < bd) { bd = d; best = c; }
+    }
+    cards.forEach((c) => c.classList.toggle("on", c === best));
+  };
+  box.addEventListener("scroll", () => { if (!raf) raf = requestAnimationFrame(tick); }, { passive: true });
+  addEventListener("resize", () => { if (box.isConnected && !raf) raf = requestAnimationFrame(tick); }, { passive: true });
+  box.addEventListener("click", (e) => {
+    const c = e.target.closest(".cf-card"); if (!c || c.classList.contains("on") || e.target.closest(".cv-re")) return;
+    e.preventDefault();
+    box.scrollTo({ left: c.offsetLeft + c.offsetWidth / 2 - box.clientWidth / 2, behavior: still ? "auto" : "smooth" });
+  });
+  box.scrollLeft = 0; tick();
+}
 async function vHome() {
   const name = S.state.profile?.name || (S.loggedIn() ? "" : "Pembaca");
   let qi = Math.floor(Math.random() * QUOTES.length);
@@ -324,7 +349,7 @@ ${last ? `<section class="sec s16"><h2 class="cap">Lanjut baca</h2>
       <span class="mu sm">Chapter ${esc(last.chapter)}${last.pages ? ` · halaman ${Number(last.page) || 1} dari ${Number(last.pages) || 0}` : ""}</span>
       <span class="prog"><span style="width:${pct(last.page || 1, last.pages || 0) || 6}%"></span></span></span>
     <span class="play">${icon("play", 19, 2)}</span></a></section>` : ""}
-<section class="sec s26 nox"><div class="sec-h px"><h2>Top 10 populer</h2><span class="mu sm">${esc(srcName(homeSrc))}</span></div><div class="hs" id="pop">${loading(3, "sk-top")}</div></section>
+<section class="sec s26 nox"><div class="sec-h px"><h2>Top 10 populer</h2><span class="mu sm">${esc(srcName(homeSrc))}</span></div><div class="cf" id="pop"><div class="cf-sk sk"></div><div class="cf-sk sk"></div><div class="cf-sk sk"></div></div></section>
 <section class="sec s24"><h2>Jelajah kategori</h2><div class="cats">
   ${[["manga", "Jepang"], ["manhwa", "Korea"], ["manhua", "Tiongkok"]].map(([t, c]) => `<a class="cat" href="#/search/${t}"><span class="flag f-${t}"></span><span class="col"><b>${typeName(t)}</b><span class="mu xs">${c}</span></span></a>`).join("")}
   <a class="cat" href="#/search"><span class="cat-ic">${icon("search", 20)}</span><span class="col"><b>Semua</b><span class="mu xs">Cari judul</span></span></a>
@@ -368,9 +393,17 @@ ${last ? `<section class="sec s16"><h2 class="cap">Lanjut baca</h2>
     try {
       const r = await browse(src, { sort: "popular", page: 1, limit: 10 });
       if (src !== homeSrc || !$("#pop")) return;
-      $("#pop").innerHTML = r.items.slice(0, 10).map((it, i) => `<a class="top10 ${i < 3 ? "t10-" + (i + 1) : ""}" aria-label="Peringkat ${i + 1}: ${esc(it.title)}" href="${comicHref(src, it.id)}">
-        <span class="t10-cv">${cover(it.cover, it.title, "top")}<span class="t10-b" aria-hidden="true">${i + 1}</span>${i === 0 ? CROWN : ""}${scoreTag(it, src)}</span>
-        <span class="t10-t"><span class="t2 b13">${esc(it.title)}</span><span class="mu xs">${esc(typeName(it.type) || srcName(src))}</span></span></a>`).join("") || `<span class="mu sm px">Belum ada data</span>`;
+      const pop = $("#pop"), top = r.items.slice(0, 10);
+      // Top 10 gaya NinoNime: carousel tengah. Kartu di tengah besar & menyala (warna peringkat), kiri-kanan mengecil
+      // & meredup; judul + bintang di dalam kartu, nomor peringkat kiri atas, skor kanan atas, mahkota di peringkat 1.
+      pop.innerHTML = top.map((it, i) => {
+        const sc = Number(it.score), stars = !NO_SCORE.has(src) && sc > 0 && sc <= 10;
+        return `<a class="cf-card ${i < 3 ? "r" + (i + 1) : ""}" aria-label="Peringkat ${i + 1}: ${esc(it.title)}" href="${comicHref(src, it.id)}">
+        ${i === 0 ? `<span class="cf-crown">${CROWN}</span>` : ""}<span class="cf-in">${cover(it.cover, it.title, "cf")}<span class="cf-shade"></span>
+        <span class="cf-rank" aria-hidden="true">${i + 1}</span>${scoreTag(it, src)}
+        <span class="cf-info"><b class="cf-t">${esc(it.title)}</b>${stars ? `<span class="cf-stars" style="--p:${Math.round(sc * 10)}%" aria-hidden="true">★★★★★</span>` : `<span class="cf-sub">${esc(typeName(it.type) || srcName(src))}</span>`}</span></span></a>`;
+      }).join("") || `<span class="mu sm px">Belum ada data</span>`;
+      coverflow(pop);
     } catch (e) { if (src === homeSrc && $("#pop")) $("#pop").innerHTML = `<span class="mu sm px">${esc(e.blocked ? "Sumber ini menolak server. Pilih sumber lain di bawah." : e.message)}</span>`; }
   };
   setActs({
