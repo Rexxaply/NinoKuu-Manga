@@ -265,7 +265,8 @@ drop policy if exists "log baca ditulis sendiri" on public.read_log;
 create policy "log baca ditulis sendiri" on public.read_log for insert to authenticated
   with check ((select auth.uid()) = user_id);
 
--- Penghitung harian, hanya disentuh trigger (tanpa policy = tidak bisa diakses dari aplikasi).
+-- Ringkasan EXP per hari (WIB) dari riwayat EXP yang sudah dihapus pembersihan (> 7 hari), disimpan 31 hari,
+-- supaya Rekap 30 hari tetap menghitung EXP dengan benar. Hanya disentuh fungsi server (tanpa policy).
 create table if not exists public.exp_daily (
   user_id uuid not null references auth.users (id) on delete cascade,
   day date not null,
@@ -613,7 +614,7 @@ revoke all on table public.chat_feed from anon, authenticated;
 grant select on table public.chat_feed to anon, authenticated;
 
 -- Pembersihan berkala (dipanggil cron Edge Function): chat publik lebih dari 30 hari,
--- komentar komik/chapter lebih dari 180 hari, dan riwayat EXP lebih dari 30 hari dihapus.
+-- komentar komik/chapter lebih dari 180 hari, dan riwayat EXP lebih dari 7 hari dihapus (diringkas per hari ke exp_daily).
 -- File gambarnya dihapus oleh Edge Function lewat Storage API.
 create or replace function public.chat_cleanup(older_than interval default interval '30 days')
 returns setof text
@@ -622,9 +623,16 @@ security definer
 set search_path = ''
 as $$
 begin
-  -- riwayat EXP hanya disimpan 30 hari (hemat ruang); total EXP di profil tidak berubah
+  -- riwayat EXP hanya disimpan 7 hari (hemat ruang; batas EXP harian hanya butuh hari ini, halaman Level
+  -- menampilkan 300 terbaru). Sebelum dihapus, jumlahnya diringkas per hari ke exp_daily (31 hari) untuk Rekap 30 hari.
+  -- Total EXP di profil tidak berubah.
   if pg_catalog.to_regclass('public.exp_log') is not null then
-    delete from public.exp_log where created_at < pg_catalog.now() - interval '30 days';
+    insert into public.exp_daily (user_id, day, gained)
+      select l.user_id, (l.created_at at time zone 'Asia/Jakarta')::date, sum(l.amount)::integer
+      from public.exp_log l where l.created_at < pg_catalog.now() - interval '7 days' group by 1, 2
+    on conflict (user_id, day) do update set gained = public.exp_daily.gained + excluded.gained;
+    delete from public.exp_log where created_at < pg_catalog.now() - interval '7 days';
+    delete from public.exp_daily where day < public.wib_today() - 31;
   end if;
   -- log baca (pencegah EXP ganda) disimpan 1 tahun; HP yang tidak pernah membuka aplikasi 90 hari dilepas
   -- (aplikasi mendaftarkan ulang tokennya setiap dibuka)
@@ -1340,7 +1348,8 @@ begin
     'days', n, 'from', d0, 'to', public.wib_today(),
     'chapters', (select pg_catalog.count(*) from public.read_log where user_id = uid and read_at >= since),
     'series', (select pg_catalog.count(distinct (source, comic_id)) from public.read_log where user_id = uid and read_at >= since),
-    'exp', (select coalesce(sum(amount), 0) from public.exp_log where user_id = uid and created_at >= since),
+    'exp', (select coalesce(sum(amount), 0) from public.exp_log where user_id = uid and created_at >= since)
+         + (select coalesce(sum(gained), 0) from public.exp_daily where user_id = uid and day >= d0),
     'likes', (select pg_catalog.count(*) from public.likes where user_id = uid and created_at >= since),
     'saved', (select pg_catalog.count(*) from public.library where user_id = uid and added_at >= since),
     'active', (select pg_catalog.count(distinct (read_at at time zone 'Asia/Jakarta')::date) from public.read_log where user_id = uid and read_at >= since),

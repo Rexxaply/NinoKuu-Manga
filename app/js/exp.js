@@ -195,7 +195,7 @@ async function historyHtml() {
       <span class="col grow gp2"><b>${esc(KIND_LABEL[r.kind] || r.kind)}</b><span class="mu xs t1">${esc(r.note || "")}</span>
       <span class="xs ${b.lv > a.lv ? "gold b" : "mu"}">${time}${b.lv > a.lv ? ` · naik ke Lv.${b.lv}` : ""}</span></span><b class="er-amt">+${num(r.amount)} EXP</b></div>`;
   }
-  return out + `</div><p class="mu xs lh">Riwayat EXP disimpan 30 hari, lalu dihapus otomatis supaya hemat ruang. Total EXP-mu tidak berkurang.</p>`;
+  return out + `</div><p class="mu xs lh">Riwayat EXP disimpan 7 hari, lalu dihapus otomatis supaya hemat ruang. Total EXP-mu tidak berkurang.</p>`;
 }
 
 export async function vLevel(view, L, tab = "sum") {
