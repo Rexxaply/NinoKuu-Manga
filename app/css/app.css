@@ -1235,7 +1235,7 @@ button, [role="button"], .seg, .chips, #nav { -webkit-user-select: none; user-se
 .t10-1 .t10-b, .t10-2 .t10-b, .t10-3 .t10-b { color: var(--mt); background: linear-gradient(160deg, var(--m1), var(--m2) 55%, var(--m3)); border-color: var(--m1); box-shadow: 0 4px 12px var(--mg), 0 2px 6px rgba(0, 0, 0, .5); }
 .t10-crown { position: absolute; z-index: 2; left: -6px; top: -15px; width: 42px; height: 34px; transform: rotate(-24deg); transform-origin: 70% 90%;
   filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .55)); pointer-events: none; }
-#pop { padding-top: 16px; }
+
 
 /* tombol di kartu Koleksi/Riwayat: lencana +N (buka chapter berikutnya), Lanjut, Berikutnya */
 button.fa-new { display: inline-flex; align-items: center; justify-content: center; gap: 3px; border: 0; font-family: inherit; }
@@ -1546,7 +1546,7 @@ body[data-screen="reader"] .dl-pop { display: none; }
 @media (prefers-reduced-motion: reduce) { .fav-bar, .fb-search { transition: none; animation: none; } }
 
 /* ---------- pembaca: layar tunggu saat pindah chapter di jaringan lambat ---------- */
-.reader > .r-wait { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px; text-align: center; background: #0A0A0A; }
+.reader > .r-wait, .reader > .r-pages > .r-wait { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px; text-align: center; background: #0A0A0A; }
 .reader.swap-f > .r-wait { box-shadow: -12px 0 32px rgba(0, 0, 0, .45); animation: swInF .34s cubic-bezier(.32, .72, 0, 1) both; }
 .reader.swap-b > .r-wait { animation: swInB .34s cubic-bezier(.32, .72, 0, 1) both; }
 .rw-ring { width: 46px; height: 46px; margin-bottom: 6px; border-radius: 50%; border: 3px solid rgba(255, 255, 255, .1); border-top-color: var(--red); animation: rwSpin .8s linear infinite; }
@@ -1569,9 +1569,12 @@ body[data-screen="reader"] .dl-pop { display: none; }
 .ask-in:focus { outline: none; border-color: var(--red); }
 
 /* ---------- info komik: rak & pindah sumber ---------- */
-.dt-tools { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
-.dt-chip { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; max-width: 100%; padding: 0 13px; border-radius: 999px; font-size: 12.5px; font-weight: 700;
-  color: var(--mu); background: rgba(255, 255, 255, .06); border: 1px solid var(--line); }
+/* dua tombol sama lebar, memenuhi baris dari ujung ke ujung (sejajar baris Mulai baca); satu tombol = selebar baris */
+.dt-tools { display: flex; gap: 10px; margin-top: 12px; }
+.dt-chip { flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 14px; border-radius: 22px;
+  font-size: 13.5px; font-weight: 700; color: var(--tx); background: rgba(255, 255, 255, .06); border: 1px solid var(--line); }
+.dt-chip svg { flex: none; opacity: .8; }
+.dt-chip .t1, .dt-chip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dt-chip.on { color: var(--tx); border-color: rgba(255, 255, 255, .22); }
 .dt-chip:active { transform: scale(.97); }
 .dt-body .sim-row { margin: 0 -18px; padding-bottom: 6px; }
@@ -1592,20 +1595,25 @@ body[data-screen="reader"] .dl-pop { display: none; }
 .pg-prev { display: block; max-width: 100%; max-height: 34vh; margin: 6px auto 10px; border-radius: 12px; object-fit: contain; background: #111; }
 
 /* ---------- Top 10: carousel tengah (gaya NinoNime) ---------- */
-.cf { --cw: min(60vw, 236px); display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x mandatory;
+.cf { --cw: min(60vw, 236px); display: flex; gap: 10px; overflow: hidden; touch-action: pan-y; -webkit-user-select: none; user-select: none;
   /* ruang atas/bawah untuk mahkota & cahaya kartu tengah (area gulir memotong apa pun di luar padding) */
   padding: 40px calc(50% - var(--cw) / 2) 34px; margin: -14px 0 -18px; overscroll-behavior-x: contain; }
 .cf::-webkit-scrollbar { display: none; }
 .cf-sk { flex: none; width: var(--cw); aspect-ratio: 2 / 2.85; border-radius: 22px; }
 .cf-sk:not(:first-child) { transform: scale(.85); opacity: .5; }
-.cf-card { --rc: rgba(255, 255, 255, .5); --rg: rgba(255, 255, 255, .12); position: relative; flex: none; width: var(--cw); scroll-snap-align: center;
+.cf-card { --rc: rgba(255, 255, 255, .5); --rg: rgba(255, 255, 255, .12); position: relative; flex: none; width: var(--cw); -webkit-user-drag: none;
   transform-origin: 50% 60%; transform: scale(.85); opacity: .5; -webkit-tap-highlight-color: transparent; }
 .cf-card.r1 { --rc: #F2B33D; --rg: rgba(242, 179, 61, .45); --rt: #2A1600; --r1: #FFE9A3; --r3: #B9771A; }
 .cf-card.r2 { --rc: #C9D0DC; --rg: rgba(201, 208, 220, .32); --rt: #2B3140; --r1: #FFFFFF; --r3: #7E8798; }
 .cf-card.r3 { --rc: #D08A4E; --rg: rgba(208, 138, 78, .36); --rt: #2A1200; --r1: #FFD3A8; --r3: #8C4F22; }
-.cf-in { position: relative; display: block; aspect-ratio: 2 / 2.85; border-radius: 22px; overflow: hidden; background: var(--s1);
-  border: 2px solid transparent; transition: border-color .25s, box-shadow .25s; }
-.cf-card.on .cf-in { border-color: var(--rc); box-shadow: 0 0 0 1px rgba(0, 0, 0, .25), 0 10px 26px var(--rg), 0 0 18px var(--rg); }
+.cf-in { position: relative; z-index: 1; display: block; aspect-ratio: 2 / 2.85; border-radius: 22px; overflow: hidden; background: var(--s1);
+  border: 2px solid transparent; transition: border-color .25s; }
+.cf-card.on .cf-in { border-color: var(--rc); }
+/* cahaya kartu tengah: lapisan terpisah yang hanya berubah opacity (murah), bukan box-shadow yang dianimasikan */
+.cf-card::before { content: ""; position: absolute; z-index: 0; left: 0; right: 0; top: 0; aspect-ratio: 2 / 2.85; border-radius: 22px;
+  box-shadow: 0 10px 26px var(--rg), 0 0 18px var(--rg); opacity: 0; transition: opacity .25s; pointer-events: none; }
+.cf-card.on::before { opacity: 1; }
+.cf-card img { -webkit-user-drag: none; pointer-events: none; }
 .cf-in .cover.cf { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 0; aspect-ratio: auto; }
 .cf-shade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0, 0, 0, .28) 0, transparent 26%, transparent 46%, rgba(5, 8, 14, .78) 76%, rgba(5, 8, 14, .94)); pointer-events: none; }
 .cf-rank { position: absolute; z-index: 2; left: 10px; top: 10px; min-width: 30px; height: 30px; padding: 0 6px; border-radius: 9px; display: grid; place-items: center;
@@ -1621,5 +1629,5 @@ body[data-screen="reader"] .dl-pop { display: none; }
 .cf-crown { position: absolute; z-index: 3; left: 50%; top: -27px; width: 44px; height: 36px; transform: translateX(-50%); pointer-events: none; opacity: 0; transition: opacity .25s; }
 .cf-crown .t10-crown { position: static; width: 44px; height: 36px; transform: none; }
 .cf-card.on .cf-crown { opacity: 1; }
-@media (prefers-reduced-motion: reduce) { .cf-card { transform: none; opacity: 1; } .cf-in, .cf-crown { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .cf-card { transform: none; opacity: 1; } .cf-in, .cf-crown, .cf-card::before { transition: none; } }
 

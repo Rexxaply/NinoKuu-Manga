@@ -308,24 +308,24 @@ function sortSheet(title, list, cur, onPick) {
   openSheet(`<span class="sheet-ttl">${esc(title)}</span><div class="col g4" role="radiogroup">${list.map(([k, n]) => `<button class="sh-row" role="radio" aria-checked="${k === cur}" data-s="pick" data-v="${esc(k)}"><span class="grow">${esc(n)}</span>${k === cur ? `<span class="redt">${icon("check", 18, 2.4)}</span>` : ""}</button>`).join("")}</div>`,
     (b) => { if (b.dataset.s === "pick") { closeSheet(); onPick(b.dataset.v); } });
 }
-// carousel tengah (Top 10): skala & redup kartu mengikuti jaraknya ke tengah; kartu samping yang diketuk digeser ke
-// tengah dulu (bukan langsung dibuka). loop = jumlah kartu asli (daftar digambar 3×) → berputar tanpa ujung.
-// Ringan: jarak antar kartu diukur sekali (bukan membaca posisi semua kartu tiap frame) dan hanya ±3 kartu di sekitar
-// tengah yang diubah; kartu lain tetap kecil & redup dari CSS.
+// carousel tengah (Top 10). Digerakkan sendiri (bukan gulir bawaan WebView, yang di sebagian HP tersendat dan
+// "menyentak" karena snap): kartu mengikuti jari, saat dilepas meluncur ke kartu terdekat (ikut kecepatan jari, maks.
+// 2 kartu) dengan kurva iOS. Ketuk kartu samping → meluncur ke tengah; ketuk kartu tengah → buka komik.
+// loop = jumlah kartu asli (daftar digambar 3×) → berputar tanpa ujung (lompat diam-diam ke salinan tengah).
+// Ringan: jarak kartu diukur sekali, hanya ±3 kartu di sekitar tengah yang diubah per frame & dijadikan lapisan GPU.
 function coverflow(box, loop = 0) {
   const cards = [...box.querySelectorAll(".cf-card")]; if (!cards.length) return;
   const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  let step = 0, raf = 0, endT = 0, on = null, touched = [];
+  let step = 0, on = null, touched = [], anim = 0, drag = null, moved = false;
   const measure = () => { step = cards.length > 1 ? cards[1].offsetLeft - cards[0].offsetLeft : cards[0].offsetWidth || 1; };
   const tick = () => {
-    raf = 0; if (!step) measure(); if (!step) return;
+    if (!step) measure(); if (!step) return;
     const c = box.scrollLeft / step, i0 = Math.round(c), now = [];
     for (let k = Math.max(0, i0 - 3); k <= Math.min(cards.length - 1, i0 + 3); k++) {
       const el = cards[k], d = Math.min(1, Math.abs(k - c));
-      if (!still) { el.style.transform = `scale(${(1 - d * 0.15).toFixed(3)})`; el.style.opacity = (1 - d * 0.5).toFixed(3); }
+      if (!still) { el.style.transform = `translateZ(0) scale(${(1 - d * 0.15).toFixed(4)})`; el.style.opacity = (1 - d * 0.5).toFixed(3); }
       now.push(el);
     }
-    // kartu yang keluar dari jendela ±3 dikembalikan ke gaya bawaan CSS (kecil & redup)
     for (const el of touched) if (!now.includes(el)) { el.style.transform = ""; el.style.opacity = ""; }
     touched = now;
     const best = cards[Math.max(0, Math.min(cards.length - 1, i0))];
@@ -336,16 +336,57 @@ function coverflow(box, loop = 0) {
     const i = Math.round(box.scrollLeft / step);
     if (i < loop || i >= loop * 2) { box.scrollLeft += (i < loop ? loop : -loop) * step; tick(); }
   };
-  box.addEventListener("scroll", () => {
-    if (!raf) raf = requestAnimationFrame(tick);
-    clearTimeout(endT); endT = setTimeout(wrap, 140);       // gulir berhenti → lompat diam-diam ke salinan tengah
-  }, { passive: true });
-  addEventListener("resize", () => { if (!box.isConnected) return; measure(); box.scrollLeft = Math.round(box.scrollLeft / (step || 1)) * step; tick(); }, { passive: true });
-  box.addEventListener("click", (e) => {
-    const c = e.target.closest(".cf-card"); if (!c || c.classList.contains("on") || e.target.closest(".cv-re")) return;
-    e.preventDefault();
-    box.scrollTo({ left: cards.indexOf(c) * step, behavior: still ? "auto" : "smooth" });
+  const ease = (t) => 1 - Math.pow(1 - t, 3);
+  const glide = (to, ms = 380) => {
+    cancelAnimationFrame(anim);
+    const from = box.scrollLeft, dist = to - from;
+    if (still || Math.abs(dist) < 1) { box.scrollLeft = to; tick(); wrap(); return; }
+    const t0 = performance.now(), dur = Math.min(520, Math.max(240, ms * Math.min(1.6, Math.abs(dist) / step)));
+    const frame = (t) => {
+      const k = Math.min(1, (t - t0) / dur);
+      box.scrollLeft = from + dist * ease(k); tick();
+      if (k < 1) anim = requestAnimationFrame(frame); else { anim = 0; wrap(); }
+    };
+    anim = requestAnimationFrame(frame);
+  };
+  const to = (i) => glide(Math.max(0, Math.min(cards.length - 1, i)) * step);
+  // geser dengan jari (sentuh & mouse); gulir vertikal halaman tetap jalan (touch-action: pan-y)
+  box.addEventListener("pointerdown", (e) => {
+    if (e.button > 0 || !e.isPrimary) return;
+    cancelAnimationFrame(anim); anim = 0;
+    drag = { x: e.clientX, y: e.clientY, sl: box.scrollLeft, id: e.pointerId, h: false, pts: [[e.clientX, performance.now()]] };
+    moved = false;
   });
+  box.addEventListener("pointermove", (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (!drag.h) {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+      if (Math.abs(dy) > Math.abs(dx)) { drag = null; return; }     // gerakan vertikal: biarkan halaman bergulir
+      drag.h = true; moved = true; try { box.setPointerCapture(e.pointerId); } catch {}
+    }
+    box.scrollLeft = drag.sl - dx; tick();
+    drag.pts.push([e.clientX, performance.now()]); if (drag.pts.length > 6) drag.pts.shift();
+  });
+  const release = (e) => {
+    if (!drag || (e && e.pointerId !== drag.id)) return;
+    const d = drag; drag = null;
+    if (!d.h) return;
+    const [a, b] = [d.pts[0], d.pts[d.pts.length - 1]], v = (b[0] - a[0]) / Math.max(1, b[1] - a[1]);   // px/ms
+    const cur = box.scrollLeft / step, base = Math.round(cur);
+    let i = Math.abs(v) > 0.35 ? (v < 0 ? Math.floor(cur) + 1 : Math.ceil(cur) - 1) : base;
+    if (Math.abs(v) > 1.4) i += v < 0 ? 1 : -1;                    // kibasan cepat: sampai 2 kartu
+    to(i);
+  };
+  box.addEventListener("pointerup", release); box.addEventListener("pointercancel", release); box.addEventListener("lostpointercapture", () => release());
+  box.addEventListener("dragstart", (e) => e.preventDefault());
+  box.addEventListener("click", (e) => {
+    if (moved) { e.preventDefault(); e.stopPropagation(); moved = false; return; }   // akhir geseran bukan ketukan
+    const c = e.target.closest(".cf-card"); if (!c || e.target.closest(".cv-re")) return;
+    if (c.classList.contains("on")) return;
+    e.preventDefault(); to(cards.indexOf(c));
+  });
+  addEventListener("resize", () => { if (!box.isConnected) return; measure(); box.scrollLeft = Math.round(box.scrollLeft / (step || 1)) * step; tick(); }, { passive: true });
   measure(); box.scrollLeft = loop * step; tick();
 }
 async function vHome() {
@@ -878,7 +919,7 @@ async function vDetail(src, id) {
     <button class="round-btn ${bell ? "on gold" : ""}" data-act="bell" aria-pressed="${bell}" aria-label="${bell ? "Matikan notifikasi" : "Nyalakan notifikasi chapter baru"}">${icon(bell ? "bellF" : "bell", 22)}</button>
     ${likeBtn(lk)}
   </div>
-  <div class="dt-tools">${fav ? `<button class="dt-chip${S.libItem(src, id)?.shelf ? " on" : ""}" data-act="shelf">${icon("folder", 16)}<span class="t1">${esc(S.libItem(src, id)?.shelf || "Simpan di rak")}</span></button>` : ""}<button class="dt-chip" data-act="migrate">${icon("swap", 16)}${fav ? "Pindah sumber" : "Sumber lain"}</button></div>
+  <div class="dt-tools">${fav ? `<button class="dt-chip${S.libItem(src, id)?.shelf ? " on" : ""}" data-act="shelf">${icon("folder", 16)}<span class="t1">${esc(S.libItem(src, id)?.shelf || "Simpan di rak")}</span></button>` : ""}<button class="dt-chip" data-act="migrate">${icon("swap", 16)}<span>${fav ? "Pindah sumber" : "Cari di sumber lain"}</span></button></div>
   ${m.tags?.length ? `<div class="tags">${m.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</div>` : ""}
   <p class="syn-h">Sinopsis <b>${esc(m.title)}</b></p>
   ${m.desc ? `<p class="desc ${descOpen ? "open" : ""}" data-act="desc">${esc(m.desc)}</p>` : `<p class="desc mu">Belum ada sinopsis dari sumber.</p>`}
@@ -1108,7 +1149,12 @@ async function vReader(src, id, chId) {
   setTimeout(() => {
     if (myR !== readerSeq || parse().name !== "reader" || $("#rd")) return;
     // layar "Memuat…" tampil diam (tanpa bar meluncur) supaya tidak terlihat seperti macet
-    view.innerHTML = shell(`<div class="r-pages">${loading(3, "sk-page")}</div>`).replace('class="reader ui enter"', 'class="reader ui"');
+    // layar tunggu yang sama dengan saat pindah chapter (dulu kerangka halaman abu-abu gelap yang tampak seperti
+    // kotak hitam bergaris di layar gelap)
+    const cd = cachedDetail(src, id), chN = cd?.chapters.find((c) => c.id === chId)?.ch ?? "";
+    view.innerHTML = shell(`<div class="r-pages"><div class="r-wait" role="status" aria-live="polite"><span class="rw-ring" aria-hidden="true"></span>
+      <b class="rw-t">${chN !== "" ? `Chapter ${esc(chN)}` : "Membuka chapter"}</b><span class="mu sm">Menyiapkan halaman…</span><span class="rw-bar" aria-hidden="true"><i></i></span></div></div>`)
+      .replace('class="reader ui enter"', 'class="reader ui"').replace("<b class=\"t1\">Memuat…</b>", `<b class="t1">${esc(cd?.manga?.title || "Memuat…")}</b>`);
     shellShown = true;
   }, 1200);
   // Pindah chapter di dalam pembaca (lanjut otomatis, tombol lanjut/sebelumnya, daftar chapter): bila chapter baru belum
