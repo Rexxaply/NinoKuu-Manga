@@ -400,6 +400,13 @@ export async function vChapters(src, id) {
   window.addEventListener("nk:kb", onKb);
   const guard = (e) => { if (Date.now() < guardUntil && !e.target.closest("#chbar")) { e.preventDefault(); e.stopPropagation(); } };
   document.addEventListener("click", guard, true);
+  // Keyboard masih terbuka lalu chapter langsung diketuk: jangan biarkan sentuhan itu melepas fokus kolom cari dulu.
+  // Dulu fokus lepas → kolom cari turun ke bawah & daftar bergeser sebelum jari diangkat, jadi ketukannya meleset
+  // dan chapter baru terbuka di ketukan kedua. Kini fokus ditahan; ketukan langsung membuka chapter (keyboard
+  // tertutup sendiri saat pindah ke pembaca).
+  const keep = (e) => { if (document.activeElement === inp && e.target.closest?.("#chl a.ch")) e.preventDefault(); };
+  document.addEventListener("pointerdown", keep, true);
+  document.addEventListener("mousedown", keep, true);
   inp.addEventListener("pointerdown", (e) => { if (document.activeElement !== inp) e.preventDefault(); });
   inp.addEventListener("click", () => { if (document.activeElement === inp) return; setFoc(true); try { inp.focus({ preventScroll: true }); } catch { inp.focus(); } });
   inp.addEventListener("focus", () => { if (!document.body.classList.contains("chfoc")) setFoc(true); });
@@ -419,7 +426,7 @@ export async function vChapters(src, id) {
   // chapter lama datang belakangan: gambar ulang daftar tanpa mengganggu pencarian & posisi gulir
   const onMore = (e) => { if (e.detail.key === src + "|" + id && parse().name === "chapters") { const y = window.scrollY; draw(); window.scrollTo(0, y); } };
   window.addEventListener("nk:chapters", onMore);
-  setCleanup(() => { io.disconnect(); window.removeEventListener("nk:chapters", onMore); window.removeEventListener("nk:kb", onKb); (vv || window).removeEventListener("resize", onVV); window.removeEventListener("touchstart", tstart); window.removeEventListener("touchmove", drop); window.removeEventListener("wheel", drop); document.removeEventListener("click", guard, true); document.body.classList.remove("chfoc"); });
+  setCleanup(() => { io.disconnect(); window.removeEventListener("nk:chapters", onMore); window.removeEventListener("nk:kb", onKb); (vv || window).removeEventListener("resize", onVV); window.removeEventListener("touchstart", tstart); window.removeEventListener("touchmove", drop); window.removeEventListener("wheel", drop); document.removeEventListener("click", guard, true); document.removeEventListener("pointerdown", keep, true); document.removeEventListener("mousedown", keep, true); document.body.classList.remove("chfoc"); });
   setActs({
     back: () => backTo(comicHref(src, id)),
     sort: () => { asc = !asc; shown = STEP; draw(); window.scrollTo({ top: 0, behavior: "smooth" }); },
