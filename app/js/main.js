@@ -1579,7 +1579,17 @@ async function vReader(src, id, chId) {
     } else if (ready) init = { x: 0, y: 0, w: 1, h: 1 };
     const name = ("ninokuu-" + title.slice(0, 40) + "-ch" + ch.ch + "-" + i).toLowerCase().replace(/[^a-z0-9.]+/g, "-").replace(/^-+|-+$/g, "");
     const txt = `${title} · Chapter ${ch.ch} — dibaca di Ninokuu`;
-    const run = async (fn) => { toast("Menyiapkan gambar…", 6000); try { await fn(); } catch (e) { toast(e?.message || "Gagal membagikan gambar", 4000); } };
+    const run = async (fn) => {
+      // layar hitam + cincin berputar sampai lembar bagikan HP muncul (gambar diunduh & dipotong dulu, bisa beberapa dtk)
+      const w = document.createElement("div"); w.className = "share-wait"; w.setAttribute("role", "status");
+      w.innerHTML = `<span class="rw-ring" aria-hidden="true"></span><b class="rw-t">Menyiapkan gambar…</b><span class="mu sm">Lembar bagikan akan muncul sebentar lagi</span>`;
+      document.body.append(w);
+      let t = 0;
+      const off = () => { clearTimeout(t); removeEventListener("nk:sharing", soon); document.removeEventListener("visibilitychange", off); removeEventListener("blur", off); w.classList.add("out"); setTimeout(() => w.remove(), 220); };
+      const soon = () => { t = setTimeout(off, 1200); document.addEventListener("visibilitychange", off, { once: true }); addEventListener("blur", off, { once: true }); };
+      addEventListener("nk:sharing", soon, { once: true });
+      try { await fn(); } catch (e) { toast(e?.message || "Gagal membagikan gambar", 4000); } finally { if (w.isConnected) off(); }
+    };
     openSheet(`<span class="sheet-ttl">Halaman ${i} dari ${total}</span><span class="sheet-prev">${esc(title)} · Chapter ${esc(ch.ch)}</span>
       ${ready ? `<img class="pg-prev" src="${esc(el.currentSrc)}" alt="Pratinjau halaman ${i}">` : ""}
       ${ready ? `<button class="sh-row" data-s="crop"><span class="redt">${icon("share", 19)}</span><span class="grow col"><b>Pilih bagian lalu bagikan</b><span class="mu xs">Mulai dari yang terlihat di layar, bisa melewati batas halaman</span></span></button>` : ""}
@@ -1590,7 +1600,8 @@ async function vReader(src, id, chId) {
         closeSheet();
         const urls = set.map((k) => $(`.r-img[data-i="${k}"]`, box).currentSrc);
         const c = await cropPick(urls, init, set.length > 1 ? `Halaman ${set[0]}–${set[set.length - 1]}` : `Halaman ${i}`);
-        if (c) run(() => DL.sharePages(set.map((k) => p.images[k - 1]), p.ref || "", name, txt, c));
+        const sizes = set.map((k) => { const x = $(`.r-img[data-i="${k}"]`, box); return [x.naturalWidth, x.naturalHeight]; });
+        if (c) run(() => DL.sharePages(set.map((k) => p.images[k - 1]), p.ref || "", name, txt, c, sizes));
       }
     });
     // jari masih menempel saat lembar ini muncul: tanpa ini tahanan berikutnya memblok teks di lembar (judul, tombol)
@@ -1675,6 +1686,37 @@ async function vReader(src, id, chId) {
   }, { passive: true });
   box.addEventListener("touchend", pinchEnd, { passive: true });
   box.addEventListener("touchcancel", pinchEnd, { passive: true });
+  // Geser satu jari saat diperbesar: digerakkan sendiri ke dua arah sekaligus (+ luncuran saat dilepas). WebView Android
+  // sering mengunci gulir ke satu sumbu (naik-turun) pada wadah yang panjang, sehingga di pojok gambar tidak bisa
+  // digeser ke samping ("nempel"). Selama diperbesar, gulir bawaan dimatikan (touch-action: none, lihat CSS).
+  let pan = null, panRaf = 0;
+  box.addEventListener("touchstart", (e) => {
+    cancelAnimationFrame(panRaf); panRaf = 0;
+    if (zoom <= 1.01 || e.touches.length !== 1) { pan = null; return; }
+    const t = e.touches[0], sc = slide ? zTarget()?.parentElement : box;
+    pan = sc ? { x: t.clientX, y: t.clientY, sc, vx: 0, vy: 0, t: performance.now() } : null;
+  }, { passive: true });
+  box.addEventListener("touchmove", (e) => {
+    if (!pan || pinch || e.touches.length !== 1) return;
+    const t = e.touches[0], dx = t.clientX - pan.x, dy = t.clientY - pan.y, now = performance.now(), dt = Math.max(1, now - pan.t);
+    if (e.cancelable) e.preventDefault();
+    pan.sc.scrollLeft -= dx; pan.sc.scrollTop -= dy;
+    pan.vx = (-dx / dt) * 0.7 + pan.vx * 0.3; pan.vy = (-dy / dt) * 0.7 + pan.vy * 0.3;
+    pan.x = t.clientX; pan.y = t.clientY; pan.t = now;
+  }, { passive: false });
+  box.addEventListener("touchend", (e) => {
+    if (!pan || e.touches.length) return;
+    const p = pan; pan = null;
+    if (performance.now() - p.t > 90 || Math.hypot(p.vx, p.vy) < 0.05) return;   // jari sudah berhenti → tanpa luncuran
+    let vx = p.vx, vy = p.vy, last = performance.now();
+    const step = (t) => {
+      const dt = Math.min(40, t - last); last = t;
+      p.sc.scrollLeft += vx * dt; p.sc.scrollTop += vy * dt;
+      const f = Math.pow(0.994, dt); vx *= f; vy *= f;
+      panRaf = Math.hypot(vx, vy) > 0.02 && zoom > 1.01 ? requestAnimationFrame(step) : 0;
+    };
+    panRaf = requestAnimationFrame(step);
+  }, { passive: true });
   // Gulir otomatis (mode Scroll): 1× / 2× / 3×. Selama jari menekan layar → berhenti; jari dilepas → lanjut lagi
   // dari posisi itu (juga setelah menggeser sendiri). Dimatikan lewat pilihan OFF.
   // Berhenti sendiri di akhir chapter; lanjut otomatis ke chapter berikutnya tetap memakai pengaturannya sendiri.

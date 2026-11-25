@@ -1479,6 +1479,8 @@ body[data-screen="reader"] .dl-pop { display: none; }
 
 /* zoom: layar bersih & terkunci di halaman (tidak memantul keluar tepi gambar) */
 .reader.zoomed .r-scroll, .reader.zoomed .r-slide { overscroll-behavior: none; }
+/* diperbesar: geser satu jari & cubit ditangani sendiri (lihat pan di vReader), gulir bawaan dimatikan */
+.reader.zoomed .r-scroll, .reader.zoomed .r-slide.zoomed-slide { touch-action: none; }
 
 /* Panel developer: peta API/domain */
 .gmap { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
@@ -1664,3 +1666,5 @@ body[data-screen="reader"] .dl-pop { display: none; }
 .crop-bar { display: flex; gap: 8px; padding: 12px 14px calc(env(safe-area-inset-bottom, 0px) + 12px); background: #0d1017; border-top: 1px solid rgba(255, 255, 255, .06); }
 .crop-bar .btn { flex: 1 1 0; min-height: 46px; justify-content: center; padding: 0 8px; font-size: 13.5px; }
 .sheet-host.nosel, .sheet-host.nosel * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.share-wait { position: fixed; inset: 0; z-index: 130; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px; text-align: center; background: rgba(0, 0, 0, .92); animation: fadeIn .15s ease; }
+.share-wait.out { opacity: 0; transition: opacity .2s; }

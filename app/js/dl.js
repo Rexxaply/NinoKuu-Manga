@@ -190,11 +190,13 @@ export async function sharePage(im, ref, name, text) {
 // Bagikan bagian pilihan dari beberapa halaman yang bersambung (panel bisa terbelah di batas 2 gambar).
 // ims: halaman berurutan; crop: pecahan { x, y, w, h } dari tumpukan halaman itu (semua dilebarkan sama, seperti di
 // pembaca). Dipotong dari berkas aslinya (bukan dari <img> di layar yang "tercemar" lintas situs) → JPEG.
-export async function sharePages(ims, ref, name, text, crop) {
+export async function sharePages(ims, ref, name, text, crop, sizes) {
   const bms = [];
   try {
-    for (const im of ims) { const { u8, type } = await bytesOf(im, ref); bms.push(await createImageBitmap(new Blob([u8], { type }))); }
-    const W = Math.max(...bms.map((b) => b.width)), hs = bms.map((b) => (b.height * W) / b.width), H = hs.reduce((a, b) => a + b, 0);
+    // ukuran tiap halaman dari gambar di layar → hanya halaman yang benar-benar kena pilihan yang diunduh, bersamaan
+    const W = Math.max(...sizes.map((z) => z[0])), hs = sizes.map((z) => (z[1] * W) / z[0]), H = hs.reduce((a, b) => a + b, 0);
+    let acc = 0; const need = hs.map((h) => { const a = acc; acc += h; return a + h > crop.y * H && a < (crop.y + crop.h) * H; });
+    (await Promise.all(ims.map(async (im, i) => (need[i] ? createImageBitmap(new Blob([(await bytesOf(im, ref)).u8])) : null)))).forEach((b) => bms.push(b));
     let sx = crop.x * W, sy = crop.y * H, sw = crop.w * W, sh = crop.h * H;
     const k = Math.min(1, 12000 / sh, 4096 / sw);                                  // batas ukuran kanvas HP
     const cv = document.createElement("canvas"); cv.width = Math.max(1, Math.round(sw * k)); cv.height = Math.max(1, Math.round(sh * k));
@@ -202,7 +204,7 @@ export async function sharePages(ims, ref, name, text, crop) {
     let top = 0;
     bms.forEach((bm, i) => {
       const h = hs[i], y0 = Math.max(sy, top), y1 = Math.min(sy + sh, top + h);
-      if (y1 > y0) {
+      if (bm && y1 > y0) {
         const f = bm.width / W;                                                     // skala tumpukan → gambar asli
         g.drawImage(bm, sx * f, (y0 - top) * f, sw * f, (y1 - y0) * f, 0, Math.round((y0 - sy) * k), cv.width, Math.round((y1 - y0) * k) + 1);
       }
@@ -211,7 +213,7 @@ export async function sharePages(ims, ref, name, text, crop) {
     const bl = await new Promise((r) => cv.toBlob(r, "image/jpeg", 0.92));
     if (!bl) throw new Error("Gagal memotong gambar");
     return shareBytes(new Uint8Array(await bl.arrayBuffer()), "image/jpeg", name, text);
-  } finally { bms.forEach((b) => b.close?.()); }
+  } finally { bms.forEach((b) => b?.close?.()); }
 }
 // APK: simpan di cache lalu lembar bagikan Android; web: Web Share API (file) atau unduh.
 async function shareBytes(u8, type, name, text) {
@@ -221,10 +223,12 @@ async function shareBytes(u8, type, name, text) {
   if (C?.isPluginAvailable?.("Filesystem") && C.isPluginAvailable("Share")) {
     const f = fs() || C.Plugins?.Filesystem || C.registerPlugin?.("Filesystem"), SH = C.Plugins?.Share || C.registerPlugin?.("Share");
     const { uri } = await f.writeFile({ path: "share/" + file, data: await b64(u8), directory: "CACHE", recursive: true });
+    dispatchEvent(new Event("nk:sharing"));                                          // layar tunggu boleh ditutup
     try { await SH.share({ title: text, text, files: [uri], dialogTitle: "Bagikan halaman" }); }
     catch (e) { if (!/cancel/i.test(e?.message || "")) throw e; }
     return;
   }
+  dispatchEvent(new Event("nk:sharing"));
   const blob = new Blob([u8], { type }), fl = new File([blob], file, { type });
   if (navigator.canShare?.({ files: [fl] })) { try { await navigator.share({ files: [fl], text }); } catch (e) { if (e?.name !== "AbortError") throw e; } return; }
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = file; document.body.append(a); a.click(); a.remove();
