@@ -466,6 +466,9 @@ function setSrc(v) {
 }
 // hasil Pencarian yang sudah dimuat: kembali dari halaman komik → daftar & posisi gulir utuh
 let sMem = null;
+// hasil pencarian terakhir per sumber/kata kunci/filter (10 menit, maks. 12): pindah sumber bolak-balik langsung tampil
+const sCache = new Map();
+const sCachePut = (m) => { sCache.delete(m.key); sCache.set(m.key, m); if (sCache.size > 12) sCache.delete(sCache.keys().next().value); };
 // Shinigami & WestManga mencari per kata ("Genius Hitter" ikut memunculkan semua judul berisi "Genius"). Hasilnya
 // disaring di aplikasi: setiap kata yang dicari harus ada sebagai awal kata di judul atau judul alternatif, seperti
 // pencarian Komiku/Kiryuu/BacaKomik yang sudah tepat sasaran.
@@ -510,6 +513,13 @@ async function vSearch(type) {
   };
   const load = async (more = false) => {
     const my = ++seq;
+    const hit = !more && sCache.get(sKey());
+    if (hit && Date.now() - hit.at < 10 * 60e3) {
+      ({ items, page } = hit); sMem = hit;
+      const nf0 = (sState.status ? 1 : 0) + sState.genres.length;
+      $("#sinfo").textContent = (sState.q ? `Hasil “${sState.q}” di ${srcName(sState.src)}` : `Terbaru di ${srcName(sState.src)}${sState.type ? " · " + typeName(sState.type) : ""}`) + (nf0 ? ` · ${nf0} filter` : "");
+      draw(); $("#sMore").hidden = !hit.hasNext; return;
+    }
     if (!more) { page = 1; $("#sres").innerHTML = loading(6, "sk-lrow"); $("#sMore").hidden = true; }
     const nf = (sState.status ? 1 : 0) + sState.genres.length;
     $("#sinfo").textContent = (sState.q ? `Hasil “${sState.q}” di ${srcName(sState.src)}` : `Terbaru di ${srcName(sState.src)}${sState.type ? " · " + typeName(sState.type) : ""}`) + (nf ? ` · ${nf} filter` : "");
@@ -524,7 +534,7 @@ async function vSearch(type) {
       }
       if (my !== seq || !$("#sres")) return;
       items = more ? items.concat(got) : got;
-      sMem = { key: sKey(), items, page, hasNext: !!r.hasNext, at: Date.now() };
+      sMem = { key: sKey(), items, page, hasNext: !!r.hasNext, at: Date.now() }; sCachePut(sMem);
       draw();
       $("#sMore").hidden = !r.hasNext;
     } catch (e) { if (my === seq && $("#sres")) $("#sres").innerHTML = errBox(e); }
@@ -537,12 +547,14 @@ async function vSearch(type) {
   const saveQ = (q) => { q = String(q || "").trim(); if (q.length < 2) return; api.lsSet(HK, [q, ...shList().filter((x) => x.toLowerCase() !== q.toLowerCase())].slice(0, 10)); };
   const pop = $("#shpop");
   const drawHist = () => {
-    const h = shList();
-    pop.innerHTML = h.length ? `<div class="shp-h"><span class="cap">Pencarian terakhir</span><button type="button" class="link-red sm" data-shall>Hapus semua</button></div>
+    // kolom kosong: semua riwayat; kolom berisi: riwayat yang memuat teks itu (selain yang persis sama)
+    const v = normQ(inp.value), all = shList();
+    const h = v ? all.filter((q) => normQ(q).includes(v) && normQ(q) !== v).slice(0, 5) : all;
+    pop.innerHTML = h.length ? `<div class="shp-h"><span class="cap">Pencarian terakhir</span>${v ? "" : `<button type="button" class="link-red sm" data-shall>Hapus semua</button>`}</div>
       ${h.map((q) => `<div class="shp-row" role="option"><button type="button" class="shp-q" data-sh="${esc(q)}"><span class="mu">${icon("clock", 16)}</span><span class="t1">${esc(q)}</span></button><button type="button" class="shp-x" data-shx="${esc(q)}" aria-label="Hapus ${esc(q)} dari riwayat">${icon("x", 14, 2.2)}</button></div>`).join("")}` : "";
     return h.length > 0;
   };
-  const showHist = (on) => pop.classList.toggle("on", on && document.activeElement === inp && !inp.value && drawHist());
+  const showHist = (on) => pop.classList.toggle("on", on && document.activeElement === inp && drawHist());
   pop.addEventListener("pointerdown", (e) => e.preventDefault());          // kolom cari tetap fokus saat panel diketuk
   pop.addEventListener("click", (e) => {
     const b = e.target.closest("[data-sh], [data-shx], [data-shall]"); if (!b) return;
@@ -2323,7 +2335,7 @@ api.onAuth((s) => {
 if (S.loggedIn()) { S.loadProfile().catch(() => {}); S.pull().catch(() => {}); }
 // perubahan data beruntun (mis. 12 komik dicek chapter terbarunya) digabung jadi 1 gambar ulang per frame
 let favSubRaf = 0;
-S.subscribe(() => { if (route.name !== "fav" || favSubRaf) return; favSubRaf = requestAnimationFrame(() => { favSubRaf = 0; if (route.name === "fav" && !document.activeElement?.matches?.("#fq")) vFav(undefined, true); }); });
+S.subscribe(() => { if (route.name !== "fav" || favSubRaf) return; favSubRaf = requestAnimationFrame(() => { favSubRaf = 0; if (route.name === "fav" && !document.activeElement?.matches?.("#fq, #fbq")) vFav(undefined, true); }); });
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") S.flushHistory(); });
 // Android WebView kadang tidak menggambar ulang area gulir (halaman komik) setelah aplikasi dibuka lagi dari
 // latar belakang: layar gelap kosong sampai digeser. Geser 1 px lalu kembalikan untuk memaksa gambar ulang.

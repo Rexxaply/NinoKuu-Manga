@@ -16,12 +16,21 @@ export const state = {
   // (menggantikan chapterEnd "menu"/"auto" sejak 1.8.3; bawaan 3 detik)
   settings: { readMode: "scroll", updView: "list", searchView: "grid", autoHide: true, screenMode: "standard", nextDelay: "3", ...api.lsGet("settings", {}) },
 };
-const saveLocal = () => {
+// Menulis koleksi + riwayat ke penyimpanan HP itu berat (seluruh data diubah ke teks & riwayat diurutkan) dan dulu
+// terjadi di setiap ganti halaman saat membaca. Kini digabung: paling sering sekali per 400 ms, dan langsung ditulis
+// saat aplikasi ke latar belakang / ditutup, jadi tidak ada yang hilang.
+const writeLocal = () => {
+  saveT = 0;
   api.lsSet("lib", Object.fromEntries(state.lib));
   api.lsSet("hist", Object.fromEntries([...state.hist.entries()].sort((a, b) => (b[1].read_at || "").localeCompare(a[1].read_at || "")).slice(0, 300)));
   api.lsSet("profile", state.profile);
   api.lsSet("settings", state.settings);
 };
+let saveT = 0;
+const saveLocal = () => { if (!saveT) saveT = setTimeout(writeLocal, 400); };
+export const flushLocal = () => { if (saveT) { clearTimeout(saveT); writeLocal(); } };
+addEventListener("pagehide", flushLocal);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushLocal(); });
 export const setSetting = (k, v) => { state.settings[k] = v; saveLocal(); emit(); };
 export const loggedIn = () => !!api.currentUser();
 

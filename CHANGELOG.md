@@ -12,6 +12,20 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
+## 1.10.3 — belum dirilis
+
+### Ringkasan
+- Tombol Muat lagi tidak lagi muncul saat hasil pencarian sudah habis
+- Riwayat pencarian juga muncul saat mengetik, disaring sesuai teks yang diketik
+- Aplikasi lebih ringan saat membaca, berpindah halaman, dan berganti sumber di Pencarian
+
+### Detail
+- Muat lagi: penyebab sebenarnya `.btn { display: inline-flex }` menimpa atribut `hidden` (server sudah mengirim `hasNext: false`); ditambah `.btn[hidden] { display: none }` (juga untuk tombol Coba lagi di layar tunggu pembaca)
+- Riwayat pencarian: tampil juga saat kolom berisi (maks. 5 yang memuat teks itu, selain yang persis sama); dulu hanya saat kolom kosong
+- Kinerja: `saveLocal` (seluruh koleksi + riwayat diubah ke JSON, riwayat diurutkan) dulu berjalan di setiap ganti halaman pembaca dan setiap pembaruan koleksi; kini digabung paling sering 1× per 400 ms dan langsung ditulis saat `pagehide`/aplikasi ke latar belakang (`flushLocal`). Lencana skor sampul tanpa `backdrop-filter` (puluhan blur per halaman berat di WebView). Pencarian: cache hasil per sumber/kata kunci/filter (`sCache`, 10 menit, 12 entri) sehingga pindah sumber bolak-balik langsung tampil tanpa memuat ulang
+
+---
+
 ## 1.10.2 — 25 Nov 2026
 
 ### Ringkasan
