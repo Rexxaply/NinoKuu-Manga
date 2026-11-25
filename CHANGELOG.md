@@ -12,7 +12,7 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
-## 1.10.5 — belum dirilis
+## 1.10.5 — 25 Nov 2026
 
 ### Ringkasan
 - Baru: indikator gulir di tepi kanan pembaca bisa dipegang dan diseret untuk melompat cepat di dalam chapter
