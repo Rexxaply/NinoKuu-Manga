@@ -181,21 +181,40 @@ async function pageBytes(im, ref) {
 }
 // Bagikan satu halaman chapter (tekan lama gambar di pembaca). APK: simpan di cache lalu lembar bagikan Android;
 // web: Web Share API (file) atau unduh.
-export async function sharePage(im, ref, name, text, crop = null) {
-  let { u8, type } = im.local ? await (async () => { const r = await fetch(im.u); return { u8: new Uint8Array(await r.arrayBuffer()), type: r.headers.get("content-type") || "image/jpeg" }; })()
-    : await retry(() => pageBytes(im, ref), 2);
-  // hanya bagian yang dipilih (pecahan 0–1 dari lebar/tinggi gambar): dipotong dari berkas aslinya (bukan dari <img> di
-  // layar, yang bisa "tercemar" lintas situs), lalu disimpan sebagai JPEG
-  if (crop) {
-    const bm = await createImageBitmap(new Blob([u8], { type }));
-    const sx = Math.round(crop.x * bm.width), sy = Math.round(crop.y * bm.height);
-    const sw = Math.max(1, Math.min(bm.width - sx, Math.round(crop.w * bm.width))), sh = Math.max(1, Math.min(bm.height - sy, Math.round(crop.h * bm.height)));
-    const cv = document.createElement("canvas"); cv.width = sw; cv.height = sh;
-    const g = cv.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, sw, sh); g.drawImage(bm, sx, sy, sw, sh, 0, 0, sw, sh); bm.close?.();
+const bytesOf = (im, ref) => (im.local ? (async () => { const r = await fetch(im.u); return { u8: new Uint8Array(await r.arrayBuffer()), type: r.headers.get("content-type") || "image/jpeg" }; })()
+  : retry(() => pageBytes(im, ref), 2));
+export async function sharePage(im, ref, name, text) {
+  const { u8, type } = await bytesOf(im, ref);
+  return shareBytes(u8, type, name, text);
+}
+// Bagikan bagian pilihan dari beberapa halaman yang bersambung (panel bisa terbelah di batas 2 gambar).
+// ims: halaman berurutan; crop: pecahan { x, y, w, h } dari tumpukan halaman itu (semua dilebarkan sama, seperti di
+// pembaca). Dipotong dari berkas aslinya (bukan dari <img> di layar yang "tercemar" lintas situs) → JPEG.
+export async function sharePages(ims, ref, name, text, crop) {
+  const bms = [];
+  try {
+    for (const im of ims) { const { u8, type } = await bytesOf(im, ref); bms.push(await createImageBitmap(new Blob([u8], { type }))); }
+    const W = Math.max(...bms.map((b) => b.width)), hs = bms.map((b) => (b.height * W) / b.width), H = hs.reduce((a, b) => a + b, 0);
+    let sx = crop.x * W, sy = crop.y * H, sw = crop.w * W, sh = crop.h * H;
+    const k = Math.min(1, 12000 / sh, 4096 / sw);                                  // batas ukuran kanvas HP
+    const cv = document.createElement("canvas"); cv.width = Math.max(1, Math.round(sw * k)); cv.height = Math.max(1, Math.round(sh * k));
+    const g = cv.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, cv.width, cv.height); g.imageSmoothingQuality = "high";
+    let top = 0;
+    bms.forEach((bm, i) => {
+      const h = hs[i], y0 = Math.max(sy, top), y1 = Math.min(sy + sh, top + h);
+      if (y1 > y0) {
+        const f = bm.width / W;                                                     // skala tumpukan → gambar asli
+        g.drawImage(bm, sx * f, (y0 - top) * f, sw * f, (y1 - y0) * f, 0, Math.round((y0 - sy) * k), cv.width, Math.round((y1 - y0) * k) + 1);
+      }
+      top += h;
+    });
     const bl = await new Promise((r) => cv.toBlob(r, "image/jpeg", 0.92));
     if (!bl) throw new Error("Gagal memotong gambar");
-    u8 = new Uint8Array(await bl.arrayBuffer()); type = "image/jpeg";
-  }
+    return shareBytes(new Uint8Array(await bl.arrayBuffer()), "image/jpeg", name, text);
+  } finally { bms.forEach((b) => b.close?.()); }
+}
+// APK: simpan di cache lalu lembar bagikan Android; web: Web Share API (file) atau unduh.
+async function shareBytes(u8, type, name, text) {
   const ext = /png/i.test(type) ? "png" : /webp/i.test(type) ? "webp" : /gif/i.test(type) ? "gif" : "jpg";
   const file = `${name}.${ext}`;
   const C = N.isApp ? window.Capacitor : null;

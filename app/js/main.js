@@ -1162,22 +1162,30 @@ let readerSeq = 0;
 // Memilih bagian gambar untuk dibagikan: gambar selebar layar (bisa digulir), kotak pilihan dengan garis atas/bawah/
 // kiri/kanan yang bisa diseret, kotak bisa digeser utuh. Hasil: pecahan { x, y, w, h } dari gambar, atau null (batal).
 let cropClose = null;
-function cropPick(srcUrl, init, label) {
+function cropPick(srcUrls, init, label) {
   return new Promise((done) => {
     const host = document.createElement("div");
     host.className = "crop-host"; host.setAttribute("role", "dialog"); host.setAttribute("aria-label", "Pilih bagian gambar");
     host.innerHTML = `<div class="crop-top"><b>Pilih bagian · ${esc(label)}</b><span class="mu xs">Seret garis untuk mengatur, seret kotak untuk memindahkan</span></div>
-  <div class="crop-sc"><div class="crop-wrap"><img class="crop-img" src="${esc(srcUrl)}" alt="" draggable="false">
+  <div class="crop-sc"><div class="crop-wrap">${srcUrls.map((u) => `<img class="crop-img" src="${esc(u)}" alt="" draggable="false">`).join("")}
     <div class="crop-box"><i class="ch-t"></i><i class="ch-b"></i><i class="ch-l"></i><i class="ch-r"></i></div></div></div>
   <div class="crop-bar"><button class="btn ghost" data-c="no">Batal</button><button class="btn ghost" data-c="all">Seluruh</button><button class="btn primary" data-c="ok">${icon("share", 17)}Bagikan</button></div>`;
     document.body.append(host);
-    const sc = $(".crop-sc", host), wrap = $(".crop-wrap", host), boxEl = $(".crop-box", host), img = $(".crop-img", host);
+    const sc = $(".crop-sc", host), wrap = $(".crop-wrap", host), boxEl = $(".crop-box", host), imgs = $$(".crop-img", host);
+    host.addEventListener("selectstart", (e) => e.preventDefault()); host.addEventListener("contextmenu", (e) => e.preventDefault());
     let c = { ...init };
     if (c.h > 0.98 && c.w > 0.98) c = { x: 0, y: 0, w: 1, h: 1 };
     const paint = () => { boxEl.style.left = c.x * 100 + "%"; boxEl.style.top = c.y * 100 + "%"; boxEl.style.width = c.w * 100 + "%"; boxEl.style.height = c.h * 100 + "%"; };
     paint();
     const center = () => { const H = wrap.offsetHeight; sc.scrollTop = Math.max(0, (c.y + c.h / 2) * H - sc.clientHeight / 2); };
-    if (img.complete) center(); else img.addEventListener("load", center, { once: true });
+    // pilihan awal (bagian yang terlihat di pembaca) muat utuh di layar, garis atas & bawahnya langsung terlihat:
+    // gambar diperkecil secukupnya (paling kecil setengah lebar layar)
+    const fit = () => {
+      const R = wrap.offsetHeight / (wrap.offsetWidth || 1), room = sc.clientHeight - 56, full = wrap.parentElement.clientWidth - 36;
+      if (R > 0 && c.h * R * full > room) wrap.style.width = Math.max(full * 0.5, room / (c.h * R)) + "px";
+      center();
+    };
+    Promise.all(imgs.map((x) => (x.complete ? 0 : new Promise((r) => { x.onload = x.onerror = r; })))).then(fit);
     const finish = (v) => { cropClose = null; host.classList.add("out"); setTimeout(() => host.remove(), 200); done(v); };
     cropClose = () => finish(null);
     host.addEventListener("click", (e) => { const b = e.target.closest("[data-c]"); if (!b) return;
@@ -1551,30 +1559,42 @@ async function vReader(src, id, chId) {
   // Tekan lama satu gambar (±0,55 dtk, jari tidak bergeser) → lembar "Bagikan gambar ini" lewat menu bagikan HP
   let lp = null, lpFired = 0;
   const pageSheet = (i) => {
+    try { getSelection()?.removeAllRanges(); } catch {}
     const im = p.images[i - 1]; if (!im) return;
     const el = $(`.r-img[data-i="${i}"]`, box), title = d.manga?.title || "";
-    const ready = !!el?.currentSrc && el.complete && el.naturalWidth > 0;
-    // bagian halaman yang sedang terlihat di layar = pilihan awal saat memilih bagian
-    let init = { x: 0, y: 0, w: 1, h: 1 };
-    if (ready) {
-      const r = el.getBoundingClientRect(), vb = box.getBoundingClientRect();
-      const t = Math.max(r.top, vb.top), bt = Math.min(r.bottom, vb.bottom);
-      if (bt > t && r.height > 0) init = { x: 0, y: (t - r.top) / r.height, w: 1, h: (bt - t) / r.height };
-    }
+    const ok = (x) => !!x && !!x.currentSrc && x.complete && x.naturalWidth > 0 && !x.classList.contains("fail");
+    const ready = ok(el);
+    // Panel bisa terbelah di batas 2 gambar: mode gulir ikut menyertakan halaman sebelum & sesudahnya (yang sudah
+    // termuat), ditumpuk seperti di pembaca. Pilihan awal = persis bagian yang sedang terlihat di layar.
+    let set = ready ? [i] : [], init = { x: 0, y: 0, w: 1, h: 1 };
+    if (ready && !slide) {
+      const pe = $(`.r-img[data-i="${i - 1}"]`, box), ne = $(`.r-img[data-i="${i + 1}"]`, box);
+      if (ok(pe)) set.unshift(i - 1); if (ok(ne)) set.push(i + 1);
+      const els = set.map((k) => $(`.r-img[data-i="${k}"]`, box)), rs = els.map((x) => x.getBoundingClientRect());
+      const H = rs.reduce((a, r) => a + r.height, 0), vb = box.getBoundingClientRect();
+      // posisi dalam tumpukan (tanpa celah di antara gambar, mis. tombol gagal)
+      const at = (y) => { let acc = 0; for (const r of rs) { if (y <= r.bottom) return acc + Math.max(0, y - r.top); acc += r.height; } return acc; };
+      const t = at(Math.max(vb.top, rs[0].top)), bt = at(Math.min(vb.bottom, rs[rs.length - 1].bottom));
+      if (H > 0 && bt > t) init = { x: 0, y: t / H, w: 1, h: (bt - t) / H };
+    } else if (ready) init = { x: 0, y: 0, w: 1, h: 1 };
     const name = ("ninokuu-" + title.slice(0, 40) + "-ch" + ch.ch + "-" + i).toLowerCase().replace(/[^a-z0-9.]+/g, "-").replace(/^-+|-+$/g, "");
-    const go = async (crop) => {
-      toast("Menyiapkan gambar…", 6000);
-      try { await DL.sharePage(im, p.ref || "", name, `${title} · Chapter ${ch.ch} — dibaca di Ninokuu`, crop); }
-      catch (e) { toast(e?.message || "Gagal membagikan gambar", 4000); }
-    };
+    const txt = `${title} · Chapter ${ch.ch} — dibaca di Ninokuu`;
+    const run = async (fn) => { toast("Menyiapkan gambar…", 6000); try { await fn(); } catch (e) { toast(e?.message || "Gagal membagikan gambar", 4000); } };
     openSheet(`<span class="sheet-ttl">Halaman ${i} dari ${total}</span><span class="sheet-prev">${esc(title)} · Chapter ${esc(ch.ch)}</span>
       ${ready ? `<img class="pg-prev" src="${esc(el.currentSrc)}" alt="Pratinjau halaman ${i}">` : ""}
-      ${ready ? `<button class="sh-row" data-s="crop"><span class="redt">${icon("share", 19)}</span><span class="grow col"><b>Pilih bagian lalu bagikan</b><span class="mu xs">Atur sendiri panel mana yang diambil</span></span></button>` : ""}
+      ${ready ? `<button class="sh-row" data-s="crop"><span class="redt">${icon("share", 19)}</span><span class="grow col"><b>Pilih bagian lalu bagikan</b><span class="mu xs">Mulai dari yang terlihat di layar, bisa melewati batas halaman</span></span></button>` : ""}
       <button class="sh-row" data-s="share"><span class="redt">${icon("share", 19)}</span><span class="grow">Bagikan seluruh halaman</span></button>`,
     async (b) => {
-      if (b.dataset.s === "share") { closeSheet(); go(null); }
-      else if (b.dataset.s === "crop") { closeSheet(); const c = await cropPick(el.currentSrc, init, `Halaman ${i}`); if (c) go(c); }
+      if (b.dataset.s === "share") { closeSheet(); run(() => DL.sharePage(im, p.ref || "", name, txt)); }
+      else if (b.dataset.s === "crop") {
+        closeSheet();
+        const urls = set.map((k) => $(`.r-img[data-i="${k}"]`, box).currentSrc);
+        const c = await cropPick(urls, init, set.length > 1 ? `Halaman ${set[0]}–${set[set.length - 1]}` : `Halaman ${i}`);
+        if (c) run(() => DL.sharePages(set.map((k) => p.images[k - 1]), p.ref || "", name, txt, c));
+      }
     });
+    // jari masih menempel saat lembar ini muncul: tanpa ini tahanan berikutnya memblok teks di lembar (judul, tombol)
+    sheetEl?.classList.add("nosel"); sheetEl?.addEventListener("selectstart", (e) => e.preventDefault());
   };
   const lpCancel = () => { if (lp) { clearTimeout(lp.t); lp = null; } };
   box.addEventListener("pointerdown", (e) => {
