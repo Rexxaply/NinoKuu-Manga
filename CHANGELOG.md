@@ -12,7 +12,7 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
-## 1.10.3 — belum dirilis
+## 1.10.3 — 25 Nov 2026
 
 ### Ringkasan
 - Tombol Muat lagi tidak lagi muncul saat hasil pencarian sudah habis
