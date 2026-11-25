@@ -12,7 +12,7 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
-## 1.10.4 — belum dirilis
+## 1.10.4 — 25 Nov 2026
 
 ### Ringkasan
 - Tombol Muat lagi di pencarian Shinigami dan WestManga tidak lagi muncul bila hasil yang cocok sudah habis
