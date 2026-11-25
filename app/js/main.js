@@ -1180,10 +1180,33 @@ async function vReader(src, id, chId) {
       const len = Math.max(36, Math.round(track * H / S2)), y = Math.round((track - len) * Math.min(1, box.scrollTop / (S2 - H)));
       th.style.height = len + "px"; th.style.transform = `translate3d(0, ${y}px, 0)`;
     };
+    let sbDrag = null;
+    const sbHide = (ms) => { clearTimeout(sbT); sbT = setTimeout(() => { if (!sbDrag) sb.classList.remove("on"); }, ms); };
     box.addEventListener("scroll", () => {
       if (!sbRaf) sbRaf = requestAnimationFrame(sbDraw);
-      sb.classList.add("on"); clearTimeout(sbT); sbT = setTimeout(() => sb.classList.remove("on"), 900);
+      sb.classList.add("on"); sbHide(sbDrag ? 0 : 1400);
     }, { passive: true });
+    // Indikator bisa dipegang & diseret (gulir cepat): hanya saat sedang tampil (setelah halaman bergerak), jadi ketukan di
+    // tepi kanan saat membaca biasa tidak tertangkap. Saat dipegang indikator membesar & berwarna; posisi jari di jalur
+    // = posisi di chapter.
+    th.addEventListener("pointerdown", (e) => {
+      if (!sb.classList.contains("on")) return;
+      e.preventDefault(); e.stopPropagation();
+      const H = box.clientHeight, S2 = box.scrollHeight, track = sb.clientHeight, len = th.offsetHeight;
+      if (S2 <= H + 4 || track <= len) return;
+      sbDrag = { y: e.clientY, top: box.scrollTop, k: (S2 - H) / (track - len) };
+      seeking = true; sb.classList.add("on", "drag"); clearTimeout(sbT);
+      try { th.setPointerCapture(e.pointerId); } catch {}
+      navigator.vibrate?.(8);
+    });
+    th.addEventListener("pointermove", (e) => {
+      if (!sbDrag) return;
+      e.preventDefault();
+      box.scrollTop = sbDrag.top + (e.clientY - sbDrag.y) * sbDrag.k;
+    });
+    const sbEnd = () => { if (!sbDrag) return; sbDrag = null; seeking = false; quietUntil = Date.now() + 400; sb.classList.remove("drag"); sbHide(1400); };
+    th.addEventListener("pointerup", sbEnd); th.addEventListener("pointercancel", sbEnd); th.addEventListener("lostpointercapture", sbEnd);
+    th.addEventListener("click", (e) => e.stopPropagation());
   }
   box.addEventListener("scroll", () => {
     // chapter lama yang sedang digeser keluar (salinan) / pembaca yang sudah ditutup: jangan ikut menyimpan posisi,

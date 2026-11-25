@@ -1418,7 +1418,12 @@ body.is-app.nk-fs { --sat: env(safe-area-inset-top, 0px); }
 .r-sb.on { opacity: 1; transition: opacity .12s ease; }
 .r-sb i { position: absolute; left: 0; top: 0; width: 3.5px; height: 40px; border-radius: 2px; will-change: transform;
   background: rgba(255, 255, 255, .78); box-shadow: 0 0 0 .5px rgba(0, 0, 0, .35), 0 1px 3px rgba(0, 0, 0, .25); }
-@media (prefers-reduced-motion: reduce) { .r-sb, .r-sb.on { transition: none; } }
+/* bisa dipegang & diseret saat tampil: area sentuh lebar (::before) di sekitar indikator; saat diseret membesar & merah */
+.r-sb.on i { pointer-events: auto; touch-action: none; cursor: grab; }
+.r-sb i::before { content: ""; position: absolute; top: -18px; bottom: -18px; right: -12px; width: 44px; }
+.r-sb i { transition: width .18s cubic-bezier(.32, .72, 0, 1), left .18s cubic-bezier(.32, .72, 0, 1), background-color .18s; }
+.r-sb.drag i { left: -4.5px; width: 8px; border-radius: 4px; background: var(--red); box-shadow: 0 0 0 .5px rgba(0, 0, 0, .35), 0 2px 8px rgba(0, 0, 0, .4); cursor: grabbing; }
+@media (prefers-reduced-motion: reduce) { .r-sb, .r-sb.on, .r-sb i { transition: none; } }
 
 /* ===== unduhan: kartu melayang kiri bawah (pasangan pil +EXP) & bar di baris Lainnya ===== */
 .dl-pop { position: fixed; z-index: 129; left: 14px; bottom: calc(96px + env(safe-area-inset-bottom)); width: min(272px, calc(100vw - 28px)); display: flex; align-items: center; gap: 10px;

@@ -12,6 +12,16 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
+## 1.10.5 — belum dirilis
+
+### Ringkasan
+- Baru: indikator gulir di tepi kanan pembaca bisa dipegang dan diseret untuk melompat cepat di dalam chapter
+
+### Detail
+- Pembaca (mode gulir): `.r-sb i` bisa dipegang selama indikator tampil (setelah halaman bergerak), area sentuh 44 px; saat diseret membesar (8 px, merah), getar singkat, posisi jari di jalur = posisi di chapter (`scrollTop` dihitung dari rasio jalur), bilah atas/bawah tidak ikut tersembunyi-tampil (`seeking`). Ketukan di tepi kanan saat indikator tersembunyi tetap untuk membaca biasa; tombol bilah atas tetap di atas (z-index 6). Indikator kini bertahan 1,4 dtk setelah berhenti (dulu 0,9) supaya sempat dipegang. Diuji di Chrome mobile: seret 150 px → gulir ±3.300 px
+
+---
+
 ## 1.10.4 — 25 Nov 2026
 
 ### Ringkasan
