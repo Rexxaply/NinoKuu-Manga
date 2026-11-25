@@ -238,8 +238,11 @@ body[data-screen="reader"] { background: #0A0A0A; overflow: hidden; }
 .r-img[src] { min-height: 0; }
 /* halaman yang belum dimuat: tinggi sementara 1 layar, supaya hanya halaman di dekat layar yang diunduh */
 .r-scroll .r-img.wait { min-height: 0; aspect-ratio: var(--ar, .46); }
-/* halaman yang belum selesai diunduh: bukan blok hitam kosong, tapi tanda sedang memuat di tengahnya */
-.r-img.wait { background: #141414 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='70' viewBox='0 0 160 70'%3E%3Cg fill='none' stroke-width='3'%3E%3Ccircle cx='80' cy='20' r='14' stroke='%23ffffff' stroke-opacity='.12'/%3E%3Cpath d='M80 6a14 14 0 0 1 14 14' stroke='%23E5383B' stroke-linecap='round'%3E%3CanimateTransform attributeName='transform' type='rotate' from='0 80 20' to='360 80 20' dur='.9s' repeatCount='indefinite'/%3E%3C/path%3E%3C/g%3E%3Ctext x='80' y='60' text-anchor='middle' font-family='sans-serif' font-size='12' fill='%23ffffff' fill-opacity='.45'%3EMemuat halaman%E2%80%A6%3C/text%3E%3C/svg%3E") no-repeat center / 160px 70px; }
+/* halaman yang belum selesai diunduh: bukan blok hitam kosong, tapi tanda sedang memuat yang berdenyut. Denyutnya
+   animasi CSS opacity (jalan di GPU, selalu bergerak); dulu cincin berputar di dalam SVG latar, yang di WebView baru
+   bergerak setelah layar digambar ulang (mis. diketuk 2×) */
+.r-img.wait { background: #141414 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='70' viewBox='0 0 160 70'%3E%3Cg fill='none' stroke-width='3'%3E%3Ccircle cx='80' cy='20' r='14' stroke='%23ffffff' stroke-opacity='.14'/%3E%3Cpath d='M80 6a14 14 0 0 1 14 14' stroke='%23E5383B' stroke-linecap='round'/%3E%3C/g%3E%3Ctext x='80' y='60' text-anchor='middle' font-family='sans-serif' font-size='12' fill='%23ffffff' fill-opacity='.5'%3EMemuat halaman%E2%80%A6%3C/text%3E%3C/svg%3E") no-repeat center / 160px 70px; animation: rWait 1.1s ease-in-out infinite; }
+@keyframes rWait { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 .r-endtxt { height: 200px; display: flex; align-items: center; justify-content: center; }
 .r-slides { position: absolute; inset: 0; display: flex; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; overscroll-behavior: contain; scrollbar-width: none; }
 .r-slides::-webkit-scrollbar { display: none; }

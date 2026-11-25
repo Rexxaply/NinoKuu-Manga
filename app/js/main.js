@@ -1750,7 +1750,7 @@ async function vReader(src, id, chId) {
     { root: box, rootMargin: slide ? "0px 100%" : "100% 0px 400% 0px" });
   $$(".r-img[data-src]", box).forEach((im) => lazyIo.observe(im));
   // Gambar macet: tidak selesai & tidak gagal (server situs menggantung, tidak pernah memberi galat). Halaman di dekat
-  // posisi baca yang > 8 dtk belum tampil dicoba lewat jalur lain (APK: jaringan HP; lalu proxy), lalu dimuat ulang,
+  // posisi baca yang > 8 dtk belum tampil dicoba lewat jalur lain (APK: jaringan HP), lalu dimuat ulang,
   // maksimal 3×. Dulu halaman seperti ini tetap hitam selamanya, bahkan setelah "Muat ulang chapter".
   $$(".r-img", box).forEach((im) => { if (!im.dataset.src && !im.dataset.t0) im.dataset.t0 = String(Date.now()); });
   const stuckT = setInterval(() => {
@@ -1763,13 +1763,12 @@ async function vReader(src, id, chId) {
       if (!t0 || now - t0 < 8000 || n >= 3) continue;
       im.dataset.wd = String(n + 1); im.dataset.t0 = String(now);
       if (!n) N.logDev("img", `halaman ${i} macet > 8 dtk, dicoba jalur lain`, `${src} · ${(im.dataset.o || "").slice(0, 120)}`);
-      N.imgFallback(im).then((ok) => {
-        if (ok || !im.isConnected) return;
-        const u = im.dataset.o; if (!u) return;
-        // ulang dari awal: alamat langsung diberi penanda supaya tidak memakai permintaan lama yang menggantung
-        const busted = u === im.dataset.d ? u + (u.includes("?") ? "&" : "?") + "nkr=" + now : u;
-        im.removeAttribute("src"); requestAnimationFrame(() => { im.src = busted; });
-      }).catch(() => {});
+      // TIDAK lewat Supabase (proxy gambar = kuota): APK → ambil langsung lewat jaringan HP; web / bila itu gagal →
+      // muat ulang alamat langsung yang sama dengan penanda baru supaya tidak memakai permintaan lama yang menggantung
+      const d0 = im.dataset.d;
+      const again = () => { if (!im.isConnected || !d0) return; im.dataset.fb = "2"; im.removeAttribute("src"); requestAnimationFrame(() => { im.src = d0 + (d0.includes("?") ? "&" : "?") + "nkr=" + now; }); };
+      if (N.isApp && d0 && n < 2) N.imageViaNative(d0, im.dataset.ref || "").then((b) => { if (im.isConnected && im.classList.contains("wait")) { im.dataset.fb = "1"; im.src = b; } }, again);
+      else again();
     }
   }, 2000);
   // Tinggi sementara halaman yang belum dimuat = rasio gambar terakhir yang sudah tampil (halaman satu chapter
