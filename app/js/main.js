@@ -895,7 +895,7 @@ async function vReader(src, id, chId) {
   const myR = ++readerSeq;
   // Animasi bar meluncur masuk HANYA saat masuk dari luar pembaca (mis. info komik), dan baru setelah halaman siap.
   // Pindah chapter di dalam pembaca (lanjut/sebelumnya/daftar chapter/muat ulang) langsung tampil tanpa animasi.
-  const rd0 = $("#rd"), inReader = !!rd0 && !rd0.dataset.shell;
+  const rd0 = $("#rd"), inReader = !!rd0 && !rd0.dataset.shell, rdPrev = rdLast;
   let shellShown = false;
   setTimeout(() => {
     if (myR !== readerSeq || parse().name !== "reader" || $("#rd")) return;
@@ -903,10 +903,42 @@ async function vReader(src, id, chId) {
     view.innerHTML = shell(`<div class="r-pages">${loading(3, "sk-page")}</div>`).replace('class="reader ui enter"', 'class="reader ui"');
     shellShown = true;
   }, 1200);
+  // Pindah chapter di dalam pembaca (lanjut otomatis, tombol lanjut/sebelumnya, daftar chapter): bila chapter baru belum
+  // siap dalam 0,25 dtk (jaringan lambat), langsung pindah ke layar tunggu chapter baru (chapter lama bergeser keluar),
+  // jadi tidak terlihat macet di chapter lama. Koneksi cepat tetap langsung ke halaman baru tanpa layar tunggu.
+  let drawnNew = false;
+  if (inReader) setTimeout(() => {
+    if (drawnNew || myR !== readerSeq || parse().name !== "reader") return;
+    const cd = cachedDetail(src, id), ci = cd ? cd.chapters.findIndex((c) => c.id === chId) : -1;
+    const chN = ci >= 0 ? cd.chapters[ci].ch : "", back = !!rdPrev && rdPrev.k === src + "|" + id && ci >= 0 && ci < rdPrev.i;
+    const ob = $("#rbox"), anim = !!ob && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let g = null;
+    if (anim) {
+      const st = ob.scrollTop, sl = ob.scrollLeft;
+      ob.removeAttribute("id"); ob.querySelectorAll("[id]").forEach((x) => x.removeAttribute("id"));
+      g = document.createElement("div"); g.className = `r-ghost ${back ? "gb" : "gf"}`; g.setAttribute("aria-hidden", "true"); g.inert = true; g.append(ob);
+      g._pos = [st, sl];
+    }
+    view.innerHTML = `<div class="reader ui ${g ? (back ? "swap-b" : "swap-f") : ""}" id="rd" data-shell="1">
+  <div class="r-wait" role="status" aria-live="polite"><span class="rw-ring" aria-hidden="true"></span>
+    <b class="rw-t">${chN ? `Chapter ${esc(chN)}` : "Chapter berikutnya"}</b><span class="mu sm" id="rwmsg">Menyiapkan halaman…</span>
+    <span class="rw-bar" aria-hidden="true"><i></i></span><button class="btn ghost sm" data-act="retry" id="rwretry" hidden>${icon("refresh", 16)}Coba lagi</button></div>
+  <div class="r-top"><button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 22, 2)}</button><div class="r-pill glass"><b class="t1">${esc(cd?.manga?.title || "Memuat…")}</b>${chN ? `<span class="mu xs">Chapter ${esc(chN)}</span>` : ""}</div></div></div>`;
+    shellShown = true;
+    const rdw = $("#rd");
+    if (g) {
+      rdw.prepend(g); const [st, sl] = g._pos; g.firstChild.scrollTop = st; g.firstChild.scrollLeft = sl;
+      const end = () => { g.remove(); rdw.classList.remove("swap-f", "swap-b"); };
+      g.addEventListener("animationend", end, { once: true }); setTimeout(end, 600);
+    }
+    // jaringan sangat lambat: beri tahu, lalu tawarkan coba lagi (pemuatan tetap berjalan di belakang)
+    setTimeout(() => { if (!drawnNew && myR === readerSeq) { const m = $("#rwmsg"); if (m) m.textContent = "Jaringan lambat, masih memuat…"; } }, 6000);
+    setTimeout(() => { if (!drawnNew && myR === readerSeq) { const b = $("#rwretry"); if (b) b.hidden = false; } }, 15000);
+  }, 250);
   const fail = (e) => {
     if (myR !== readerSeq || parse().name !== "reader") return;
     if (!$("#rd")) view.innerHTML = shell(`<div class="r-pages"></div>`);
-    $("#rd").classList.remove("enter"); $(".r-pages").innerHTML = errBox(e);
+    $("#rd").classList.remove("enter"); const host = $(".r-pages") || $(".r-wait"); if (host) host.innerHTML = errBox(e);
   };
   // file impor dari HP (src "local") tidak punya halaman info komik, kembali ke Favorit → Unduhan
   const isLocal = src === "local";
@@ -993,6 +1025,7 @@ async function vReader(src, id, chId) {
       ghost._pos = [st, sl];
     }
   }
+  drawnNew = true;
   view.innerHTML = `<div class="reader ui ${animIn ? "enter" : ""} ${slide ? "slide" : ""} ${ghost ? (rdBack ? "swap-b" : "swap-f") : ""}" id="rd">
   ${slide ? `<div class="r-slides" id="rbox" dir="${rtl ? "rtl" : "ltr"}">${imgs.map((im) => `<div class="r-slide">${im}</div>`).join("")}<div class="r-slide r-endslide"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span>${next ? `<button class="r-next-hint" id="rnext" data-act="cancelNext" hidden><span class="r-nbar"></span><span class="r-ntx"></span></button>` : ""}${isLocal ? "" : `${chLike(null)}<a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini</a>`}</div></div>`
     : `<div class="r-scroll" id="rbox"><div class="r-pages" id="rpages">${imgs.join("")}<div class="r-endtxt"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span>${next ? `<button class="r-next-hint" id="rnext" data-act="cancelNext" hidden><span class="r-nbar"></span><span class="r-ntx"></span></button>` : ""}${isLocal ? "" : `${chLike(null)}<a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini<span class="cm-n" id="rcmn"></span></a>`}</div></div></div>`}
@@ -1375,6 +1408,11 @@ async function vReader(src, id, chId) {
     hint.querySelector(".r-ntx").textContent = `Lanjut ke Chapter ${next.ch}… ketuk untuk batal`;
     hint.style.setProperty("--nd", sec + "s");   // panjang bilah hitung mundur = jeda yang dipilih
     hint.hidden = false; hint.classList.remove("run"); void hint.offsetWidth; hint.classList.add("run");
+    // selama hitung mundur, daftar halaman chapter berikutnya diambil duluan (kecil, tanpa gambar) supaya chapter baru
+    // lebih cepat siap saat waktunya habis; chapter yang sudah diunduh tidak perlu
+    const npk = src + "|" + next.id;
+    if (!isLocal && !pagesMem.has(npk)) api.call("pages", { source: src, chapter_id: next.id })
+      .then((np) => { if (np?.images?.length && !pagesMem.has(npk)) { pagesMem.set(npk, { p: np, t: Date.now() }); if (pagesMem.size > 12) pagesMem.delete(pagesMem.keys().next().value); } }).catch(() => {});
     nextT = setTimeout(() => { nextT = null; if (parse().name === "reader" && atEnd) goReplace(readHref(src, id, next.id)); else autoNextStop(); }, sec * 1000);
   }
   // #2 kembali ke halaman terakhir dibaca. Mode gulir: halaman sebelumnya dimuat dulu supaya posisinya tepat;
