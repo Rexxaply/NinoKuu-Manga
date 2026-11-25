@@ -322,6 +322,9 @@ function coverflow(box, loop = 0) {
   box.classList.add("cfx");
   const short = matchMedia("(prefers-reduced-motion: reduce)").matches;
   let step = 0, pos = 0, on = null, anim = 0, drag = null, moved = false;
+  // Parallax: sampul di dalam kartu bergeser sedikit berlawanan arah dengan kartunya (seperti dilihat lewat jendela).
+  // Sampul diperbesar 1,24× supaya geserannya tidak pernah memperlihatkan tepi. Mati saat "Hapus animasi".
+  const pics = cards.map((c) => c.querySelector(".cf-in .cover img")), PX = short ? 0 : 0.08;
   const measure = () => { step = (cards[0].offsetWidth || 200) + 10; };
   const off = (k) => { let d = k - pos; if (loop) { d = ((d % n) + n) % n; if (d > n / 2) d -= n; } return d; };
   const tick = () => {
@@ -333,6 +336,7 @@ function coverflow(box, loop = 0) {
       const m = Math.min(1, a);
       el.style.transform = `translate3d(${(d * step).toFixed(2)}px,0,0) scale(${(1 - m * 0.15).toFixed(4)})`;
       el.style.opacity = (1 - m * 0.5).toFixed(3); el.style.zIndex = String(10 - Math.round(a * 2));
+      const pic = pics[k]; if (pic && PX) pic.style.transform = `translate3d(${(-Math.max(-1.3, Math.min(1.3, d)) * PX * (step - 10)).toFixed(1)}px,0,0) scale(1.24)`;
     }
     const i = loop ? ((Math.round(pos) % n) + n) % n : Math.max(0, Math.min(n - 1, Math.round(pos)));
     const best = cards[i];
@@ -966,7 +970,20 @@ async function vDetail(src, id) {
   const paintComments = () => { const el = $("#cmsec"); if (!el) return draw(); el.innerHTML = cmHtml(); bindSpoilers($("#cmprev")); watchAvatars($("#cmprev")); };
   const paintLike = () => { const b = $("[data-act=like]"); if (b) b.outerHTML = likeBtn(lk); };
   S.likeInfo(src, id, "").then((i) => { if (i && parse().name === "detail") { lk = i; paintLike(); } });
-  const onBarScroll = () => { const b = $("#dbar"); if (b) b.classList.toggle("solid", window.scrollY > 120); };
+  // Parallax latar: sampul buram di belakang judul bergerak lebih lambat dari isi halaman (45% kecepatan gulir) dan
+  // perlahan memudar, jadi terasa di lapisan belakang. Hanya transform + opacity (ringan); mati saat "Hapus animasi".
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let pxRaf = 0;
+  const paintBg = () => {
+    pxRaf = 0; const bg = $("#dtbg"); if (!bg) return;
+    const y = Math.max(0, window.scrollY);
+    if (y > 900) { if (bg.style.opacity !== "0.3") { bg.style.transform = "translate3d(0,405px,0)"; bg.style.opacity = "0.3"; } return; }
+    bg.style.transform = `translate3d(0,${(y * 0.45).toFixed(1)}px,0)`; bg.style.opacity = Math.max(0.3, 1 - y / 650).toFixed(3);
+  };
+  const onBarScroll = () => {
+    const b = $("#dbar"); if (b) b.classList.toggle("solid", window.scrollY > 120);
+    if (!still && !pxRaf) pxRaf = requestAnimationFrame(paintBg);
+  };
   window.addEventListener("scroll", onBarScroll, { passive: true });
   const onMore = (e) => { if (e.detail.key === src + "|" + id && parse().name === "detail") { const y = window.scrollY; draw(); window.scrollTo(0, y); } };
   window.addEventListener("nk:chapters", onMore);

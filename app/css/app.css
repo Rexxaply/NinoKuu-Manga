@@ -1021,7 +1021,7 @@ body.nk-lite .rk-b.t6::before, body.nk-lite .rk-b.t7::before { display: none; }
 .inf-line i { font-style: normal; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* latar halaman komik: cover buram yang kalem + sedikit warna dominan cover, hanya sampai baris tombol "Mulai baca" */
 #view { position: relative; }
-.dt-bg { position: absolute; left: 0; right: 0; top: 0; height: 560px; overflow: hidden; pointer-events: none; z-index: 0; }
+.dt-bg { position: absolute; left: 0; right: 0; top: 0; height: 560px; overflow: hidden; pointer-events: none; z-index: 0; will-change: transform, opacity; }
 .dt-img { position: absolute; inset: -90px; z-index: 0; background-size: cover; background-position: center 28%; filter: blur(56px) saturate(1.1) brightness(.5); transform: scale(1.25); }
 .dt-tint { position: absolute; inset: 0; z-index: 1; background: var(--hc, transparent); mix-blend-mode: color; opacity: 0; transition: opacity .6s; }
 .dt-bg.tinted .dt-tint { opacity: .45; }
@@ -1669,3 +1669,4 @@ body[data-screen="reader"] .dl-pop { display: none; }
 .sheet-host.nosel, .sheet-host.nosel * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .share-wait { position: fixed; inset: 0; z-index: 130; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px; text-align: center; background: rgba(0, 0, 0, .92); animation: fadeIn .15s ease; }
 .share-wait.out { opacity: 0; transition: opacity .2s; }
+.cf-in .cover.cf img { will-change: transform; }
