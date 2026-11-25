@@ -1678,13 +1678,18 @@ async function vReader(src, id, chId) {
   // selain jarak 3 layar, 2 halaman sesudah halaman yang mulai dimuat ikut diunduh (halaman manhwa bisa sangat panjang)
   const loadNear = (im) => { const i = Number(im.dataset.i); [i, i + 1, i + 2].forEach((k) => { const x = $(`.r-img[data-i="${k}"]`, box); if (x?.dataset.src) { loadImg(x); lazyIo.unobserve(x); } }); };
   const lazyIo = new IntersectionObserver((es) => es.forEach((x) => { if (x.isIntersecting) loadNear(x.target); }),
-    { root: box, rootMargin: slide ? "0px 100%" : "100% 0px 300% 0px" });
+    { root: box, rootMargin: slide ? "0px 100%" : "100% 0px 400% 0px" });
   $$(".r-img[data-src]", box).forEach((im) => lazyIo.observe(im));
   // Tinggi sementara halaman yang belum dimuat = rasio gambar terakhir yang sudah tampil (halaman satu chapter
   // biasanya sama ukurannya), bukan 1 layar penuh. Jadi saat gambar datang, isi layar hampir tidak bergeser.
   rd.addEventListener("load", (e) => {
     const im = e.target; if (!im.classList?.contains("r-img")) return;
     im.classList.remove("wait");
+    // Antrean ke depan: halaman yang baru selesai di dekat posisi baca langsung menyusulkan 2 halaman berikutnya,
+    // jadi unduhan tidak berhenti menunggu halaman itu masuk jarak pantau (dulu: blok hitam saat menggulir ke situs
+    // yang lambat). Dibatasi ±5 halaman di depan posisi baca supaya tidak mengunduh seluruh chapter sekaligus.
+    const ii = Number(im.dataset.i);
+    if (ii <= curPage + 5) [ii + 1, ii + 2].forEach((k) => { const x = $(`.r-img[data-i="${k}"]`, box); if (x?.dataset.src) { loadImg(x); lazyIo.unobserve(x); } });
     // Log error (Dev): catat halaman yang lama sekali dimuat, untuk mencari sumber jeda
     const ms = im.dataset.t0 ? Date.now() - Number(im.dataset.t0) : 0;
     if (ms > 2500 && slowLogged++ < 5) N.logDev("img", `halaman ${im.dataset.i} dimuat ${(ms / 1000).toFixed(1)} dtk`, `${src} · ${(im.currentSrc || "").slice(0, 120)}`);
