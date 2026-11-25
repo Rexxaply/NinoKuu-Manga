@@ -605,9 +605,31 @@ create trigger chat_reports_hide after insert on public.chat_reports
   for each row execute function public.chat_report_hide();
 
 -- Daftar chat siap tampil (nama + EXP pengirim). Mengikuti RLS pembaca.
+-- Balas pesan/komentar: reply_to menunjuk pesan lain di ruang yang sama (pesan induk dihapus → balasan tetap ada, kutipannya hilang)
+alter table public.chat_messages add column if not exists reply_to bigint references public.chat_messages (id) on delete set null;
+create index if not exists chat_reply_idx on public.chat_messages (reply_to) where reply_to is not null;
+grant insert (body, image_path, image_spoiler, room, reply_to) on table public.chat_messages to authenticated;
+create or replace function public.chat_reply_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  -- hanya boleh membalas pesan di ruang yang sama (bukan lintas komik/chat publik)
+  if new.reply_to is not null and not exists (select 1 from public.chat_messages p where p.id = new.reply_to and p.room = new.room) then
+    new.reply_to := null;
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.chat_reply_guard() from public, anon, authenticated;
+drop trigger if exists chat_messages_reply_guard on public.chat_messages;
+create trigger chat_messages_reply_guard before insert on public.chat_messages
+  for each row execute function public.chat_reply_guard();
 create or replace view public.chat_feed with (security_invoker = true) as
 select c.id, c.user_id, p.name, p.exp, c.body, c.image_path, c.image_spoiler, c.created_at,
-       p.role, p.verified, c.hidden, c.room, p.avatar_path
+       p.role, p.verified, c.hidden, c.room, p.avatar_path, c.reply_to
 from public.chat_messages c
 join public.profiles p on p.id = c.user_id;
 revoke all on table public.chat_feed from anon, authenticated;

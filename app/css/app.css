@@ -1700,3 +1700,38 @@ body[data-screen="reader"] .dl-pop { display: none; }
 .im-pg { height: 6px; border-radius: 3px; }
 .im-none { width: 100%; border: 0; background: none; color: inherit; font: inherit; }
 .im-ask .mg-it { width: 100%; }
+
+/* Balas pesan: kutipan gaya WhatsApp di chat publik, utas balasan di komentar, bilah "Membalas …" di atas kolom tulis */
+.m-q { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; max-width: 100%; min-width: 120px; padding: 6px 10px 6px 11px; border-radius: 12px;
+  background: rgba(255, 255, 255, .06); border-left: 3px solid #5AA9FF; text-align: left; font: inherit; color: inherit; }
+.m-q b { font-size: 12px; color: #5AA9FF; }
+.m-q span { display: flex; align-items: center; gap: 4px; max-width: 100%; font-size: 12.5px; color: #B8C0CE; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.m-q.me { border-left-color: var(--red); } .m-q.me b { color: #FF8A8E; }
+.m-q.gone { flex-direction: row; align-items: center; gap: 6px; font-size: 12px; border-left-color: #3A4458; }
+.m-q.sm { min-width: 0; padding: 3px 8px; border-left-width: 2px; } .m-q.sm b { font-size: 11px; } .m-q.sm span { font-size: 11.5px; }
+.m-q:active { background: rgba(255, 255, 255, .1); }
+.mine .m-q { align-items: flex-start; }
+.m-rep { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; margin-left: 2px; border-radius: 8px; color: #C9D0DC; font-weight: 700; font-size: 11px; position: relative; }
+.m-rep::before { content: ""; position: absolute; inset: -8px -4px; }
+.m-rep:active { background: rgba(255, 255, 255, .08); }
+.thr { display: flex; flex-direction: column; gap: 10px; margin: -4px 0 2px 17px; padding-left: 14px; border-left: 2px solid #273244; }
+.msg.rep { gap: 8px; }
+.msg.rep .m-avc, .msg.rep .m-av { transform: scale(.78); transform-origin: top left; margin-right: -7px; margin-bottom: -7px; }
+.msg.rep .bubble { padding: 7px 11px; font-size: 13px; line-height: 1.5; }
+.msg.rep .m-head { font-size: 11.5px; }
+.msg.rep .m-img { width: min(190px, 52vw); }
+.thr-t { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; padding: 4px 2px; font-size: 12.5px; font-weight: 700; color: #5AA9FF; }
+.thr-t svg { transform: rotate(90deg); }
+.chat .msg { touch-action: pan-y; }
+.msg.sw { position: relative; transition: transform .2s ease; }
+.msg.sw::before { content: ""; position: absolute; left: -34px; top: 50%; width: 26px; height: 26px; margin-top: -13px; border-radius: 50%; opacity: 0; transition: opacity .15s;
+  background: rgba(255, 255, 255, .12) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 17 4 12l5-5'/%3E%3Cpath d='M20 18v-2a4 4 0 0 0-4-4H4'/%3E%3C/svg%3E") center / 15px no-repeat; }
+.msg.sw-ok::before { opacity: 1; }
+.msg.flash .bubble, .msg.flash .m-img { animation: mFlash 1.4s ease; }
+@keyframes mFlash { 0%, 40% { box-shadow: 0 0 0 3px rgba(90, 169, 255, .55); } 100% { box-shadow: 0 0 0 0 rgba(90, 169, 255, 0); } }
+.rep-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; padding: 8px 8px 8px 10px; border-radius: 18px; }
+.rep-bar .rb-l { width: 3px; align-self: stretch; border-radius: 2px; background: #5AA9FF; }
+.rep-bar .rc-mid { min-width: 0; }
+.rep-bar .t1 { display: flex; align-items: center; gap: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bubble.bq > .m-q { display: flex; width: 100%; margin: -3px -7px 6px; width: calc(100% + 14px); white-space: normal; }
+.mine .bubble.bq > .m-q { background: rgba(0, 0, 0, .18); }

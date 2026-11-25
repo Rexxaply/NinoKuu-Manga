@@ -115,6 +115,10 @@ export async function vChat(view, ctx, opt = {}) {
   const room = opt.room || "public", pub = room === "public";
   const rq = `room=eq.${encodeURIComponent(room)}`;
   let msgs = [], pin = null, att = null, timer = null, menuId = null, sending = false, lastSent = 0, selHandler = null;
+  // balasan: replyTo = pesan yang sedang dibalas; extra = pesan induk di luar 100 pesan terakhir (diambil terpisah);
+  // openThr = utas komentar yang balasannya sedang ditampilkan
+  let replyTo = null;
+  const extra = new Map(), openThr = new Set();
   const seenKey = pub ? "chatSeen" : "seen:" + room;
   let seenAtOpen = null, newFrom = 0, newCount = 0, stick = true;
   const onSel = () => selHandler && selHandler();
@@ -138,6 +142,10 @@ export async function vChat(view, ctx, opt = {}) {
     }
     if (msgs.length) api.lsSet(seenKey, Math.max(Number(api.lsGet(seenKey, 0)) || 0, msgs[msgs.length - 1].id));
     if (full && pub) pin = await activePin();
+    // pesan yang dibalas tapi tidak ada di daftar (lebih lama dari 100 pesan terakhir): diambil sekali
+    const have = new Set(msgs.map((m) => m.id));
+    const miss = [...new Set(msgs.map((m) => m.reply_to).filter((id) => id && !have.has(id) && !extra.has(id)))].slice(0, 50);
+    if (miss.length) { try { ((await api.rest(`chat_feed?select=*&id=in.(${miss.join(",")})`)) || []).forEach((m) => extra.set(m.id, m)); } catch {} }
     return fresh.length;
   };
   const atBottom = () => { const el = document.scrollingElement; return el.scrollHeight - el.scrollTop - el.clientHeight < 140; };
@@ -148,29 +156,63 @@ export async function vChat(view, ctx, opt = {}) {
     if (dn) dn.hidden = stick || atBottom();
     if (jp) jp.hidden = !dv || dv.getBoundingClientRect().top > 70;
   };
+  // ---- satu pesan ----
+  // rep: balasan di dalam utas komentar (lebih kecil, menjorok). Kutipan pesan yang dibalas: chat publik selalu
+  // (gaya WhatsApp, ketuk = lompat ke pesan asli); komentar hanya bila membalas balasan lain (bukan komentar induknya).
+  const byId = (id) => msgs.find((x) => x.id === id) || extra.get(id) || null;
+  const snip = (m) => (plain(m.body).replace(/\s+/g, " ").slice(0, 90) || "") + (m.image_path ? (m.body ? " · " : "") + "Gambar" : "");
+  const quote = (m, small) => {
+    const p = byId(m.reply_to);
+    if (!m.reply_to) return "";
+    if (!p) return `<span class="m-q gone${small ? " sm" : ""}">${icon("reply", 12, 2.2)}<span class="mu">Pesan yang dibalas sudah dihapus</span></span>`;
+    return `<button class="m-q${small ? " sm" : ""}${p.user_id === me ? " me" : ""}" data-c="jump" data-id="${p.id}"><b>${esc(p.user_id === me ? "Kamu" : p.name)}</b><span>${p.image_path ? icon("img", 12) : ""}${esc(snip(p) || "Pesan")}</span></button>`;
+  };
+  let prev = null;
+  const one = (m, o = {}) => {
+    const staff = isStaff();
+    const day = dayKey(m.created_at), newDay = !o.rep && (!prev || dayKey(prev.created_at) !== day), isNew = !o.rep && newFrom && m.id === newFrom;
+    const mine = m.user_id === me, head = !pub || !prev || prev.user_id !== m.user_id || newDay || isNew || !!m.reply_to;
+    if (!o.rep) prev = m;
+    const sep = (newDay ? `<div class="ch-sep"><span>${esc(dayLabel(m.created_at))}</span></div>` : "") + (isNew ? `<div class="ch-sep new" id="newDiv"><span>Pesan Baru</span></div>` : "");
+    const lv = S.levelOf({ exp: m.exp, role: m.role });
+    const q = pub ? quote(m) : o.q ? quote(m, true) : "";
+    return `${sep}<div class="msg ${mine ? "mine" : ""}${o.rep ? " rep" : ""}" id="m${m.id}" data-id="${m.id}">
+      ${head ? chatAv(m, lv) : `<span class="m-avc"></span>`}
+      <div class="m-col">
+        ${head ? `<span class="m-head">${esc(mine ? "Kamu" : m.name)}${m.verified ? VB : ""}${m.role === "developer" ? `<span class="pill-dev">DEV</span>` : m.role === "moderator" ? `<span class="pill-mod">MOD</span>` : ""}${rankBadge(lv, "sm")}</span>` : ""}
+        ${q && !(pub && m.body && !m.image_path) ? q : ""}
+        ${m.image_path ? `<button class="m-img ${m.image_spoiler && !revealed.has(m.id + ":img") ? "spo" : ""}" data-c="img" data-id="${m.id}"><img src="${esc(api.publicUrl("chat-images", m.image_path))}" alt="" loading="lazy">${m.image_spoiler && !revealed.has(m.id + ":img") ? `<span class="spo-cap"><span class="spo-tag">${icon("eye", 15)}Spoiler</span><span class="xs">Ketuk untuk melihat</span></span>` : ""}</button>` : ""}
+        ${m.body ? `<span class="bubble${q && pub && !m.image_path ? " bq" : ""}">${q && pub && !m.image_path ? q : ""}${bodyHtml(m)}</span>` : ""}
+        ${m.hidden && staff ? `<span class="m-hid">${icon("eye", 13)}Disembunyikan dari pengguna · hanya terlihat staf</span>` : ""}
+        <span class="m-meta">${esc(ago(m.created_at))}${!pub && S.loggedIn() ? `<button class="m-rep" data-c="reply" data-id="${m.id}">${icon("reply", 13, 2.2)}Balas</button>` : ""}<button class="m-dots" data-c="menu" data-id="${m.id}" aria-label="Opsi pesan">${icon("dots", 16)}</button></span>
+      </div></div>`;
+  };
+  // ---- komentar: komentar induk + utas balasannya ----
+  // Balasan (juga balasan dari balasan) dikumpulkan di bawah komentar induk paling atas. Utas dengan > 2 balasan
+  // tertutup sampai "Lihat N balasan" diketuk; utas yang baru dibalas sendiri langsung terbuka.
+  const threads = () => {
+    const rootOf = (m) => { let r = m; for (let g = 0; r.reply_to && byId(r.reply_to) && g < 50; g++) r = byId(r.reply_to); return r; };
+    const kids = new Map(), roots = new Map();
+    for (const m of msgs) {
+      const r = rootOf(m);
+      if (r === m) roots.set(m.id, m);
+      else { roots.set(r.id, r); if (!kids.has(r.id)) kids.set(r.id, []); kids.get(r.id).push(m); }
+    }
+    return [...roots.values()].sort((a, b) => a.id - b.id).map((r) => {
+      const ks = (kids.get(r.id) || []).sort((a, b) => a.id - b.id), n = ks.length;
+      const open = n <= 2 || openThr.has(r.id);
+      return one(r) + (n ? `<div class="thr">${open ? ks.map((k) => one(k, { rep: true, q: k.reply_to !== r.id })).join("") : ""}
+        ${n > 2 ? `<button class="thr-t" data-c="thr" data-id="${r.id}">${icon("chev", 13, 2.4)}${open ? "Sembunyikan balasan" : `Lihat ${n} balasan`}</button>` : ""}</div>` : "");
+    }).join("");
+  };
   const draw = () => {
-    const staff = isStaff(), active = new Set(msgs.filter((m) => Date.now() - Date.parse(m.created_at) < 15 * 60e3).map((m) => m.user_id)).size;
-    let prev = null;
+    prev = null;
+    const active = new Set(msgs.filter((m) => Date.now() - Date.parse(m.created_at) < 15 * 60e3).map((m) => m.user_id)).size;
     $("#chat").innerHTML = `${pub ? `<div class="chat-info"><span class="online-dot"></span><span id="onl">${onlineText(active)}</span> · Jaga obrolan tetap sopan, tandai spoiler.</div>`
       : `<a class="room-h" href="${esc(opt.backHref || "#/home")}">${opt.cover || ""}<span class="rc-mid g4"><b class="t1">${esc(opt.sub || "")}</b><span class="mu xs">${msgs.length ? msgs.length + (msgs.length >= 100 ? "+" : "") + " komentar" : "Belum ada komentar"} · tandai spoiler dengan ||teks||</span></span></a>`}
   ${pin ? `<div class="pin" data-c="pinx"><span class="pin-ic">${icon("mega", 18)}</span><span class="rc-mid g4"><span class="pin-cap">Pengumuman · Developer · ${esc(ago(pin.created_at))}</span><b>${esc(pin.title)}</b>${pin.body ? `<span class="mu sm pre pin-body">${esc(pin.body)}</span>` : ""}</span>
       <button class="x-btn" data-c="${isDev() ? "unpin" : "pinhide"}" aria-label="${isDev() ? "Lepas pengumuman untuk semua pengguna" : "Sembunyikan pengumuman selama 24 jam"}">${icon("x", 14, 2.2)}</button></div>` : ""}
-  ${msgs.map((m) => {
-      const day = dayKey(m.created_at), newDay = !prev || dayKey(prev.created_at) !== day, isNew = newFrom && m.id === newFrom;
-      const mine = m.user_id === me, head = !prev || prev.user_id !== m.user_id || newDay || isNew; prev = m;
-      const sep = (newDay ? `<div class="ch-sep"><span>${esc(dayLabel(m.created_at))}</span></div>` : "") + (isNew ? `<div class="ch-sep new" id="newDiv"><span>Pesan Baru</span></div>` : "");
-      const lv = S.levelOf({ exp: m.exp, role: m.role }), t = lv.tier;
-      const hid = m.hidden;
-      return `${sep}<div class="msg ${mine ? "mine" : ""}">
-      ${head ? chatAv(m, lv) : `<span class="m-avc"></span>`}
-      <div class="m-col">
-        ${head ? `<span class="m-head">${esc(mine ? "Kamu" : m.name)}${m.verified ? VB : ""}${m.role === "developer" ? `<span class="pill-dev">DEV</span>` : m.role === "moderator" ? `<span class="pill-mod">MOD</span>` : ""}${rankBadge(lv, "sm")}</span>` : ""}
-        ${m.image_path ? `<button class="m-img ${m.image_spoiler && !revealed.has(m.id + ":img") ? "spo" : ""}" data-c="img" data-id="${m.id}"><img src="${esc(api.publicUrl("chat-images", m.image_path))}" alt="" loading="lazy">${m.image_spoiler && !revealed.has(m.id + ":img") ? `<span class="spo-cap"><span class="spo-tag">${icon("eye", 15)}Spoiler</span><span class="xs">Ketuk untuk melihat</span></span>` : ""}</button>` : ""}
-        ${m.body ? `<span class="bubble">${bodyHtml(m)}</span>` : ""}
-        ${hid && staff ? `<span class="m-hid">${icon("eye", 13)}Disembunyikan dari pengguna · hanya terlihat staf</span>` : ""}
-        <span class="m-meta">${esc(ago(m.created_at))}<button class="m-dots" data-c="menu" data-id="${m.id}" aria-label="Opsi pesan">${icon("dots", 16)}</button></span>
-      </div></div>`;
-    }).join("") || `<div class="empty"><span class="empty-ic">${icon("msg", 24)}</span><b>${pub ? "Belum ada pesan" : "Belum ada komentar"}</b><span>${pub ? "Jadilah yang pertama menyapa pembaca lain." : "Jadilah yang pertama berkomentar. Jangan lupa tandai spoiler."}</span></div>`}
+  ${(pub ? msgs.map((m) => one(m)).join("") : threads()) || `<div class="empty"><span class="empty-ic">${icon("msg", 24)}</span><b>${pub ? "Belum ada pesan" : "Belum ada komentar"}</b><span>${pub ? "Jadilah yang pertama menyapa pembaca lain." : "Jadilah yang pertama berkomentar. Jangan lupa tandai spoiler."}</span></div>`}
   <div style="height:${att ? 200 : 130}px"></div>
   <button class="ch-jump" id="chJump" hidden>${icon("chev", 15, 2.4)}<span>${newCount} pesan baru sejak terakhir dilihat</span><b>Lompat</b></button>
   <button class="ch-down" id="chDown" hidden aria-label="Ke pesan terbaru">${icon("down", 20, 2.2)}</button>`;
@@ -180,19 +222,21 @@ export async function vChat(view, ctx, opt = {}) {
     floatBtns();
   };
   const drawComposer = () => {
-    const c = $("#comp");
+    const c = $("#comp"), keep = $("#cin")?.value || "";
     if (!S.loggedIn()) {
       c.innerHTML = `<div class="comp-note glass"><div class="note m0">${icon("key", 18)}<span>Untuk berkomentar dan mendapatkan <b>Level &amp; Rank</b>, kamu harus <b>masuk</b> terlebih dahulu.</span></div><a class="btn primary sm" href="#/more">Masuk sekarang</a></div>`;
       return;
     }
     c.innerHTML = `<div class="sel-bar glass" id="selbar" hidden><button data-c="selsp" class="gold">${icon("eye", 15)}Spoiler</button><button data-c="selcopy">Salin</button><button data-c="selcut">Potong</button></div>
     <div class="sp-hint" id="sphint" hidden>Teks di antara <b class="gold">||</b> akan tertutup sebagai spoiler</div>
+    ${replyTo ? `<div class="rep-bar glass"><span class="rb-l"></span><span class="rc-mid g2"><b class="sm">Membalas ${esc(replyTo.user_id === me ? "dirimu sendiri" : replyTo.name)}</b><span class="mu xs t1">${replyTo.image_path ? icon("img", 12) : ""}${esc(snip(replyTo) || "Pesan")}</span></span><button class="x-btn" data-c="repx" aria-label="Batal membalas">${icon("x", 15, 2.2)}</button></div>` : ""}
     ${att ? `<div class="att glass"><img src="${att.url}" alt="Pratinjau gambar" class="${att.sp ? "blur" : ""}"><span class="rc-mid g4"><b class="t1 sm">${esc(att.name)}</b><span class="mu xs">${(att.size / 1048576).toFixed(1).replace(".", ",")} MB · maks 30 MB</span></span>
       <button class="att-sp ${att.sp ? "on" : ""}" data-c="attsp" aria-pressed="${att.sp}">${icon("eye", 14)}Spoiler</button><button class="x-btn" data-c="attx" aria-label="Hapus gambar">${icon("x", 15, 2.2)}</button></div>` : ""}
     <div class="comp-row glass"><label class="c-img" aria-label="Unggah gambar (maks 30 MB)">${icon("img", 21)}<input type="file" id="pick" accept="image/png,image/jpeg,image/webp,image/gif" hidden></label>
-      <input id="cin" maxlength="300" enterkeyhint="send" autocomplete="off" placeholder="${att ? "Tambahkan keterangan (opsional)…" : pub ? "Tulis pesan untuk semua pembaca…" : "Tulis komentar…"}" aria-label="Pesan">
+      <input id="cin" maxlength="300" enterkeyhint="send" autocomplete="off" placeholder="${att ? "Tambahkan keterangan (opsional)…" : replyTo ? "Tulis balasan…" : pub ? "Tulis pesan untuk semua pembaca…" : "Tulis komentar…"}" aria-label="Pesan">
       <button class="c-send" data-c="send" aria-label="Kirim" ${att ? "" : "disabled"}>${icon("send", 19, 2)}</button></div>`;
     const inp = $("#cin"), send = $("[data-c=send]");
+    if (keep) { inp.value = keep; send.disabled = false; }
     const upd = () => {
       send.disabled = !(inp.value.trim() || att);
       $("#sphint").hidden = !/\|\|[\s\S]+?\|\|/.test(inp.value);
@@ -212,6 +256,13 @@ export async function vChat(view, ctx, opt = {}) {
       drawComposer(); draw(); toBottom();
     });
   };
+  const threadRoot = (m) => { let r = m; for (let g = 0; r.reply_to && byId(r.reply_to) && g < 50; g++) r = byId(r.reply_to); return r.id; };
+  const startReply = (id) => {
+    if (!S.loggedIn()) { toast("Masuk dulu untuk membalas"); return; }
+    const m = byId(Number(id)); if (!m) return;
+    replyTo = m; sheet(""); drawComposer();
+    const i = $("#cin"); if (i) { i.focus(); const l = i.value.length; i.setSelectionRange(l, l); }
+  };
   const doSend = async () => {
     const inp = $("#cin"); if (!inp || sending) return;
     const text = clean(inp.value.trim()).slice(0, 300);
@@ -226,9 +277,11 @@ export async function vChat(view, ctx, opt = {}) {
         image_path = `${me}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${c.ext}`;
         await api.upload("chat-images", image_path, new File([c.blob], "x." + c.ext, { type: c.blob.type || att.file.type }));
       }
-      try { await api.rest("chat_messages", { method: "POST", body: { body: text, image_path, image_spoiler: !!att?.sp, room }, prefer: "return=minimal" }); }
+      const body = { body: text, image_path, image_spoiler: !!att?.sp, room, ...(replyTo ? { reply_to: replyTo.id } : {}) };
+      try { await api.rest("chat_messages", { method: "POST", body, prefer: "return=minimal" }); }
       catch (e) { if (image_path) api.removeFiles("chat-images", [image_path]).catch(() => {}); throw e; }   // pesan gagal terkirim: gambarnya tidak dibiarkan tertinggal di server
-      lastSent = Date.now(); inp.value = ""; att = null;
+      if (replyTo && !pub) openThr.add(threadRoot(replyTo));
+      lastSent = Date.now(); inp.value = ""; att = null; replyTo = null;
       await load(false); drawComposer(); draw(); toBottom(); toast("Terkirim", 1200);
     } catch (e) { toast(e.message, 4000); }
     finally { sending = false; const b = $("[data-c=send]"); if (b) b.disabled = !($("#cin")?.value.trim() || att); }
@@ -240,6 +293,7 @@ export async function vChat(view, ctx, opt = {}) {
     menuId = m.id;
     const mine = m.user_id === me, staff = isStaff(), canRestrict = !mine && m.role !== "developer" && (isDev() || m.role !== "moderator");
     sheet(`<span class="sheet-prev">${esc(mine ? "Pesanmu" : m.name)}: ${esc(plain(m.body) || "Gambar")}</span>
+      ${S.loggedIn() ? `<button class="sh-row" data-c="mreply" data-id="${m.id}">${icon("reply", 18)}Balas</button>` : ""}
       <button class="sh-row" data-c="mcopy">${icon("doc", 18)}Salin pesan</button>
       ${!mine && S.loggedIn() ? `<button class="sh-row red" data-c="mreport">${icon("shield", 18)}Laporkan pesan</button>` : ""}
       ${mine ? `<button class="sh-row red" data-c="mdel">${icon("trash", 18)}Hapus pesan</button>` : ""}
@@ -260,6 +314,17 @@ export async function vChat(view, ctx, opt = {}) {
       sheet(""); $("#host").innerHTML = `<div class="viewer" data-c="close"><img src="${esc(api.publicUrl("chat-images", x.image_path))}" alt="Gambar dari chat"><button class="x-btn big" data-c="close" aria-label="Tutup">${icon("x", 20, 2.2)}</button><span class="v-by">${esc(x.user_id === me ? "Kamu" : x.name)} · ${esc(ago(x.created_at))}</span></div>`;
     }
     else if (a === "menu") openMenu(b.dataset.id);
+    else if (a === "reply" || a === "mreply") startReply(b.dataset.id);
+    else if (a === "repx") { replyTo = null; drawComposer(); }
+    else if (a === "thr") { const id = Number(b.dataset.id); openThr.has(id) ? openThr.delete(id) : openThr.add(id); const y = scrollY; draw(); scrollTo(0, y); }
+    else if (a === "jump") {
+      const id = Number(b.dataset.id), el = $("#m" + id);
+      if (!el) { const r = threadRoot(byId(id) || { id }); if (!pub && r && !openThr.has(r)) { openThr.add(r); draw(); } }
+      const t = $("#m" + id);
+      if (!t) { toast("Pesan aslinya sudah tidak ada di daftar"); return; }
+      stick = false; t.scrollIntoView({ block: "center", behavior: "smooth" });
+      t.classList.remove("flash"); void t.offsetWidth; t.classList.add("flash");
+    }
     else if (a === "close") sheet("");
     else if (a === "send") doSend();
     else if (a === "attsp") { att.sp = !att.sp; drawComposer(); }
@@ -283,6 +348,34 @@ export async function vChat(view, ctx, opt = {}) {
   window.addEventListener("nk:kb", onKb);
   try { await load(true); } catch (e) { $("#chat").innerHTML = `<div class="empty"><b>Gagal memuat chat</b><span>${esc(e.message)}</span></div>`; }
   draw(); drawComposer(); toBottom();
+  // geser pesan ke kanan = balas (seperti WhatsApp). Hanya gerakan yang jelas mendatar; gulir naik-turun tidak terganggu.
+  let sw = null;
+  const chatEl = $("#chat");
+  chatEl.addEventListener("touchstart", (e) => {
+    const el = e.target.closest(".msg"); if (!el || e.touches.length > 1 || !S.loggedIn() || e.target.closest(".sp, .m-img")) { sw = null; return; }
+    sw = { el, x: e.touches[0].clientX, y: e.touches[0].clientY, on: false };
+  }, { passive: true });
+  chatEl.addEventListener("touchmove", (e) => {
+    if (!sw) return;
+    const dx = e.touches[0].clientX - sw.x, dy = e.touches[0].clientY - sw.y;
+    if (!sw.on) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { sw = null; return; }
+      if (dx > 14 && dx > Math.abs(dy) * 1.6) { sw.on = true; sw.el.classList.add("sw"); sw.el.style.transition = "none"; } else return;
+    }
+    const d = Math.min(72, Math.max(0, dx - 14) * 0.7);
+    sw.el.style.transform = `translateX(${d}px)`;
+    const ok = d >= 48;
+    if (ok !== sw.el.classList.contains("sw-ok")) { sw.el.classList.toggle("sw-ok", ok); if (ok) navigator.vibrate?.(12); }
+  }, { passive: true });
+  const swEnd = () => {
+    if (!sw?.on) { sw = null; return; }
+    const el = sw.el, ok = el.classList.contains("sw-ok"); sw = null;
+    el.style.transition = ""; el.style.transform = ""; el.classList.remove("sw-ok");
+    setTimeout(() => el.classList.remove("sw"), 220);
+    if (ok) startReply(el.dataset.id);
+  };
+  chatEl.addEventListener("touchend", swEnd, { passive: true });
+  chatEl.addEventListener("touchcancel", swEnd, { passive: true });
   // tinggi isi berubah (gambar selesai dimuat) → tetap di paling bawah bila sedang menempel
   const ro = "ResizeObserver" in window ? new ResizeObserver(() => { if (stick) window.scrollTo(0, document.scrollingElement.scrollHeight); floatBtns(); }) : null;
   ro?.observe($("#chat"));
