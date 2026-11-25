@@ -315,7 +315,8 @@ function sortSheet(title, list, cur, onPick) {
 // Ringan: jarak kartu diukur sekali, hanya ±3 kartu di sekitar tengah yang diubah per frame & dijadikan lapisan GPU.
 function coverflow(box, loop = 0) {
   const cards = [...box.querySelectorAll(".cf-card")]; if (!cards.length) return;
-  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // "Hapus animasi" di HP: luncuran dipersingkat, tapi skala kartu tetap mengikuti jari (bukan animasi otomatis)
+  const still = false, short = matchMedia("(prefers-reduced-motion: reduce)").matches;
   let step = 0, on = null, touched = [], anim = 0, drag = null, moved = false;
   const measure = () => { step = cards.length > 1 ? cards[1].offsetLeft - cards[0].offsetLeft : cards[0].offsetWidth || 1; };
   const tick = () => {
@@ -341,7 +342,7 @@ function coverflow(box, loop = 0) {
     cancelAnimationFrame(anim);
     const from = box.scrollLeft, dist = to - from;
     if (still || Math.abs(dist) < 1) { box.scrollLeft = to; tick(); wrap(); return; }
-    const t0 = performance.now(), dur = Math.min(520, Math.max(240, ms * Math.min(1.6, Math.abs(dist) / step)));
+    const t0 = performance.now(), dur = short ? 140 : Math.min(520, Math.max(240, ms * Math.min(1.6, Math.abs(dist) / step)));
     const frame = (t) => {
       const k = Math.min(1, (t - t0) / dur);
       box.scrollLeft = from + dist * ease(k); tick();
@@ -350,26 +351,32 @@ function coverflow(box, loop = 0) {
     anim = requestAnimationFrame(frame);
   };
   const to = (i) => glide(Math.max(0, Math.min(cards.length - 1, i)) * step);
-  // geser dengan jari (sentuh & mouse); gulir vertikal halaman tetap jalan (touch-action: pan-y)
-  box.addEventListener("pointerdown", (e) => {
-    if (e.button > 0 || !e.isPrimary) return;
-    cancelAnimationFrame(anim); anim = 0;
-    drag = { x: e.clientX, y: e.clientY, sl: box.scrollLeft, id: e.pointerId, h: false, pts: [[e.clientX, performance.now()]] };
-    moved = false;
-  });
-  box.addEventListener("pointermove", (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
-    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  // Geser dengan jari. Sentuhan memakai touch events dengan touchmove tidak-pasif: begitu gerakan condong mendatar,
+  // gulir halaman dicegah (preventDefault) dan kartu mengikuti jari. Dulu pointer events + touch-action: pan-y, tapi
+  // WebView Android sering keburu memutuskan gulir vertikal (sedikit gerakan miring saja) sehingga kartu tidak bergeser.
+  // Mouse (web) tetap memakai pointer events.
+  const start = (x, y) => { cancelAnimationFrame(anim); anim = 0; drag = { x, y, sl: box.scrollLeft, h: false, v: false, pts: [[x, performance.now()]] }; moved = false; };
+  const move = (x, y, e) => {
+    if (!drag || drag.v) return;
+    const dx = x - drag.x, dy = y - drag.y;
     if (!drag.h) {
-      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
-      if (Math.abs(dy) > Math.abs(dx)) { drag = null; return; }     // gerakan vertikal: biarkan halaman bergulir
-      drag.h = true; moved = true; try { box.setPointerCapture(e.pointerId); } catch {}
+      if (Math.abs(dx) < 7 && Math.abs(dy) < 7) return;
+      // condong mendatar (sudut < ±50°) → milik carousel; selain itu biarkan halaman bergulir
+      if (Math.abs(dx) < Math.abs(dy) * 0.85) { drag.v = true; return; }
+      drag.h = true; moved = true; drag.x = x; drag.sl = box.scrollLeft;
     }
-    box.scrollLeft = drag.sl - dx; tick();
-    drag.pts.push([e.clientX, performance.now()]); if (drag.pts.length > 6) drag.pts.shift();
-  });
-  const release = (e) => {
-    if (!drag || (e && e.pointerId !== drag.id)) return;
+    if (e?.cancelable) e.preventDefault();
+    box.scrollLeft = drag.sl - (x - drag.x); tick();
+    drag.pts.push([x, performance.now()]); if (drag.pts.length > 6) drag.pts.shift();
+  };
+  box.addEventListener("touchstart", (e) => { if (e.touches.length !== 1) { drag = null; return; } const t = e.touches[0]; start(t.clientX, t.clientY); }, { passive: true });
+  box.addEventListener("touchmove", (e) => { if (e.touches.length !== 1) return; const t = e.touches[0]; move(t.clientX, t.clientY, e); }, { passive: false });
+  box.addEventListener("touchend", () => release()); box.addEventListener("touchcancel", () => release());
+  box.addEventListener("pointerdown", (e) => { if (e.pointerType !== "mouse" || e.button > 0) return; start(e.clientX, e.clientY); try { box.setPointerCapture(e.pointerId); } catch {} });
+  box.addEventListener("pointermove", (e) => { if (e.pointerType === "mouse") move(e.clientX, e.clientY, e); });
+  box.addEventListener("pointerup", (e) => { if (e.pointerType === "mouse") release(); });
+  function release() {
+    if (!drag) return;
     const d = drag; drag = null;
     if (!d.h) return;
     const [a, b] = [d.pts[0], d.pts[d.pts.length - 1]], v = (b[0] - a[0]) / Math.max(1, b[1] - a[1]);   // px/ms
@@ -377,8 +384,7 @@ function coverflow(box, loop = 0) {
     let i = Math.abs(v) > 0.35 ? (v < 0 ? Math.floor(cur) + 1 : Math.ceil(cur) - 1) : base;
     if (Math.abs(v) > 1.4) i += v < 0 ? 1 : -1;                    // kibasan cepat: sampai 2 kartu
     to(i);
-  };
-  box.addEventListener("pointerup", release); box.addEventListener("pointercancel", release); box.addEventListener("lostpointercapture", () => release());
+  }
   box.addEventListener("dragstart", (e) => e.preventDefault());
   box.addEventListener("click", (e) => {
     if (moved) { e.preventDefault(); e.stopPropagation(); moved = false; return; }   // akhir geseran bukan ketukan

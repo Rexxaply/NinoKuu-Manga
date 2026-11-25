@@ -365,7 +365,12 @@ body[data-screen="reader"] { background: #0A0A0A; overflow: hidden; }
 /* kilau kerangka memuat: pita terang digeser dengan transform (dikerjakan GPU, tanpa menggambar ulang) */
 .sk { position: relative; overflow: hidden; background: var(--s1); border-radius: 14px; }
 .sk::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent 0%, var(--s2) 50%, transparent 100%); transform: translateX(-100%); animation: sk 1.2s linear infinite; will-change: transform; }
-@media (prefers-reduced-motion: reduce) { .sk::after { animation: none; opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .sk::after { animation: none; opacity: 0; }
+  /* tetap ada tanda sedang memuat walau animasi HP dimatikan: denyut terang-redup pelan, tanpa gerakan */
+  .sk { animation: skPulse 1.4s ease-in-out infinite; }
+}
+@keyframes skPulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
 .sk-lrow { height: 74px; } .sk-top { width: 118px; height: 158px; flex: none; } .sk-hero { height: 240px; margin: 10px 18px 18px; } .sk-page { height: 70vh; border-radius: 0; margin-bottom: 4px; }
 @keyframes sk { to { transform: translateX(100%); } }
 
@@ -1595,7 +1600,7 @@ body[data-screen="reader"] .dl-pop { display: none; }
 .pg-prev { display: block; max-width: 100%; max-height: 34vh; margin: 6px auto 10px; border-radius: 12px; object-fit: contain; background: #111; }
 
 /* ---------- Top 10: carousel tengah (gaya NinoNime) ---------- */
-.cf { --cw: min(60vw, 236px); display: flex; gap: 10px; overflow: hidden; touch-action: pan-y; -webkit-user-select: none; user-select: none;
+.cf { --cw: min(60vw, 236px); display: flex; gap: 10px; overflow: hidden; touch-action: pan-y pinch-zoom; -webkit-user-select: none; user-select: none;
   /* ruang atas/bawah untuk mahkota & cahaya kartu tengah (area gulir memotong apa pun di luar padding) */
   padding: 40px calc(50% - var(--cw) / 2) 34px; margin: -14px 0 -18px; overscroll-behavior-x: contain; }
 .cf::-webkit-scrollbar { display: none; }
@@ -1629,5 +1634,5 @@ body[data-screen="reader"] .dl-pop { display: none; }
 .cf-crown { position: absolute; z-index: 3; left: 50%; top: -27px; width: 44px; height: 36px; transform: translateX(-50%); pointer-events: none; opacity: 0; transition: opacity .25s; }
 .cf-crown .t10-crown { position: static; width: 44px; height: 36px; transform: none; }
 .cf-card.on .cf-crown { opacity: 1; }
-@media (prefers-reduced-motion: reduce) { .cf-card { transform: none; opacity: 1; } .cf-in, .cf-crown, .cf-card::before { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .cf-in, .cf-crown, .cf-card::before { transition: none; } }
 
