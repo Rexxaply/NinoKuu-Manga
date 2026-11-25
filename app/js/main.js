@@ -309,29 +309,44 @@ function sortSheet(title, list, cur, onPick) {
     (b) => { if (b.dataset.s === "pick") { closeSheet(); onPick(b.dataset.v); } });
 }
 // carousel tengah (Top 10): skala & redup kartu mengikuti jaraknya ke tengah; kartu samping yang diketuk digeser ke
-// tengah dulu (bukan langsung dibuka)
-function coverflow(box) {
+// tengah dulu (bukan langsung dibuka). loop = jumlah kartu asli (daftar digambar 3×) → berputar tanpa ujung.
+// Ringan: jarak antar kartu diukur sekali (bukan membaca posisi semua kartu tiap frame) dan hanya ±3 kartu di sekitar
+// tengah yang diubah; kartu lain tetap kecil & redup dari CSS.
+function coverflow(box, loop = 0) {
   const cards = [...box.querySelectorAll(".cf-card")]; if (!cards.length) return;
   const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  let raf = 0;
+  let step = 0, raf = 0, endT = 0, on = null, touched = [];
+  const measure = () => { step = cards.length > 1 ? cards[1].offsetLeft - cards[0].offsetLeft : cards[0].offsetWidth || 1; };
   const tick = () => {
-    raf = 0;
-    const mid = box.scrollLeft + box.clientWidth / 2; let best = null, bd = 1e9;
-    for (const c of cards) {
-      const w = c.offsetWidth || 1, d = Math.min(1.2, Math.abs(c.offsetLeft + w / 2 - mid) / w);
-      if (!still) { c.style.transform = `scale(${(1 - Math.min(d, 1) * 0.15).toFixed(3)})`; c.style.opacity = (1 - Math.min(d, 1) * 0.5).toFixed(3); }
-      if (d < bd) { bd = d; best = c; }
+    raf = 0; if (!step) measure(); if (!step) return;
+    const c = box.scrollLeft / step, i0 = Math.round(c), now = [];
+    for (let k = Math.max(0, i0 - 3); k <= Math.min(cards.length - 1, i0 + 3); k++) {
+      const el = cards[k], d = Math.min(1, Math.abs(k - c));
+      if (!still) { el.style.transform = `scale(${(1 - d * 0.15).toFixed(3)})`; el.style.opacity = (1 - d * 0.5).toFixed(3); }
+      now.push(el);
     }
-    cards.forEach((c) => c.classList.toggle("on", c === best));
+    // kartu yang keluar dari jendela ±3 dikembalikan ke gaya bawaan CSS (kecil & redup)
+    for (const el of touched) if (!now.includes(el)) { el.style.transform = ""; el.style.opacity = ""; }
+    touched = now;
+    const best = cards[Math.max(0, Math.min(cards.length - 1, i0))];
+    if (best !== on) { on?.classList.remove("on"); best.classList.add("on"); on = best; }
   };
-  box.addEventListener("scroll", () => { if (!raf) raf = requestAnimationFrame(tick); }, { passive: true });
-  addEventListener("resize", () => { if (box.isConnected && !raf) raf = requestAnimationFrame(tick); }, { passive: true });
+  const wrap = () => {
+    if (!loop || !step) return;
+    const i = Math.round(box.scrollLeft / step);
+    if (i < loop || i >= loop * 2) { box.scrollLeft += (i < loop ? loop : -loop) * step; tick(); }
+  };
+  box.addEventListener("scroll", () => {
+    if (!raf) raf = requestAnimationFrame(tick);
+    clearTimeout(endT); endT = setTimeout(wrap, 140);       // gulir berhenti → lompat diam-diam ke salinan tengah
+  }, { passive: true });
+  addEventListener("resize", () => { if (!box.isConnected) return; measure(); box.scrollLeft = Math.round(box.scrollLeft / (step || 1)) * step; tick(); }, { passive: true });
   box.addEventListener("click", (e) => {
     const c = e.target.closest(".cf-card"); if (!c || c.classList.contains("on") || e.target.closest(".cv-re")) return;
     e.preventDefault();
-    box.scrollTo({ left: c.offsetLeft + c.offsetWidth / 2 - box.clientWidth / 2, behavior: still ? "auto" : "smooth" });
+    box.scrollTo({ left: cards.indexOf(c) * step, behavior: still ? "auto" : "smooth" });
   });
-  box.scrollLeft = 0; tick();
+  measure(); box.scrollLeft = loop * step; tick();
 }
 async function vHome() {
   const name = S.state.profile?.name || (S.loggedIn() ? "" : "Pembaca");
@@ -396,14 +411,19 @@ ${last ? `<section class="sec s16"><h2 class="cap">Lanjut baca</h2>
       const pop = $("#pop"), top = r.items.slice(0, 10);
       // Top 10 gaya NinoNime: carousel tengah. Kartu di tengah besar & menyala (warna peringkat), kiri-kanan mengecil
       // & meredup; judul + bintang di dalam kartu, nomor peringkat kiri atas, skor kanan atas, mahkota di peringkat 1.
-      pop.innerHTML = top.map((it, i) => {
+      const card = (it, i) => {
         const sc = Number(it.score), stars = !NO_SCORE.has(src) && sc > 0 && sc <= 10;
         return `<a class="cf-card ${i < 3 ? "r" + (i + 1) : ""}" aria-label="Peringkat ${i + 1}: ${esc(it.title)}" href="${comicHref(src, it.id)}">
         ${i === 0 ? `<span class="cf-crown">${CROWN}</span>` : ""}<span class="cf-in">${cover(it.cover, it.title, "cf")}<span class="cf-shade"></span>
         <span class="cf-rank" aria-hidden="true">${i + 1}</span>${scoreTag(it, src)}
         <span class="cf-info"><b class="cf-t">${esc(it.title)}</b>${stars ? `<span class="cf-stars" style="--p:${Math.round(sc * 10)}%" aria-hidden="true">★★★★★</span>` : `<span class="cf-sub">${esc(typeName(it.type) || srcName(src))}</span>`}</span></span></a>`;
-      }).join("") || `<span class="mu sm px">Belum ada data</span>`;
-      coverflow(pop);
+      };
+      // berputar tanpa ujung: daftar digambar 3× (salinan kiri & kanan tersembunyi dari pembaca layar), posisi
+      // dilompatkan diam-diam ke salinan tengah saat gulir berhenti di salinan pinggir
+      const one = top.map(card).join("");
+      pop.innerHTML = !top.length ? `<span class="mu sm px">Belum ada data</span>`
+        : top.length < 3 ? one : one.replace(/<a class="cf-card/g, '<a aria-hidden="true" tabindex="-1" class="cf-card') + one + one.replace(/<a class="cf-card/g, '<a aria-hidden="true" tabindex="-1" class="cf-card');
+      coverflow(pop, top.length >= 3 ? top.length : 0);
     } catch (e) { if (src === homeSrc && $("#pop")) $("#pop").innerHTML = `<span class="mu sm px">${esc(e.blocked ? "Sumber ini menolak server. Pilih sumber lain di bawah." : e.message)}</span>`; }
   };
   setActs({
