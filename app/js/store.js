@@ -91,6 +91,25 @@ export async function clearHistory() {
   if (loggedIn()) await api.rest("history?source=neq.__", { method: "DELETE" }).catch((e) => { state.hist = old; saveLocal(); emit(); throw e; });
 }
 export const histItem = (src, id) => state.hist.get(keyOf(src, id));
+// Chapter yang pernah dibuka, per komik (disimpan di HP). Dipakai untuk tanda "sudah dibaca" di daftar chapter:
+// hanya chapter yang benar-benar dibuka yang bertanda, bukan semua chapter di bawah chapter terakhir dibaca.
+const READ_KEY = "readChs";
+let readMap = (() => { const m = api.lsGet(READ_KEY, {}); return m && typeof m === "object" && !Array.isArray(m) ? m : {}; })();
+export const chReadSet = (src, id) => new Set(readMap[keyOf(src, id)] || []);
+export const readChsAll = () => readMap;
+export function markChRead(src, id, chId) {
+  if (!chId) return;
+  const k = keyOf(src, id), a = readMap[k] || [];
+  if (a.includes(chId)) return;
+  delete readMap[k]; readMap[k] = [...a, String(chId)].slice(-3000);          // komik terbaru di akhir (yang lama dibuang dulu)
+  const ks = Object.keys(readMap); while (ks.length > 500) delete readMap[ks.shift()];
+  api.lsSet(READ_KEY, readMap);
+}
+export function mergeReadChs(src, id, ids) {
+  const k = keyOf(src, id), a = new Set(readMap[k] || []);
+  for (const x of ids) if (typeof x === "string" && x && x.length <= 300) a.add(x);
+  readMap[k] = [...a].slice(-3000); api.lsSet(READ_KEY, readMap);
+}
 export const history = () => [...state.hist.values()].sort((a, b) => (b.read_at || "").localeCompare(a.read_at || ""));
 let histTimer = null;
 const histDirty = new Set();

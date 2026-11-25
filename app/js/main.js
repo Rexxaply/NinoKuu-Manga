@@ -791,11 +791,12 @@ function matchCh(c, q) {
 const chaptersHref = (src, id) => `#/ch/${src}/${encodeURIComponent(id)}`;
 // baris chapter: BARU (rilis < 3 hari), TERAKHIR DIBACA, centang bila sudah lewat
 function chRowFor(src, id, h, latest) {
-  const readN = h ? parseFloat(h.chapter) : NaN;
+  const rs = S.chReadSet(src, id);
   return (c, timeline = false) => {
-    const cur = h?.chapter_id === c.id, n = parseFloat(c.ch);
+    const cur = h?.chapter_id === c.id;
     const isNew = !cur && c.at && Date.now() - Date.parse(c.at) < 3 * 864e5;
-    const read = !cur && Number.isFinite(readN) && Number.isFinite(n) && n < readN;
+    // sudah dibaca = chapter itu pernah dibuka (bukan sekadar nomornya di bawah chapter terakhir dibaca)
+    const read = !cur && rs.has(c.id);
     const ic = cur ? icon("bookmark", 17, 2) : isNew ? icon("star", 17) : read ? icon("eye", 17) : icon("circle", 15);
     return `<a class="ch ${timeline ? "tl" : ""} ${cur ? "cur" : ""} ${read ? "read" : ""}" href="${readHref(src, id, c.id)}">${timeline ? `<span class="tl-ic ${cur ? "cur" : isNew ? "new" : read ? "read" : ""}">${ic}</span>` : ""}
       <span class="col grow"><b>Chapter ${esc(c.ch ?? "?")}</b><span class="mu xs">${esc(c.title ? c.title + " · " : "")}${esc(ago(c.at))}</span></span>
@@ -1100,6 +1101,7 @@ async function vReader(src, id, chId) {
     const ks = Object.keys(m); while (ks.length > 400) delete m[ks.shift()];
     api.lsSet("readPos", m);
   };
+  S.markChRead(src, id, ch.id);
   if (!isLocal) S.saveHistory({ ...meta, page: resumeAt });
   // EXP baca: hanya setelah chapter dibaca sampai habis (akhir chapter terlihat)
   let awarded = false;
@@ -2176,7 +2178,7 @@ async function vPage(name) {
   <div class="card col g6"><b>Isi backup</b><span class="mu sm">${S.state.lib.size} judul koleksi · ${S.state.hist.size} riwayat baca · pengaturan</span></div>
   <button class="btn primary" data-act="dl">${icon("down", 18, 2)}Simpan file backup</button></div>`;
     acts2.dl = async (el) => {
-      const data = { app: "ninokuu", v: 1, at: new Date().toISOString(), lib: [...S.state.lib.values()], hist: [...S.state.hist.values()], settings: S.state.settings };
+      const data = { app: "ninokuu", v: 1, at: new Date().toISOString(), lib: [...S.state.lib.values()], hist: [...S.state.hist.values()], settings: S.state.settings, readChs: S.readChsAll() };
       const d = new Date(), pad = (n) => String(n).padStart(2, "0");
       const name = `ninokuu-backup-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`, text = JSON.stringify(data);
       if (!DL.supported()) {   // web: unduh lewat browser
@@ -2269,6 +2271,10 @@ async function vPage(name) {
         if (!okKey(h) || S.histItem(h.source, h.comic_id)) continue;
         S.saveHistory({ source: h.source, comic_id: h.comic_id, title: str(h.title, 300), cover: str(h.cover, 1000), type: str(h.type, 20),
           chapter: str(h.chapter, 40), chapter_id: str(h.chapter_id, 300), page: int(h.page), pages: int(h.pages) });
+      }
+      if (j.readChs && typeof j.readChs === "object" && !Array.isArray(j.readChs)) for (const [k, ids] of Object.entries(j.readChs).slice(0, 500)) {
+        const [source, ...rest] = k.split("|"), comic_id = rest.join("|");
+        if (okKey({ source, comic_id }) && Array.isArray(ids)) S.mergeReadChs(source, comic_id, ids.slice(-3000));
       }
       if (j.settings && typeof j.settings === "object") ["readMode", "readDir", "updView", "searchView", "favView", "gfx", "favSort"].forEach((k) => { if (typeof j.settings[k] === "string") S.setSetting(k, j.settings[k]); });
         ["autoHide"].forEach((k) => { if (typeof j.settings[k] === "boolean") S.setSetting(k, j.settings[k]); });

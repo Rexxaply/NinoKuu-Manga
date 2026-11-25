@@ -491,7 +491,8 @@ async function komikuPage(srcPage: number, q: string, o: Opt) {
     const tp = (stripTags(b.match(/class=["'][^"']*\btpe1_inf\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i)?.[1] || "").match(/\b(manga|manhwa|manhua)\b/i)?.[1] || o.type || "").toLowerCase();
     items.push({ id: abs(a[1], KOMIKU_SITE), title, cover: await coverUrl(img, KOMIKU_SITE + "/"), type: tp });
   }
-  return { items, hasNext: /<span[^>]*\shx-get=/i.test(html) || items.length >= 10 };
+  // penanda "muat berikutnya" (hx-get) ikut tampil walau hasilnya sedikit; halaman yang tidak penuh = halaman terakhir
+  return { items, hasNext: items.length >= 10 };
 }
 function komikuDate(s: string) {
   const t = s.trim(), m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
@@ -726,7 +727,8 @@ async function bkPage(srcPage: number, q: string, o: Opt) {
     const sc = [...after.matchAll(/>\s*(\d{1,2}(?:[.,]\d{1,2})?)\s*</g)].pop()?.[1];
     items.push({ id, title, cover: await coverUrl(img, BK_SITE + "/"), type: tp, score: toScore(sc || "") });
   }
-  return { items, hasNext: /class=["'][^"']*\bnext\b[^"']*page-numbers|page-numbers[^"']*\bnext\b/i.test(html) };
+  // tautan halaman berikutnya bisa ikut tampil walau hasilnya sedikit; halaman yang tidak penuh = halaman terakhir
+  return { items, hasNext: items.length >= 10 && /class=["'][^"']*\bnext\b[^"']*page-numbers|page-numbers[^"']*\bnext\b/i.test(html) };
 }
 function bkChapters(html: string, base: string): Chapter[] {
   const list = block(html, /<(?:ul|div)\b[^>]*id=["']chapter_list["'][^>]*>/i);

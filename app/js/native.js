@@ -303,7 +303,8 @@ const KOMI = (() => {
       const tp = (txt(el.querySelector(".tpe1_inf")).match(/\b(manga|manhwa|manhua)\b/i)?.[1] || b.type || "").toLowerCase();
       items.push({ id: absU(a.getAttribute("href"), SITE), title, cover: cover(imgOf(el.querySelector("img"), SITE).replace(/\?.*$/, ""), 300), type: tp });
     }
-    return { items, hasNext: !!d.querySelector("span[hx-get]") || items.length >= 10 };
+    // penanda "muat berikutnya" ikut tampil walau hasilnya sedikit; halaman yang tidak penuh = halaman terakhir
+    return { items, hasNext: items.length >= 10 };
   }
   const rows = (root, base) => [...root.querySelectorAll("tr")].map((tr) => {
     const td = tr.querySelector(".judulseries"), a = td?.querySelector("a[href]") || (td && tr.querySelector("a[href]"));

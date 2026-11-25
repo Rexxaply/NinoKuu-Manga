@@ -16,9 +16,13 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ### Ringkasan
 - Pencarian di Shinigami dan WestManga kini tepat sasaran, tidak lagi menampilkan komik yang hanya cocok sebagian kata
+- Tanda "sudah dibaca" di daftar chapter kini hanya untuk chapter yang benar-benar pernah dibuka, dan tidak hilang saat membuka chapter sebelumnya
+- Tombol Muat lagi tidak muncul lagi saat hasil pencarian Komiku dan BacaKomik sudah habis
 
 ### Detail
 - Pencarian: API Shinigami & WestManga mencocokkan per kata (mis. "Genius Hitter" memunculkan semua judul berisi "Genius"). Hasil kedua sumber itu kini disaring di aplikasi (`LOOSE_SEARCH`, `matchQ`): setiap kata harus ada sebagai awal kata di judul atau judul alternatif (huruf besar/kecil, aksen, dan tanda kutip diabaikan). Bila satu halaman kosong setelah disaring, sampai 2 halaman berikutnya dicoba. Item daftar membawa `alt` (judul alternatif) dari Edge (`altOf`) dan jalur HP (native.js)
+- Tanda baca: dulu semua chapter bernomor di bawah chapter terakhir dibaca dianggap sudah dibaca, dan pindah ke chapter lebih awal menghapus tandanya. Kini per chapter: `readChs` (HP) mencatat chapter yang pernah dibuka (`S.markChRead` saat pembaca dibuka, termasuk chapter unduhan); `chRowFor` memakai `S.chReadSet`. Ikut backup/pulihkan (`readChs`, divalidasi). Tanda lama (hanya dari nomor) tidak dipindahkan; "Terakhir dibaca" tetap
+- Muat lagi: Komiku (Edge & HP) & BacaKomik: `hasNext` hanya bila satu halaman penuh (≥ 10 item); penanda hx-get / tautan next ikut tampil walau hasil cuma 1
 
 ---
 
