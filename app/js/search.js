@@ -47,7 +47,7 @@ export async function vSearch(type) {
 <div class="px" id="factive"></div>
 <div class="sec-h px mt10"><span class="mu sm" id="sinfo"></span></div>
 <div id="sres" class="px">${loading(6, "sk-lrow")}</div>
-<button class="btn ghost wide" data-act="more" id="sMore" hidden>Muat lagi</button>
+<button class="more-auto" data-act="more" id="sMore" hidden><span class="spin-s" aria-hidden="true"></span>Memuat lainnya…</button>
 <div class="pad-nav"></div>`;
   let page = 1, items = [], seq = 0, timer = null;
   // tombol filter (angka = jumlah filter aktif) dan baris filter aktif yang bisa dihapus satu-satu
@@ -65,8 +65,11 @@ export async function vSearch(type) {
       : `<div class="mn-rows">${items.map((it) => minRow(sState.src, it)).join("")}</div>`)
       : `<div class="empty"><span class="empty-ic">${icon("search", 24)}</span><b>Tidak ditemukan</b><span>${activeCount(sState) ? "Tidak ada komik yang cocok dengan semua filter. Coba kurangi filternya." : "Coba kata lain, atau pilih sumber lain di atas."}</span></div>`;
   };
+  let busyMore = false;
   const load = async (more = false) => {
+    if (more && busyMore) return;
     const my = ++seq;
+    if (more) busyMore = true;
     const hit = !more && sCache.get(sKey());
     if (hit && Date.now() - hit.at < 10 * 60e3) {
       ({ items, page } = hit); sMem = hit;
@@ -99,8 +102,12 @@ export async function vSearch(type) {
       sMem = { key: sKey(), items, page, hasNext: !!r.hasNext, at: Date.now() }; sCachePut(sMem);
       draw();
       $("#sMore").hidden = !r.hasNext;
-    } catch (e) { if (my === seq && $("#sres")) $("#sres").innerHTML = errBox(e); }
+    } catch (e) { if (more) { page--; if (my === seq) toast(e.message); } else if (my === seq && $("#sres")) $("#sres").innerHTML = errBox(e); }
+    finally { if (more) busyMore = false; }
   };
+  // seperti Beranda: "Memuat lainnya…" (cincin berputar) dimuat otomatis saat hampir terlihat, bisa juga diketuk
+  const moreIo = new IntersectionObserver((es) => { const m = $("#sMore"); if (es[0].isIntersecting && m && !m.hidden && !busyMore) { page++; load(true); } }, { rootMargin: "400px" });
+  moreIo.observe($("#sMore"));
   const inp = $("#sq");
   // Riwayat pencarian: 10 kata kunci terakhir (disimpan di HP). Muncul di bawah kolom cari saat kolomnya
   // diketuk dan masih kosong. Disimpan saat Enter, saat memilih hasil, atau saat meninggalkan halaman.
@@ -139,7 +146,7 @@ export async function vSearch(type) {
     timer = setTimeout(() => { sState.q = v; load(); }, 400);
   });
   inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); clearTimeout(timer); sState.q = inp.value.trim(); saveQ(sState.q); inp.blur(); load(); } });
-  setCleanup(() => { clearTimeout(timer); if (sState.q && items.length) saveQ(sState.q); });
+  setCleanup(() => { moreIo.disconnect(); clearTimeout(timer); if (sState.q && items.length) saveQ(sState.q); });
   const pick = (act, el) => $$(`[data-act=${act}]`).forEach((b) => b.setAttribute(b.parentElement.classList.contains("chips") ? "aria-pressed" : "aria-selected", String(b === el)));
   setActs({
     clear: () => { inp.value = ""; sState.q = ""; $("[data-act=clear]").hidden = true; inp.focus(); showHist(true); load(); },
@@ -151,7 +158,7 @@ export async function vSearch(type) {
     unf: (el) => { if (el.dataset.k === "status") sState.status = ""; else sState.genres = sState.genres.filter((g) => g !== el.dataset.v); drawFilters(); load(); },
     unall: () => { sState.status = ""; sState.genres = []; drawFilters(); load(); },
     view: (el) => { S.setSetting("searchView", S.state.settings.searchView === "grid" ? "list" : "grid"); el.outerHTML = viewBtn(S.state.settings.searchView === "grid", "view"); draw(); },
-    more: () => { page++; load(true); },
+    more: () => { if (!busyMore) { page++; load(true); } },
     retry: () => load(),
   });
   if (sMem && sMem.key === sKey() && Date.now() - sMem.at < 10 * 60e3) {
