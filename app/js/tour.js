@@ -7,6 +7,27 @@ import { esc, icon } from "./ui.js";
 
 // Isi per versi. Slide: img = nama file di img/new/ (tanpa .webp).
 export const WHATS_NEW = {
+  "1.10.0": {
+    title: "Yang baru di Ninokuu 1.10",
+    intro: "Sumber baru BacaKomik, skor di sampul komik, label NEW UPDATE lebih cepat, dan pindah chapter yang tidak lagi terlihat macet.",
+    features: [
+      ["Sumber baru: BacaKomik", "Ribuan manga, manhwa, dan manhua dari BacaKomik, lengkap dengan skor, filter genre, dan notifikasi chapter baru."],
+      ["Skor di sampul", "Komik yang punya skor di situs sumbernya menampilkan ★ di pojok sampul pada daftar grid dan Top 10."],
+      ["Label NEW UPDATE lebih cepat", "Chapter baru di Koleksi terdeteksi saat aplikasi dibuka atau saat notifikasi masuk, tanpa harus membuka komiknya dulu."],
+      ["Bilah atas Favorit", "Saat menggulir, pilihan Koleksi/Riwayat/Unduhan tetap di atas. Ketuk 🔍 untuk mencari di koleksi."],
+      ["Pindah chapter tanpa macet", "Saat jaringan lambat, pembaca langsung pindah ke chapter berikutnya dan menampilkan layar tunggu sampai halamannya siap."],
+      ["Umur pembaca Komiku", "Komiku tidak punya skor, jadi info komiknya menampilkan batas umur pembaca (misalnya 13+ atau 18+)."],
+    ],
+    fixes: [
+      "Skor komik Kiryuu kini tampil di info komik.",
+      "Pilihan sumber dirapikan supaya kelima sumber muat tanpa terpotong.",
+    ],
+    tour: [
+      { img: "bacakomik", title: "Sumber baru: BacaKomik", text: "Pilih BacaKomik di Beranda atau Pencarian. Skor ★ tampil di pojok sampul." },
+      { img: "favbar", title: "Bilah atas Favorit", text: "Gulir Koleksi: pilihan tab tetap di atas. Ketuk 🔍 untuk membuka kolom pencarian di bawahnya." },
+      { img: "tunggu", title: "Pindah chapter tanpa macet", text: "Jaringan lambat? Chapter berikutnya langsung dibuka dengan layar tunggu, tidak tertahan di chapter lama." },
+    ],
+  },
   "1.9.0": {
     title: "Yang baru di Ninokuu 1.9.0",
     intro: "Gulir otomatis, skor komik, pindah chapter yang mulus, pembersih cache, dan Komiku tetap bisa dibaca walau situsnya menolak server.",

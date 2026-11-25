@@ -1487,6 +1487,16 @@ create table if not exists public.bg_keys (
 );
 alter table public.bg_keys enable row level security;
 revoke all on table public.bg_keys from anon, authenticated;
+-- Kunci kedua untuk pengecek chapter di Termux (bot WhatsApp yang menyala 24 jam). Berdiri sendiri: membuat kunci
+-- Termux tidak mematikan kunci APK, dan sebaliknya. Hanya hash yang disimpan.
+alter table public.bg_keys add column if not exists termux_hash text;
+alter table public.bg_keys add column if not exists termux_used_at timestamptz;
+do $$ begin
+  if not exists (select 1 from pg_catalog.pg_constraint where conname = 'bg_keys_termux_len') then
+    alter table public.bg_keys add constraint bg_keys_termux_len check (termux_hash is null or char_length(termux_hash) = 64);
+  end if;
+end $$;
+create unique index if not exists bg_keys_termux_idx on public.bg_keys (termux_hash) where termux_hash is not null;
 
 -- Klaim chapter baru secara atomik. Dua cron / dua pelapor serentak tidak bisa sama-sama "menang":
 -- hanya satu yang mendapat claimed = true dan berhak mengirim notifikasi.

@@ -12,6 +12,48 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
+## 1.10.1 — 25 Nov 2026 (rilis global)
+
+### Ringkasan
+- Baru: sumber komik BacaKomik
+- Baru: skor komik tampil di pojok sampul pada daftar dan Top 10
+- Baru: di Favorit, pilihan Koleksi/Riwayat/Unduhan tetap terlihat di atas saat menggulir, lengkap dengan tombol cari
+- Baru: Komiku menampilkan batas umur pembaca (misalnya 13+ atau 18+)
+- Label NEW UPDATE di Koleksi muncul lebih cepat untuk semua sumber, tanpa harus membuka komiknya dulu
+- Notifikasi chapter baru Komiku, Shinigami, dan WestManga lebih cepat
+- Pindah chapter (termasuk lanjut otomatis) tidak lagi terlihat macet saat jaringan lambat
+- Skor komik Kiryuu kini tampil, dan pilihan sumber dirapikan
+
+### Detail
+- Favorit: `#favbar` (fixed, kaca buram) muncul saat `#favtop` tergulir keluar layar (`favBarTick` di scroll/resize); isinya kotak segmen tab + tombol cari `.seg-ic` yang menyatu (hanya di Koleksi). Ketuk cari → kolom `#fbq` muncul di bawah kotak pilihan (tab tetap ada; fokus otomatis, sinkron dengan `fav.q`); tombol cari berubah jadi ✕ untuk menutup & menghapus kata kunci, ✕ kecil di kolom hanya menghapus teks; selama mode cari bilah tetap tampil. Pindah tab dari bilah menggulir ke awal daftar. Diuji di Chrome 390 px (tampil saat digulir, cari mengetik & menyaring)
+- Rilis global ini membawa juga semua isi 1.10.0 (lihat di bawah). "Yang baru" 1.10.0 + slide `bacakomik`, `favbar`, `tunggu` (screenshot aplikasi dengan data contoh)
+- Pembaca: pindah chapter di dalam pembaca yang belum siap dalam 0,25 dtk → chapter lama bergeser keluar (animasi swap yang sama) dan layar tunggu `.r-wait` masuk (cincin putar, "Chapter N", bilah berjalan; 6 dtk: "Jaringan lambat, masih memuat…"; 15 dtk: tombol Coba lagi); dulu chapter lama dibiarkan tampil sampai chapter baru siap sehingga terlihat macet. Galat chapter baru tampil di layar tunggu. Selama hitung mundur lanjut otomatis, daftar halaman chapter berikutnya diambil duluan ke `pagesMem`
+
+---
+
+## 1.10.0 — 25 Nov 2026
+
+### Ringkasan
+- Baru: sumber komik BacaKomik
+- Pilihan sumber dirapikan supaya 5 sumber muat tanpa terpotong
+- Baru: skor komik tampil di pojok sampul pada daftar dan Top 10
+- Label NEW UPDATE di Koleksi kini muncul lebih cepat untuk semua sumber, tanpa harus membuka komiknya dulu
+- Komiku kini menampilkan batas umur pembaca (misalnya 13+ atau 18+), bukan skor
+- Skor komik Kiryuu kini tampil di halaman info komik
+
+### Detail
+- Label NEW: notifikasi chapter baru (lonceng) langsung memperbarui `latest`/`latestAt` komik di Koleksi (`applyNotifLatest` di `loadNotifs`, juga saat push masuk); `refreshLatest` kini 45 menit per komik (dulu 3 jam), urut yang paling lama dicek, dan juga berjalan saat aplikasi dibuka / kembali dibuka / tiap 5 menit selama terbuka (putaran paling sering 10 menit sekali), tidak hanya saat Koleksi dibuka
+- Rating: Komiku `score: null` + `age` dari baris "Umur Pembaca" (`toAge` → "13+"), di Edge Function dan jalur HP (native.js); Kiryuu: skor dibaca dari `metadata.meta.score` (dulu dicari di `m.meta` yang tidak ada, jadi selalu kosong); info komik menyembunyikan skor lama di cache untuk Komiku dan menampilkan lencana umur `.inf-age` (18+ merah); `scoreFromHtml` dihapus
+- BacaKomik (sumber ke-5, dari ekstensi Keiyoushi "BacaKomik", konten aman): Edge `bkPage` (/daftar-komik/ dengan order/title/type/status/genre[]), `bkDetail` (infoanime/spe, skor dari angka di samping sampul, jumlah pembaca), `bkChapters` (#chapter_list .lchx/.dt), `bkPages` (img alt "Chapter", cadangan onerror, tanpa noscript), `bkFilters` (genre[] dari /daftar-komik/); ID komik & chapter = slug, domain lewat secret `BACAKOMIK_SITE` (bawaan https://bacakomik.my); dicek cron server (bukan REPORTABLE). Aplikasi: `SOURCES`, `SRC_SORTS`, titik warna, pilihan sumber lebih rapat untuk 5 penyedia, baris panduan domain
+- Pilihan sumber: kotak segmen lama tetap (`.seg.src`), lebar tiap pilihan mengikuti nama (`flex: 1 0 auto`, padding 4px, 11,5px), bisa digeser bila layar < 360 px; diuji 360 & 412 px tanpa luapan
+- Skor di sampul: `cv-score` di kartu grid & Top 10 bila item punya `score` (bukan Komiku); daftar dari Edge kini membawa `score` (Shinigami `user_rate`, Kiryuu `metadata.meta.score`, WestManga, BacaKomik dari kartu), juga jalur HP Shinigami/WestManga di native.js
+- Edge Function ninokuu-api 1.8.0: kunci kedua untuk pengecek di Termux (`bg_key`/`bg_key_drop` dengan `slot: "termux"`, action baru `bg_key_info`); keluar akun di APK tidak mematikan kunci Termux
+- Skema: kolom `bg_keys.termux_hash` & `termux_used_at` (+ indeks unik). Edge 1.7.1 tetap jalan dengan skema lama (kunci Termux saja yang belum bisa dibuat)
+- Panel developer: baris "Pengecek chapter di Termux" (status, buat/ganti kunci, matikan)
+- Bot WhatsApp rexxa-bot: modul `lib/ninokuu.js` (bg_list → ambil chapter Komiku/Shinigami/WestManga dari HP → bg_report, tiap 5 menit; senggol cron server tiap 10 menit untuk Kiryuu) + perintah `.ninokuu`
+
+---
+
 ## 1.9.1 — 22 Nov 2026 (rilis global)
 
 ### Ringkasan

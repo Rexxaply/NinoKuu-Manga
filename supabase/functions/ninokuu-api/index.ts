@@ -1,5 +1,5 @@
 // Ninokuu · Edge Function "ninokuu-api"
-// - Jelajah, detail, dan halaman chapter dari Komiku, Kiryuu, Shinigami, WestManga
+// - Jelajah, detail, dan halaman chapter dari Komiku, Kiryuu, Shinigami, WestManga, BacaKomik
 // - Proxy gambar bertanda tangan (hanya alamat yang dibuat server ini; bukan proxy terbuka)
 // - Cron tiap 15 menit: cek chapter baru untuk komik yang loncengnya menyala, kirim notifikasi,
 //   kirim pengumuman developer, bersihkan chat & notifikasi lama
@@ -11,9 +11,9 @@
 // kalau satu sumber rusak, isi secret KOMIKU_SITE / KIRYUU_SITE / SHNGM_SITE / WEST_SITE dengan domain barunya.
 import { createClient } from "npm:@supabase/supabase-js@2.76.1";
 
-const VERSION = "1.7.0";
+const VERSION = "1.8.0";
 const NAME = "ninokuu-api";
-const SOURCES = ["komiku", "kiryuu", "shinigami", "westmanga"] as const;
+const SOURCES = ["komiku", "kiryuu", "shinigami", "westmanga", "bacakomik"] as const;
 type Source = typeof SOURCES[number];
 // sumber yang sering menolak server (Cloudflare); aplikasi APK boleh melaporkan chapter-nya sendiri
 const BLOCKED: Source[] = ["shinigami", "westmanga"];
@@ -349,12 +349,12 @@ function newestChapter(list: any[]) {
 
 type Status = "" | "ongoing" | "completed" | "hiatus";
 // Urutan yang didukung tiap sumber (dari ekstensi Mihon/Keiyoushi; yang tidak didukung → "update"):
-// komiku: update, popular · kiryuu: update, popular, az, za, rating · shinigami: update, popular, rating · westmanga: update, popular, az, za
+// komiku: update, popular · kiryuu: update, popular, az, za, rating · shinigami: update, popular, rating · westmanga: update, popular, az, za · bacakomik: update, popular, az, za
 type Sort = "update" | "popular" | "az" | "za" | "rating";
-const SORTS: Record<string, Sort[]> = { komiku: ["update", "popular"], kiryuu: ["update", "popular", "az", "za", "rating"], shinigami: ["update", "popular", "rating"], westmanga: ["update", "popular", "az", "za"] };
+const SORTS: Record<string, Sort[]> = { komiku: ["update", "popular"], kiryuu: ["update", "popular", "az", "za", "rating"], shinigami: ["update", "popular", "rating"], westmanga: ["update", "popular", "az", "za"], bacakomik: ["update", "popular", "az", "za"] };
 type Opt = { sort: Sort; type: "" | "manga" | "manhwa" | "manhua"; limit: number; genres: string[]; status: Status };
 type Chapter = { id: string; ch: string | null; title: string; at: string | null; url: string };
-type Detail = { manga: { id: string; title: string; cover: string; desc: string; status: string; tags: string[]; author: string; url: string; views?: number | null; score?: number | null; publisher?: string }; chapters: Chapter[]; more?: { offset: number } | null };
+type Detail = { manga: { id: string; title: string; cover: string; desc: string; status: string; tags: string[]; author: string; url: string; views?: number | null; score?: number | null; age?: string | null; publisher?: string }; chapters: Chapter[]; more?: { offset: number } | null };
 // info tambahan (tiap sumber menamai field-nya berbeda; yang tidak ada dibiarkan kosong)
 const normStatus = (s: unknown): string => {
   const t = String(s ?? "").toLowerCase();
@@ -382,11 +382,13 @@ const pickScore = (...objs: any[]): number | null => {
   for (const o of objs) if (o && typeof o === "object") for (const k of SCORE_KEYS) { const n = toScore(o[k]); if (n != null) return n; }
   return null;
 };
-// skor dari HTML (schema.org ratingValue, tema MangaThemesia "num", JSON-LD)
-const scoreFromHtml = (h: string): number | null =>
-  toScore(h.match(/itemprop=["']ratingValue["'][^>]*content=["']([\d.,]+)/i)?.[1] || h.match(/content=["']([\d.,]+)["'][^>]*itemprop=["']ratingValue/i)?.[1]
-    || h.match(/itemprop=["']ratingValue["'][^>]*>\s*([\d.,]+)/i)?.[1] || h.match(/"ratingValue"\s*:\s*"?([\d.,]+)/i)?.[1]
-    || h.match(/rating[\s\S]{0,300}?class=["'][^"']*\bnum\b[^"']*["'][^>]*>\s*([\d.,]+)\s*</i)?.[1] || "");
+// batas umur pembaca ("13 Tahun (minimal)", "18+", "Dewasa") → "13+"; selain itu kosong
+const toAge = (v: unknown): string | null => {
+  const t = String(v ?? "").trim();
+  const n = parseInt(t.match(/(\d{1,2})\s*(?:\+|tahun|th\b|thn|yo\b|years?)/i)?.[1] || t.match(/^\s*(\d{1,2})\s*$/)?.[1] || "", 10);
+  if (n >= 3 && n <= 21) return n + "+";
+  return /dewasa|adult|mature/i.test(t) ? "18+" : null;
+};
 const VIEW_KEYS = ["view_count", "views_count", "total_views", "total_view", "views", "view", "viewer", "viewers", "read_count", "total_read", "readers", "post_views", "hits"];
 const pickViews = (...objs: any[]): number | null => {
   for (const o of objs) if (o && typeof o === "object") for (const k of VIEW_KEYS) { const n = toNum(o[k]); if (n != null && n > 0) return n; }
@@ -418,7 +420,7 @@ async function shngBrowse(page: number, q: string, o: Opt) {
   if (o.status) p.set("status", o.status);
   const j = await shngJson(`/v1/manga/list?${p}`);
   const items = await Promise.all((j?.data || []).filter((m: any) => m?.manga_id).map(async (m: any) => ({
-    id: String(m.manga_id), title: String(m.title || ""), cover: await coverUrl(shngCover(m), SHNGM_SITE + "/"), type: o.type || "",
+    id: String(m.manga_id), title: String(m.title || ""), cover: await coverUrl(shngCover(m), SHNGM_SITE + "/"), type: o.type || "", score: pickScore(m, m.stats),
   })));
   const more = j?.meta?.has_next;
   return { items, hasNext: typeof more === "boolean" ? more : items.length >= o.limit };
@@ -513,7 +515,8 @@ async function komikuDetail(id: string): Promise<Detail> {
       status: normStatus(st), author: row("(?:Pengarang|Komikus|Author)"), url: page.url,
       publisher: row("(?:Penerbit|Publisher|Serialisasi|Serialization)").slice(0, 120),
       views: toNum(row("(?:Pembaca|Dibaca|Dilihat|Views?)")) ?? toNum(stripTags(top).match(/([\d.,]+\s*(?:rb|ribu|jt|juta|k|m)?)\s*(?:x\s*)?(?:dibaca|pembaca|views?)\b/i)?.[1] || ""),
-      score: toScore(row("(?:Skor|Score|Rating|Nilai)")) ?? scoreFromHtml(top) },
+      // Komiku tidak punya skor; yang ada batas umur pembaca ("13 Tahun (minimal)") → "13+"
+      score: null, age: toAge(row("(?:Umur\\s*Pembaca|Usia\\s*Pembaca|Rating\\s*Usia|Batas\\s*Usia)")) },
     chapters,
     more,
   };
@@ -625,7 +628,7 @@ async function kiryuuSearchPage(srcPage: number, q: string, o: Opt, retry = true
   const bySlug = new Map((Array.isArray(list) ? list : []).filter((m) => m?.id && !kiryuuTerms(m, "type").includes("Novel")).map((m) => [m.slug, m]));
   const items = await Promise.all(slugs.map((sl) => bySlug.get(sl)).filter(Boolean).map(async (m: any) => ({
     id: String(m.id), title: decodeEnt(stripTags(m.title?.rendered || m.slug || "")), cover: await coverUrl(kiryuuCover(m), KIRYUU_SITE + "/"),
-    type: (kiryuuTerms(m, "type")[0] || "").toLowerCase(),
+    type: (kiryuuTerms(m, "type")[0] || "").toLowerCase(), score: pickScore(m.metadata?.meta),
   })));
   return { items, hasNext };
 }
@@ -655,7 +658,8 @@ async function kiryuuDetail(id: string): Promise<Detail> {
       desc: stripTags(String(m.content?.rendered || "").replace(/<\/p>\s*<p[^>]*>/gi, "\n\n")).trim(),
       tags: [...kiryuuTerms(m, "genre"), ...kiryuuTerms(m, "type")].slice(0, 8), status: kiryuuTerms(m, "status").map((s) => KIRYUU_STATUS[s] || normStatus(s)).find(Boolean) || "",
       author: kiryuuTerms(m, "series-author").join(", "), url: m.link || `${KIRYUU_SITE}/manga/${m.slug}/`,
-      views: pickViews(m, m.meta, m.acf), score: pickScore(m, m.meta, m.acf),
+      // skor ada di metadata.meta.score (mis. "7"); kosong bila belum dinilai
+      views: pickViews(m.metadata?.meta, m, m.meta, m.acf), score: pickScore(m.metadata?.meta, m, m.meta, m.acf),
       publisher: ["series-publisher", "series-serialization", "serialization", "publisher"].map((t) => kiryuuTerms(m, t).join(", ")).find(Boolean) || pickPublisher(m.meta) || pickPublisher(m.acf),
     },
     chapters,
@@ -683,6 +687,109 @@ async function kiryuuPages(id: string) {
   if (!kiryuuHostOk(new URL(page.url).hostname)) throw webErr("Link bukan dari Kiryuu", 400);
   const box = block(page.text, /<section\b[^>]*data-image-data[^>]*>/i);
   return { ref: page.url, images: [...box.matchAll(/<img\b[^>]*>/gi)].map((m) => imgSrc(m[0], page.url)).filter(Boolean) };
+}
+
+/* ---------- BacaKomik (WordPress, HTML; dari ekstensi Keiyoushi "BacaKomik") ---------- */
+// ID komik = slug di /komik/<slug>/, ID chapter = slug halaman chapter (/<slug>/). Alamat situs bisa diganti lewat
+// secret BACAKOMIK_SITE bila pindah domain; data lama tetap berlaku karena yang disimpan hanya slug.
+const BK_SITE = (Deno.env.get("BACAKOMIK_SITE") || "https://bacakomik.my").replace(/\/+$/, "");
+const bkSlug = (id: string) => { const v = String(id || "").replace(/^https?:\/\/[^/]+/i, "").replace(/^\/+|\/+$/g, "").replace(/^komik\//, ""); if (!/^[\w%.-]{1,200}$/.test(v)) throw webErr("ID BacaKomik tidak valid", 400); return v; };
+const bkSlugOf = (href: string, comic: boolean) => { try { const p = new URL(href, BK_SITE).pathname.replace(/^\/+|\/+$/g, ""); return comic ? (p.match(/^komik\/([^/]+)$/)?.[1] || "") : (/^[^/]+$/.test(p) ? p : ""); } catch { return ""; } };
+async function bkFetch(path: string) {
+  const page = await webFetch(BK_SITE + path, { referer: BK_SITE + "/" });
+  // pengalihan ke domain lain tidak boleh lolos (gambar yang ditandatangani harus dari halaman BacaKomik sungguhan)
+  if (!/(^|\.)bacakomik\.[a-z.]+$/i.test(new URL(page.url).hostname)) throw webErr("Halaman bukan dari BacaKomik", 502);
+  return page;
+}
+const BK_SORT: Record<string, string> = { update: "update", popular: "popular", az: "title", za: "titlereverse" };
+async function bkPage(srcPage: number, q: string, o: Opt) {
+  const u = new URL(BK_SITE + "/daftar-komik/" + (srcPage > 1 ? `page/${srcPage}/` : ""));
+  if (q) u.searchParams.set("title", q);
+  u.searchParams.set("order", BK_SORT[o.sort] || "update");
+  if (o.type) u.searchParams.set("type", o.type[0].toUpperCase() + o.type.slice(1));
+  if (o.status) u.searchParams.set("status", o.status);
+  for (const g of o.genres) u.searchParams.append("genre[]", g);
+  const page = await bkFetch(u.pathname + u.search), html = page.text;
+  const items: any[] = [];
+  for (const m of html.matchAll(/<div\b[^>]*class=["'][^"']*\banimepost\b[^"']*["'][^>]*>/gi)) {
+    const b = block(html.slice(m.index!), /<div\b[^>]*>/i);
+    const href = b.match(/<a\b[^>]*href=["']([^"']+)["']/i)?.[1] || "", id = bkSlugOf(href, true);
+    const title = stripTags(b.match(/<h4\b[^>]*>([\s\S]*?)<\/h4>/i)?.[1] || "");
+    if (!id || !title) continue;
+    const img = imgSrc(b.match(/<img\b[^>]*>/i)?.[0] || "", page.url);
+    const tp = (b.match(/\btypeflag\s+(manga|manhwa|manhua)\b/i)?.[1] || o.type || "").toLowerCase();
+    // skor = angka terakhir setelah judul di kartu (mis. 7.3)
+    const after = b.slice(Math.max(0, b.search(/<\/h4>/i)));
+    const sc = [...after.matchAll(/>\s*(\d{1,2}(?:[.,]\d{1,2})?)\s*</g)].pop()?.[1];
+    items.push({ id, title, cover: await coverUrl(img, BK_SITE + "/"), type: tp, score: toScore(sc || "") });
+  }
+  return { items, hasNext: /class=["'][^"']*\bnext\b[^"']*page-numbers|page-numbers[^"']*\bnext\b/i.test(html) };
+}
+function bkChapters(html: string, base: string): Chapter[] {
+  const list = block(html, /<(?:ul|div)\b[^>]*id=["']chapter_list["'][^>]*>/i);
+  const out: Chapter[] = [];
+  for (const li of tagPairs(list, "li")) {
+    const lc = block(li.inner, /<[a-z]+\b[^>]*class=["'][^"']*\blchx\b[^"']*["'][^>]*>/i) || li.inner;
+    const a = lc.match(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
+    if (!a) continue;
+    const url = abs(a[1], base), id = bkSlugOf(url, false), name = stripTags(a[2]);
+    if (!id) continue;
+    const dt = stripTags(block(li.inner, /<[a-z]+\b[^>]*class=["'][^"']*\bdt\b[^"']*["'][^>]*>/i));
+    out.push({ id, ch: chNumFrom(name, url), title: chTitleFrom(name), at: parseWebDate(dt), url });
+  }
+  return out;
+}
+async function bkDetail(id: string): Promise<Detail> {
+  const slug = bkSlug(id), page = await bkFetch(`/komik/${slug}/`), h = page.text;
+  const listAt = h.search(/id=["']chapter_list["']/i);
+  const top = h.slice(0, listAt > 0 ? listAt : h.length);
+  const info = block(top, /<div\b[^>]*class=["'][^"']*\binfoanime\b[^"']*["'][^>]*>/i) || top;
+  // baris info: <span><b>Status:</b> Berjalan</span> dst.
+  const spe = (label: string) => {
+    for (const sp of tagPairs(info, "span")) { const t = stripTags(sp.inner); const m = t.match(new RegExp(`^\\s*(?:${label})\\s*:\\s*(.+)$`, "i")); if (m) return m[1].trim(); }
+    return "";
+  };
+  const title = stripTags(top.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] || "").replace(/^komik\s+/i, "") || metaContent(top, "og:title");
+  const thumb = block(top, /<div\b[^>]*class=["'][^"']*\bthumb\b[^"']*["'][^>]*>/i);
+  const cover = imgSrc(thumb.match(/<img\b[^>]*>/i)?.[0] || "", page.url);
+  // skor: angka satu-satunya di antara sampul dan baris info (mis. 7.3); juga dicoba penanda rating yang umum
+  const thumbAt = top.search(/class=["'][^"']*\bthumb\b/i), speAt = top.search(/class=["'][^"']*\bspe\b|Judul\s+Alternatif/i);
+  const near = thumbAt >= 0 && speAt > thumbAt ? top.slice(thumbAt, speAt) : "";
+  const score = toScore(near.replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, "").match(/>\s*(\d{1,2}(?:[.,]\d{1,2})?)\s*</)?.[1]
+    || top.match(/itemprop=["']ratingValue["'][^>]*content=["']([\d.,]+)/i)?.[1] || "");
+  const tags = [...block(info, /<div\b[^>]*class=["'][^"']*\bgenre-info\b[^"']*["'][^>]*>/i).matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/gi)].map((x) => stripTags(x[1])).filter(Boolean);
+  const type = spe("Jenis\\s+Komik");
+  const descBox = block(h, /<div\b[^>]*class=["'][^"']*\bentry-content-single\b[^"']*["'][^>]*>/i);
+  const pText = [...descBox.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)].map((x) => stripTags(x[1])).filter(Boolean).join("\n\n");
+  const desc = (pText.split(/bercerita tentang\s+/i)[1] || pText || metaContent(top, "og:description")).trim();
+  return {
+    manga: { id: slug, title, cover: await coverUrl(cover, BK_SITE + "/"), desc, tags: [...tags, ...(type ? [type] : [])].slice(0, 8),
+      status: normStatus(spe("Status")), author: spe("Author|Pengarang"), url: page.url, publisher: spe("Serialisasi").slice(0, 120),
+      views: toNum(spe("Jumlah\\s+Pembaca")), score },
+    chapters: bkChapters(h, page.url),
+  };
+}
+async function bkPages(id: string) {
+  const page = await bkFetch(`/${bkSlug(id)}/`);
+  const html = dropBlocks(page.text, "noscript");
+  const out: string[] = [];
+  for (const m of html.matchAll(/<img\b[^>]*>/gi)) {
+    const t = m[0];
+    if (!/\balt=["'][^"']*chapter/i.test(t)) continue;
+    // sebagian gambar memakai cadangan di onerror="this.src='...'" (server gambar utama sering mati)
+    const alt = t.match(/onerror=["'][^"']*src\s*=\s*\\?'([^'\\]+)\\?'/i)?.[1];
+    const u = alt ? abs(alt, page.url) : imgSrc(t, page.url);
+    if (u && !out.includes(u)) out.push(u);
+  }
+  return { ref: page.url, images: out };
+}
+async function bkFilters(): Promise<Filters> {
+  const html = (await bkFetch("/daftar-komik/")).text, genres: { id: string; name: string }[] = [];
+  for (const m of html.matchAll(/<input\b[^>]*name=["']genre\[\]["'][^>]*>\s*(?:<label\b[^>]*>([\s\S]*?)<\/label>)?/gi)) {
+    const id = attr(m[0], "value"); if (!id || genres.some((g) => g.id === id)) continue;
+    genres.push({ id, name: stripTags(m[1] || "") || id });
+  }
+  return { genres: genres.sort((a, b) => a.name.localeCompare(b.name)), status: ["ongoing", "completed", "hiatus"], maxGenres: 10 };
 }
 
 /* ---------- WestManga (API JSON + visit token) ---------- */
@@ -726,7 +833,7 @@ async function westBrowse(page: number, q: string, o: Opt) {
   o.genres.forEach((g) => p.append("genre[]", g));
   const j = await westApi(`/api/contents?${p}`);
   const items = await Promise.all((j?.data || []).filter((m: any) => m?.slug).map(async (m: any) => ({
-    id: String(m.slug), title: String(m.title || m.slug), cover: await coverUrl(westAbs(m.cover), westBase + "/"), type: WEST_TYPE[String(m.country_id || "")] || o.type || "",
+    id: String(m.slug), title: String(m.title || m.slug), cover: await coverUrl(westAbs(m.cover), westBase + "/"), type: WEST_TYPE[String(m.country_id || "")] || o.type || "", score: pickScore(m, m.stats),
   })));
   const pg = j?.paginator || {};
   const last = pg.last_page != null ? Number(pg.last_page) : null;
@@ -789,6 +896,7 @@ async function browse(src: Source, page: number, q: string, o: Opt) {
   const plain = !q && !o.genres.length && !o.type && !o.status;
   if (src === "komiku") return await windowed("komiku", page, o.limit, (sp) => komikuPage(sp, q, o), plain);
   if (src === "kiryuu") return await windowed("kiryuu", page, o.limit, (sp) => kiryuuSearchPage(sp, q, o), plain);
+  if (src === "bacakomik") return await windowed("bacakomik", page, o.limit, (sp) => bkPage(sp, q, o), plain);
   return await westBrowse(page, q, o);
 }
 /* ---------- daftar filter per sumber (genre asli dari penyedia) ---------- */
@@ -803,6 +911,7 @@ async function filters(src: Source): Promise<Filters> {
   let data: Filters;
   if (src === "komiku") data = { genres: parseList(KOMIKU_GENRES), status: ["ongoing", "completed"], maxGenres: 2 };
   else if (src === "shinigami") data = { genres: parseList(SHNG_GENRES), status: ["ongoing", "completed", "hiatus"], maxGenres: 10 };
+  else if (src === "bacakomik") data = await bkFilters();
   else if (src === "kiryuu") {
     const list: any[] = await kiryuuJson("/wp-json/wp/v2/genre?per_page=100&page=1&orderby=count&order=desc&_fields=slug,name,count");
     data = { genres: (Array.isArray(list) ? list : []).filter((t) => t?.slug && Number(t.count ?? 1) > 0)
@@ -820,6 +929,7 @@ async function detail(src: Source, id: string): Promise<Detail> {
   if (src === "shinigami") return await shngDetail(id);
   if (src === "komiku") return await komikuDetail(id);
   if (src === "kiryuu") return await kiryuuDetail(id);
+  if (src === "bacakomik") return await bkDetail(id);
   return await westDetail(id);
 }
 async function chaptersOf(src: Source, id: string): Promise<Chapter[]> {
@@ -828,7 +938,7 @@ async function chaptersOf(src: Source, id: string): Promise<Chapter[]> {
   return (await detail(src, id)).chapters;
 }
 async function pages(src: Source, chapterId: string) {
-  const r = src === "shinigami" ? await shngPages(chapterId) : src === "komiku" ? await komikuPages(chapterId) : src === "kiryuu" ? await kiryuuPages(chapterId) : await westPages(chapterId);
+  const r = src === "shinigami" ? await shngPages(chapterId) : src === "komiku" ? await komikuPages(chapterId) : src === "kiryuu" ? await kiryuuPages(chapterId) : src === "bacakomik" ? await bkPages(chapterId) : await westPages(chapterId);
   if (!r.images.length) throw webErr("Tidak menemukan gambar di chapter ini. Mungkin chapter terkunci atau situsnya berubah.", 422);
   return { ref: r.ref, images: await Promise.all(r.images.map(async (u) => ({ u, p: await signImg(u, r.ref) }))) };
 }
@@ -928,7 +1038,7 @@ const rawImg = (u: string) => { try { const x = new URL(u); return /\/functions\
 const deepLink = (src: string, id: string) => `ninokuu://comic/${src}/${encodeURIComponent(id)}`;
 // Gambar notifikasi diunduh oleh HP penerima, jadi hanya host sampul sumber yang dikenal (https, dan akar domainnya
 // salah satu kata kunci di bawah atau domain di secret IMG_HOSTS) yang dipakai; selain itu notifikasi tanpa gambar.
-const IMG_ROOTS = ["komiku", "kiryuu", "shngm", "shinigami", "westmanga"];
+const IMG_ROOTS = ["komiku", "kiryuu", "shngm", "shinigami", "westmanga", "bacakomik"];
 const IMG_EXTRA = (Deno.env.get("IMG_HOSTS") || "").split(",").map((x) => x.trim().toLowerCase().replace(/^\.+/, "")).filter(Boolean);
 function imgHostOk(raw: string): boolean {
   try {
@@ -1154,9 +1264,13 @@ async function sha256hex(t: string) {
 async function bgUser(key: unknown): Promise<string | null> {
   const k = String(key || "");
   if (!/^[0-9a-f]{64}$/.test(k)) return null;
-  const { data } = await admin.from("bg_keys").select("user_id").eq("key_hash", await sha256hex(k)).maybeSingle();
-  if (data?.user_id) admin.from("bg_keys").update({ used_at: new Date().toISOString() }).eq("user_id", data.user_id).then(() => {}, () => {});
-  return data?.user_id || null;
+  const h = await sha256hex(k);
+  const { data } = await admin.from("bg_keys").select("user_id").eq("key_hash", h).maybeSingle();
+  if (data?.user_id) { admin.from("bg_keys").update({ used_at: new Date().toISOString() }).eq("user_id", data.user_id).then(() => {}, () => {}); return data.user_id; }
+  // kunci kedua untuk pengecek di Termux (bot WhatsApp); kolom belum ada di skema lama → anggap tidak cocok
+  const { data: t } = await admin.from("bg_keys").select("user_id").eq("termux_hash", h).maybeSingle();
+  if (t?.user_id) admin.from("bg_keys").update({ termux_used_at: new Date().toISOString() }).eq("user_id", t.user_id).then(() => {}, () => {});
+  return t?.user_id || null;
 }
 async function userOf(req: Request) {
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
@@ -1247,16 +1361,43 @@ Deno.serve(async (req) => {
     const user = await userOf(req);
     if (!user) return json({ error: "Masuk dulu untuk memakai fitur ini." }, 401);
 
-    // buat (atau ganti) kunci cek latar belakang untuk HP ini; kunci lama otomatis tidak berlaku
+    // buat (atau ganti) kunci cek latar belakang; kunci lama di slot yang sama otomatis tidak berlaku.
+    //   slot "app"    = pekerja latar belakang APK (bawaan)
+    //   slot "termux" = pengecek di Termux (bot WhatsApp); berdiri sendiri, tidak mematikan kunci APK
+    const rnd = () => [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, "0")).join("");
     if (action === "bg_key") {
       const { data: me } = await admin.from("profiles").select("role").eq("id", user.id).maybeSingle();
       if (me?.role !== "developer") return json({ error: "khusus developer" }, 403);
-      const key = [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, "0")).join("");
-      const { error } = await admin.from("bg_keys").upsert({ user_id: user.id, key_hash: await sha256hex(key), created_at: new Date().toISOString() }, { onConflict: "user_id" });
+      const key = rnd(), hash = await sha256hex(key), now = new Date().toISOString();
+      if (body.slot === "termux") {
+        const { data: row } = await admin.from("bg_keys").select("user_id").eq("user_id", user.id).maybeSingle();
+        // belum ada baris (APK belum pernah aktif): isi slot APK dengan kunci acak yang tidak pernah dibagikan
+        const { error } = row
+          ? await admin.from("bg_keys").update({ termux_hash: hash, termux_used_at: null }).eq("user_id", user.id)
+          : await admin.from("bg_keys").insert({ user_id: user.id, key_hash: await sha256hex(rnd()), created_at: now, termux_hash: hash });
+        if (error) return json({ error: "bg_keys: " + error.message + " — jalankan ulang ninokuu-schema.sql versi terbaru." }, 500);
+        return json({ ok: true, key });
+      }
+      const { error } = await admin.from("bg_keys").upsert({ user_id: user.id, key_hash: hash, created_at: now }, { onConflict: "user_id" });
       if (error) return json({ error: "bg_keys: " + error.message + " — jalankan ulang ninokuu-schema.sql versi terbaru." }, 500);
       return json({ ok: true, key });
     }
-    if (action === "bg_key_drop") { await admin.from("bg_keys").delete().eq("user_id", user.id); return json({ ok: true }); }
+    if (action === "bg_key_drop") {
+      if (body.slot === "termux") { await admin.from("bg_keys").update({ termux_hash: null, termux_used_at: null }).eq("user_id", user.id); return json({ ok: true }); }
+      // keluar akun di APK: kunci APK dimatikan, kunci Termux (bila ada) tetap jalan
+      const { data: row, error } = await admin.from("bg_keys").select("termux_hash").eq("user_id", user.id).maybeSingle();
+      if (!error && row?.termux_hash) await admin.from("bg_keys").update({ key_hash: await sha256hex(rnd()) }).eq("user_id", user.id);
+      else await admin.from("bg_keys").delete().eq("user_id", user.id);
+      return json({ ok: true });
+    }
+    // status kunci Termux untuk panel developer (kapan terakhir dipakai)
+    if (action === "bg_key_info") {
+      const { data: me } = await admin.from("profiles").select("role").eq("id", user.id).maybeSingle();
+      if (me?.role !== "developer") return json({ error: "khusus developer" }, 403);
+      const { data: row, error } = await admin.from("bg_keys").select("termux_hash, termux_used_at").eq("user_id", user.id).maybeSingle();
+      if (error) return json({ ok: true, termux: false, schema: false });
+      return json({ ok: true, termux: !!row?.termux_hash, used_at: row?.termux_used_at || null, schema: true });
+    }
 
     // Staf menghapus gambar chat dengan kunci server. Moderator tidak punya izin Storage atas folder orang lain, jadi tanpa
     // ini gambar pesan yang disembunyikan / dihapus / milik akun yang diblokir tetap bisa dibuka lewat alamat publiknya.
