@@ -1705,6 +1705,7 @@ async function vReader(src, id, chId) {
   // kembali saat jari dilepas. Hanya saat diperbesar; posisi FIT (tidak diperbesar) tidak ada efek sama sekali.
   let pan = null, panRaf = 0, rub = { x: 0, y: 0, el: null }, rubRaf = 0;
   const rubber = (o, dim) => Math.sign(o) * (1 - 1 / ((Math.abs(o) * 0.55) / dim + 1)) * dim;
+  const inv0 = (r, dim) => (r ? (Math.sign(r) * dim * (1 / (1 - Math.min(0.95, Math.abs(r) / dim)) - 1)) / 0.55 : 0);
   const rubPaint = () => { if (rub.el) rub.el.style.transform = rub.x || rub.y ? `translate3d(${rub.x.toFixed(1)}px, ${rub.y.toFixed(1)}px, 0)` : ""; };
   const rubClear = () => { cancelAnimationFrame(rubRaf); rubRaf = 0; if (rub.el) rub.el.style.transform = ""; rub = { x: 0, y: 0, el: null }; };
   const rubBack = () => {
@@ -1726,19 +1727,25 @@ async function vReader(src, id, chId) {
     cancelAnimationFrame(rubRaf); rubRaf = 0;
     const el = zTarget(); if (rub.el && rub.el !== el) rubClear(); rub.el = el;
     // posisi "mentah" = posisi gulir + tarikan yang sedang berlangsung (supaya bisa ditangkap lagi saat memantul)
-    const inv = (r, dim) => (r ? (Math.sign(r) * dim * (1 / (1 - Math.min(0.95, Math.abs(r) / dim)) - 1)) / 0.55 : 0);
-    pan = { x: t.clientX, y: t.clientY, sc, vx: 0, vy: 0, t: performance.now(),
-      rx: sc.scrollLeft - inv(rub.x, sc.clientWidth), ry: sc.scrollTop - inv(rub.y, sc.clientHeight) };
+    const inv = inv0;
+    pan = { x: t.clientX, y: t.clientY, x0: t.clientX, y0: t.clientY, dir: rub.x ? "h" : "", sc, vx: 0, vy: 0, t: performance.now(),
+      rx: sc.scrollLeft - inv(rub.x, sc.clientWidth), ry: sc.scrollTop };
   }, { passive: true });
   box.addEventListener("touchmove", (e) => {
     if (!pan || pinch || e.touches.length !== 1) return;
     const t = e.touches[0], dx = t.clientX - pan.x, dy = t.clientY - pan.y, now = performance.now(), dt = Math.max(1, now - pan.t);
     if (e.cancelable) e.preventDefault();
     const sc = pan.sc, mx = Math.max(0, sc.scrollWidth - sc.clientWidth), my = Math.max(0, sc.scrollHeight - sc.clientHeight);
+    // arah gerakan ditentukan setelah 8 px: jeli HANYA saat jari jelas mendorong ke samping (kiri/kanan) melewati tepi,
+    // seperti gambar menolak digeser ke sisi itu. Gulir naik-turun (walau jarinya sedikit miring) tidak memunculkan jeli,
+    // dan tepi atas/bawah tidak pernah berjeli.
+    if (!pan.dir) { const ax = Math.abs(t.clientX - pan.x0), ay = Math.abs(t.clientY - pan.y0); if (Math.max(ax, ay) >= 8) pan.dir = ax > ay * 1.2 ? "h" : "v"; }
     pan.rx -= dx; pan.ry -= dy;
     const cx = Math.min(mx, Math.max(0, pan.rx)), cy = Math.min(my, Math.max(0, pan.ry));
+    if (pan.dir !== "h") pan.rx = cx + (rub.x ? -inv0(rub.x, sc.clientWidth) : 0);   // tarikan miring tidak menumpuk
+    pan.ry = cy;
     sc.scrollLeft = cx; sc.scrollTop = cy;
-    rub.x = rubber(cx - pan.rx, sc.clientWidth); rub.y = rubber(cy - pan.ry, sc.clientHeight); rubPaint();
+    rub.x = pan.dir === "h" ? rubber(cx - pan.rx, sc.clientWidth) : rub.x; rub.y = 0; rubPaint();
     pan.vx = (-dx / dt) * 0.7 + pan.vx * 0.3; pan.vy = (-dy / dt) * 0.7 + pan.vy * 0.3;
     pan.x = t.clientX; pan.y = t.clientY; pan.t = now;
   }, { passive: false });
