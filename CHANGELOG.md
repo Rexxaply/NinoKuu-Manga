@@ -16,7 +16,7 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ### Ringkasan
 - Baru: sumber komik BacaKomik
-- Baru: tampilan pilihan sumber yang lebih rapi, dengan warna khas tiap sumber
+- Pilihan sumber dirapikan supaya 5 sumber muat tanpa terpotong
 - Baru: skor komik tampil di pojok sampul pada daftar dan Top 10
 - Label NEW UPDATE di Koleksi kini muncul lebih cepat untuk semua sumber, tanpa harus membuka komiknya dulu
 - Komiku kini menampilkan batas umur pembaca (misalnya 13+ atau 18+), bukan skor
@@ -26,7 +26,7 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 - Label NEW: notifikasi chapter baru (lonceng) langsung memperbarui `latest`/`latestAt` komik di Koleksi (`applyNotifLatest` di `loadNotifs`, juga saat push masuk); `refreshLatest` kini 45 menit per komik (dulu 3 jam), urut yang paling lama dicek, dan juga berjalan saat aplikasi dibuka / kembali dibuka / tiap 5 menit selama terbuka (putaran paling sering 10 menit sekali), tidak hanya saat Koleksi dibuka
 - Rating: Komiku `score: null` + `age` dari baris "Umur Pembaca" (`toAge` → "13+"), di Edge Function dan jalur HP (native.js); Kiryuu: skor dibaca dari `metadata.meta.score` (dulu dicari di `m.meta` yang tidak ada, jadi selalu kosong); info komik menyembunyikan skor lama di cache untuk Komiku dan menampilkan lencana umur `.inf-age` (18+ merah); `scoreFromHtml` dihapus
 - BacaKomik (sumber ke-5, dari ekstensi Keiyoushi "BacaKomik", konten aman): Edge `bkPage` (/daftar-komik/ dengan order/title/type/status/genre[]), `bkDetail` (infoanime/spe, skor dari angka di samping sampul, jumlah pembaca), `bkChapters` (#chapter_list .lchx/.dt), `bkPages` (img alt "Chapter", cadangan onerror, tanpa noscript), `bkFilters` (genre[] dari /daftar-komik/); ID komik & chapter = slug, domain lewat secret `BACAKOMIK_SITE` (bawaan https://bacakomik.my); dicek cron server (bukan REPORTABLE). Aplikasi: `SOURCES`, `SRC_SORTS`, titik warna, pilihan sumber lebih rapat untuk 5 penyedia, baris panduan domain
-- Pilihan sumber: `srcRail` (pil bergeser + titik warna, jempol meluncur ikut warna sumber lewat `:has`), dipindah ke atas Top 10 di Beranda (memilih sumber untuk Top 10 & daftar update) dan dipakai juga di Pencarian; `.seg.src` dihapus
+- Pilihan sumber: kotak segmen lama tetap (`.seg.src`), lebar tiap pilihan mengikuti nama (`flex: 1 0 auto`, padding 4px, 11,5px), bisa digeser bila layar < 360 px; diuji 360 & 412 px tanpa luapan
 - Skor di sampul: `cv-score` di kartu grid & Top 10 bila item punya `score` (bukan Komiku); daftar dari Edge kini membawa `score` (Shinigami `user_rate`, Kiryuu `metadata.meta.score`, WestManga, BacaKomik dari kartu), juga jalur HP Shinigami/WestManga di native.js
 - Edge Function ninokuu-api 1.8.0: kunci kedua untuk pengecek di Termux (`bg_key`/`bg_key_drop` dengan `slot: "termux"`, action baru `bg_key_info`); keluar akun di APK tidak mematikan kunci Termux
 - Skema: kolom `bg_keys.termux_hash` & `termux_used_at` (+ indeks unik). Edge 1.7.1 tetap jalan dengan skema lama (kunci Termux saja yang belum bisa dibuat)

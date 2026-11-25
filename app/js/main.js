@@ -243,9 +243,6 @@ const dlOpen = (src, id) => () => (DL.supported() ? go(`#/dl/${src}/${encodeURIC
 
 /* ---------- potongan tampilan bersama ---------- */
 const topbar = (title, right = "") => `<div class="topbar"><button class="icon-btn" data-act="back" aria-label="Kembali">${icon("back", 22)}</button><h1>${title}</h1>${right || '<span class="tb-sp"></span>'}</div>`;
-// pilihan sumber: pil bergeser (muat berapa pun jumlah sumbernya), tiap sumber bertitik warnanya sendiri;
-// pil aktif diwarnai lembut sesuai warna sumbernya
-const srcRail = (cur) => `<div class="src-rail" role="tablist" aria-label="Sumber komik">${SOURCES.map((x) => `<button role="tab" aria-selected="${x.id === cur}" data-act="src" data-v="${esc(x.id)}"><i aria-hidden="true"></i>${esc(x.name)}</button>`).join("")}</div>`;
 // skor di pojok kanan atas sampul (hanya bila sumbernya punya skor untuk komik itu)
 const scoreTag = (it, src) => { const n = Number(it?.score); return !NO_SCORE.has(src) && n > 0 && n <= 10 ? `<span class="cv-score" aria-label="Skor ${esc(n.toFixed(1).replace(".", ","))}">${icon("star", 10, 2)}${esc(n.toFixed(1).replace(".", ","))}</span>` : ""; };
 const seg = (list, cur, act, cls = "") => `<div class="seg ${cls}" role="tablist">${list.map((x) => `<button role="tab" aria-selected="${x.id === cur}" data-act="${act}" data-v="${esc(x.id)}">${esc(x.name)}</button>`).join("")}</div>`;
@@ -306,13 +303,13 @@ ${last ? `<section class="sec s16"><h2 class="cap">Lanjut baca</h2>
       <span class="mu sm">Chapter ${esc(last.chapter)}${last.pages ? ` · halaman ${Number(last.page) || 1} dari ${Number(last.pages) || 0}` : ""}</span>
       <span class="prog"><span style="width:${pct(last.page || 1, last.pages || 0) || 6}%"></span></span></span>
     <span class="play">${icon("play", 19, 2)}</span></a></section>` : ""}
-<section class="sec s24 nox"><div class="sec-h px"><h2>Sumber</h2></div>${srcRail(homeSrc)}</section>
-<section class="sec s20 nox"><div class="sec-h px"><h2>Top 10 populer</h2><span class="mu sm">${esc(srcName(homeSrc))}</span></div><div class="hs" id="pop">${loading(3, "sk-top")}</div></section>
+<section class="sec s26 nox"><div class="sec-h px"><h2>Top 10 populer</h2><span class="mu sm">${esc(srcName(homeSrc))}</span></div><div class="hs" id="pop">${loading(3, "sk-top")}</div></section>
 <section class="sec s24"><h2>Jelajah kategori</h2><div class="cats">
   ${[["manga", "Jepang"], ["manhwa", "Korea"], ["manhua", "Tiongkok"]].map(([t, c]) => `<a class="cat" href="#/search/${t}"><span class="flag f-${t}"></span><span class="col"><b>${typeName(t)}</b><span class="mu xs">${c}</span></span></a>`).join("")}
   <a class="cat" href="#/search"><span class="cat-ic">${icon("search", 20)}</span><span class="col"><b>Semua</b><span class="mu xs">Cari judul</span></span></a>
 </div></section>
 <section class="sec s26"><div class="sec-h"><h2 id="updH">${esc(SORT_NAME[homeSortOf(homeSrc)])}</h2><span class="row g8"><a class="link-red" href="#/search">Lihat semua</a><button class="sq-btn" data-act="hsort" aria-label="Urutkan">${icon("sort", 18, 2)}</button>${viewBtn(S.state.settings.updView === "grid", "updView")}</span></div>
+  ${seg(SOURCES, homeSrc, "src", "src")}
   <div id="upd">${loading(5, "sk-lrow")}</div>
   <button class="more-auto" data-act="more" id="updMore" hidden><span class="spin-s" aria-hidden="true"></span>Memuat lainnya…</button></section>
 <div class="pad-nav"></div>`;
@@ -353,7 +350,7 @@ ${last ? `<section class="sec s16"><h2 class="cap">Lanjut baca</h2>
       $("#pop").innerHTML = r.items.slice(0, 10).map((it, i) => `<a class="top10 ${i < 3 ? "t10-" + (i + 1) : ""}" aria-label="Peringkat ${i + 1}: ${esc(it.title)}" href="${comicHref(src, it.id)}">
         <span class="t10-cv">${cover(it.cover, it.title, "top")}<span class="t10-b" aria-hidden="true">${i + 1}</span>${i === 0 ? CROWN : ""}${scoreTag(it, src)}</span>
         <span class="t10-t"><span class="t2 b13">${esc(it.title)}</span><span class="mu xs">${esc(typeName(it.type) || srcName(src))}</span></span></a>`).join("") || `<span class="mu sm px">Belum ada data</span>`;
-    } catch (e) { if (src === homeSrc && $("#pop")) $("#pop").innerHTML = `<span class="mu sm px">${esc(e.blocked ? "Sumber ini menolak server. Pilih sumber lain di atas." : e.message)}</span>`; }
+    } catch (e) { if (src === homeSrc && $("#pop")) $("#pop").innerHTML = `<span class="mu sm px">${esc(e.blocked ? "Sumber ini menolak server. Pilih sumber lain di bawah." : e.message)}</span>`; }
   };
   setActs({
     quote: (el) => { qi = (qi + 1) % QUOTES.length; el.classList.add("fade"); setTimeout(() => { el.textContent = `“${QUOTES[qi]}”`; el.classList.remove("fade"); }, 200); },
@@ -479,7 +476,7 @@ async function vSearch(type) {
   <button type="button" class="clr" data-act="clear" aria-label="Hapus pencarian" ${sState.q ? "" : "hidden"}>${icon("x", 16, 2.2)}</button>
   <div class="sh-pop" id="shpop" role="listbox" aria-label="Pencarian terakhir"></div></label>
   <span id="fltbtn"></span></div>
-<div class="sec s14 nox">${srcRail(sState.src)}</div>
+<div class="sec s14">${seg(SOURCES, sState.src, "src", "src")}</div>
 <div class="px mt10 t-row"><div id="tchips"></div>${viewBtn(S.state.settings.searchView === "grid", "view")}</div>
 <div class="px" id="factive"></div>
 <div class="sec-h px mt10"><span class="mu sm" id="sinfo"></span></div>
