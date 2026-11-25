@@ -1534,6 +1534,7 @@ async function vReader(src, id, chId) {
       if (slide) { sc.classList.remove("zoomed-slide"); sc.scrollLeft = 0; box.classList.remove("zlock"); }
     }
     zoom = 1; zEl = null; rd.classList.remove("zoomed");
+    try { rubClear(); } catch {}   // efek jeli (dideklarasikan di bawah)
   }
   const applyZoom = (z, fx, fy) => {
     z = Math.max(1, Math.min(ZMAX, z));
@@ -1689,34 +1690,66 @@ async function vReader(src, id, chId) {
   // Geser satu jari saat diperbesar: digerakkan sendiri ke dua arah sekaligus (+ luncuran saat dilepas). WebView Android
   // sering mengunci gulir ke satu sumbu (naik-turun) pada wadah yang panjang, sehingga di pojok gambar tidak bisa
   // digeser ke samping ("nempel"). Selama diperbesar, gulir bawaan dimatikan (touch-action: none, lihat CSS).
-  let pan = null, panRaf = 0;
+  // Di tepi gambar: efek "jeli" — gambar ikut tertarik melewati tepi dengan hambatan makin berat, lalu memantul
+  // kembali saat jari dilepas. Hanya saat diperbesar; posisi FIT (tidak diperbesar) tidak ada efek sama sekali.
+  let pan = null, panRaf = 0, rub = { x: 0, y: 0, el: null }, rubRaf = 0;
+  const rubber = (o, dim) => Math.sign(o) * (1 - 1 / ((Math.abs(o) * 0.55) / dim + 1)) * dim;
+  const rubPaint = () => { if (rub.el) rub.el.style.transform = rub.x || rub.y ? `translate3d(${rub.x.toFixed(1)}px, ${rub.y.toFixed(1)}px, 0)` : ""; };
+  const rubClear = () => { cancelAnimationFrame(rubRaf); rubRaf = 0; if (rub.el) rub.el.style.transform = ""; rub = { x: 0, y: 0, el: null }; };
+  const rubBack = () => {
+    cancelAnimationFrame(rubRaf);
+    if (!rub.el || (!rub.x && !rub.y)) { rubClear(); return; }
+    const x0 = rub.x, y0 = rub.y, t0 = performance.now(), dur = 380;
+    const step = (t) => {
+      const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3) * (1 + 1.6 * k);   // kembali halus seperti per
+      rub.x = x0 * (1 - e); rub.y = y0 * (1 - e); rubPaint();
+      if (k < 1) rubRaf = requestAnimationFrame(step); else rubClear();
+    };
+    rubRaf = requestAnimationFrame(step);
+  };
   box.addEventListener("touchstart", (e) => {
     cancelAnimationFrame(panRaf); panRaf = 0;
-    if (zoom <= 1.01 || e.touches.length !== 1) { pan = null; return; }
+    if (zoom <= 1.01 || e.touches.length !== 1) { pan = null; if (e.touches.length > 1) rubClear(); return; }
     const t = e.touches[0], sc = slide ? zTarget()?.parentElement : box;
-    pan = sc ? { x: t.clientX, y: t.clientY, sc, vx: 0, vy: 0, t: performance.now() } : null;
+    if (!sc) { pan = null; return; }
+    cancelAnimationFrame(rubRaf); rubRaf = 0;
+    const el = zTarget(); if (rub.el && rub.el !== el) rubClear(); rub.el = el;
+    // posisi "mentah" = posisi gulir + tarikan yang sedang berlangsung (supaya bisa ditangkap lagi saat memantul)
+    const inv = (r, dim) => (r ? (Math.sign(r) * dim * (1 / (1 - Math.min(0.95, Math.abs(r) / dim)) - 1)) / 0.55 : 0);
+    pan = { x: t.clientX, y: t.clientY, sc, vx: 0, vy: 0, t: performance.now(),
+      rx: sc.scrollLeft - inv(rub.x, sc.clientWidth), ry: sc.scrollTop - inv(rub.y, sc.clientHeight) };
   }, { passive: true });
   box.addEventListener("touchmove", (e) => {
     if (!pan || pinch || e.touches.length !== 1) return;
     const t = e.touches[0], dx = t.clientX - pan.x, dy = t.clientY - pan.y, now = performance.now(), dt = Math.max(1, now - pan.t);
     if (e.cancelable) e.preventDefault();
-    pan.sc.scrollLeft -= dx; pan.sc.scrollTop -= dy;
+    const sc = pan.sc, mx = Math.max(0, sc.scrollWidth - sc.clientWidth), my = Math.max(0, sc.scrollHeight - sc.clientHeight);
+    pan.rx -= dx; pan.ry -= dy;
+    const cx = Math.min(mx, Math.max(0, pan.rx)), cy = Math.min(my, Math.max(0, pan.ry));
+    sc.scrollLeft = cx; sc.scrollTop = cy;
+    rub.x = rubber(cx - pan.rx, sc.clientWidth); rub.y = rubber(cy - pan.ry, sc.clientHeight); rubPaint();
     pan.vx = (-dx / dt) * 0.7 + pan.vx * 0.3; pan.vy = (-dy / dt) * 0.7 + pan.vy * 0.3;
     pan.x = t.clientX; pan.y = t.clientY; pan.t = now;
   }, { passive: false });
   box.addEventListener("touchend", (e) => {
     if (!pan || e.touches.length) return;
     const p = pan; pan = null;
+    const pulled = rub.x || rub.y;
+    if (pulled) rubBack();
     if (performance.now() - p.t > 90 || Math.hypot(p.vx, p.vy) < 0.05) return;   // jari sudah berhenti → tanpa luncuran
-    let vx = p.vx, vy = p.vy, last = performance.now();
+    let vx = rub.x ? 0 : p.vx, vy = rub.y ? 0 : p.vy, last = performance.now();
     const step = (t) => {
       const dt = Math.min(40, t - last); last = t;
-      p.sc.scrollLeft += vx * dt; p.sc.scrollTop += vy * dt;
+      const sc = p.sc, mx = sc.scrollWidth - sc.clientWidth, my = sc.scrollHeight - sc.clientHeight;
+      sc.scrollLeft += vx * dt; sc.scrollTop += vy * dt;
+      if (sc.scrollLeft <= 0 || sc.scrollLeft >= mx - 0.5) vx = 0;                 // sampai tepi: berhenti di situ
+      if (sc.scrollTop <= 0 || sc.scrollTop >= my - 0.5) vy = 0;
       const f = Math.pow(0.994, dt); vx *= f; vy *= f;
       panRaf = Math.hypot(vx, vy) > 0.02 && zoom > 1.01 ? requestAnimationFrame(step) : 0;
     };
     panRaf = requestAnimationFrame(step);
   }, { passive: true });
+  box.addEventListener("touchcancel", () => { if (pan) { pan = null; rubBack(); } }, { passive: true });
   // Gulir otomatis (mode Scroll): 1× / 2× / 3×. Selama jari menekan layar → berhenti; jari dilepas → lanjut lagi
   // dari posisi itu (juga setelah menggeser sendiri). Dimatikan lewat pilihan OFF.
   // Berhenti sendiri di akhir chapter; lanjut otomatis ke chapter berikutnya tetap memakai pengaturannya sendiri.
