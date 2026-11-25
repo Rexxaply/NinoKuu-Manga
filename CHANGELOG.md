@@ -12,6 +12,23 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
+## 1.9.2 — belum dirilis
+
+### Ringkasan
+- Label NEW UPDATE di Koleksi kini muncul lebih cepat untuk semua sumber, tanpa harus membuka komiknya dulu
+- Komiku kini menampilkan batas umur pembaca (misalnya 13+ atau 18+), bukan skor
+- Skor tidak lagi tampil di Kiryuu karena sumbernya memang tidak punya skor
+
+### Detail
+- Label NEW: notifikasi chapter baru (lonceng) langsung memperbarui `latest`/`latestAt` komik di Koleksi (`applyNotifLatest` di `loadNotifs`, juga saat push masuk); `refreshLatest` kini 45 menit per komik (dulu 3 jam), urut yang paling lama dicek, dan juga berjalan saat aplikasi dibuka / kembali dibuka / tiap 5 menit selama terbuka (putaran paling sering 10 menit sekali), tidak hanya saat Koleksi dibuka
+- Rating: Komiku `score: null` + `age` dari baris "Umur Pembaca" (`toAge` → "13+"), di Edge Function dan jalur HP (native.js); Kiryuu `score: null`; urutan "rating" Kiryuu dihapus (Edge `SORTS` & `SRC_SORTS`); info komik menyembunyikan skor lama di cache untuk Komiku/Kiryuu dan menampilkan lencana umur `.inf-age` (18+ merah); `scoreFromHtml` dihapus
+- Edge Function ninokuu-api 1.7.1: kunci kedua untuk pengecek di Termux (`bg_key`/`bg_key_drop` dengan `slot: "termux"`, action baru `bg_key_info`); keluar akun di APK tidak mematikan kunci Termux
+- Skema: kolom `bg_keys.termux_hash` & `termux_used_at` (+ indeks unik). Edge 1.7.1 tetap jalan dengan skema lama (kunci Termux saja yang belum bisa dibuat)
+- Panel developer: baris "Pengecek chapter di Termux" (status, buat/ganti kunci, matikan)
+- Bot WhatsApp rexxa-bot: modul `lib/ninokuu.js` (bg_list → ambil chapter Komiku/Shinigami/WestManga dari HP → bg_report, tiap 5 menit; senggol cron server tiap 10 menit untuk Kiryuu) + perintah `.ninokuu`
+
+---
+
 ## 1.9.1 — 22 Nov 2026 (rilis global)
 
 ### Ringkasan

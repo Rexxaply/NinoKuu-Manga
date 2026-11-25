@@ -11,7 +11,7 @@
 // kalau satu sumber rusak, isi secret KOMIKU_SITE / KIRYUU_SITE / SHNGM_SITE / WEST_SITE dengan domain barunya.
 import { createClient } from "npm:@supabase/supabase-js@2.76.1";
 
-const VERSION = "1.7.0";
+const VERSION = "1.7.1";
 const NAME = "ninokuu-api";
 const SOURCES = ["komiku", "kiryuu", "shinigami", "westmanga"] as const;
 type Source = typeof SOURCES[number];
@@ -349,12 +349,12 @@ function newestChapter(list: any[]) {
 
 type Status = "" | "ongoing" | "completed" | "hiatus";
 // Urutan yang didukung tiap sumber (dari ekstensi Mihon/Keiyoushi; yang tidak didukung → "update"):
-// komiku: update, popular · kiryuu: update, popular, az, za, rating · shinigami: update, popular, rating · westmanga: update, popular, az, za
+// komiku: update, popular · kiryuu: update, popular, az, za · shinigami: update, popular, rating · westmanga: update, popular, az, za
 type Sort = "update" | "popular" | "az" | "za" | "rating";
-const SORTS: Record<string, Sort[]> = { komiku: ["update", "popular"], kiryuu: ["update", "popular", "az", "za", "rating"], shinigami: ["update", "popular", "rating"], westmanga: ["update", "popular", "az", "za"] };
+const SORTS: Record<string, Sort[]> = { komiku: ["update", "popular"], kiryuu: ["update", "popular", "az", "za"], shinigami: ["update", "popular", "rating"], westmanga: ["update", "popular", "az", "za"] };
 type Opt = { sort: Sort; type: "" | "manga" | "manhwa" | "manhua"; limit: number; genres: string[]; status: Status };
 type Chapter = { id: string; ch: string | null; title: string; at: string | null; url: string };
-type Detail = { manga: { id: string; title: string; cover: string; desc: string; status: string; tags: string[]; author: string; url: string; views?: number | null; score?: number | null; publisher?: string }; chapters: Chapter[]; more?: { offset: number } | null };
+type Detail = { manga: { id: string; title: string; cover: string; desc: string; status: string; tags: string[]; author: string; url: string; views?: number | null; score?: number | null; age?: string | null; publisher?: string }; chapters: Chapter[]; more?: { offset: number } | null };
 // info tambahan (tiap sumber menamai field-nya berbeda; yang tidak ada dibiarkan kosong)
 const normStatus = (s: unknown): string => {
   const t = String(s ?? "").toLowerCase();
@@ -382,11 +382,13 @@ const pickScore = (...objs: any[]): number | null => {
   for (const o of objs) if (o && typeof o === "object") for (const k of SCORE_KEYS) { const n = toScore(o[k]); if (n != null) return n; }
   return null;
 };
-// skor dari HTML (schema.org ratingValue, tema MangaThemesia "num", JSON-LD)
-const scoreFromHtml = (h: string): number | null =>
-  toScore(h.match(/itemprop=["']ratingValue["'][^>]*content=["']([\d.,]+)/i)?.[1] || h.match(/content=["']([\d.,]+)["'][^>]*itemprop=["']ratingValue/i)?.[1]
-    || h.match(/itemprop=["']ratingValue["'][^>]*>\s*([\d.,]+)/i)?.[1] || h.match(/"ratingValue"\s*:\s*"?([\d.,]+)/i)?.[1]
-    || h.match(/rating[\s\S]{0,300}?class=["'][^"']*\bnum\b[^"']*["'][^>]*>\s*([\d.,]+)\s*</i)?.[1] || "");
+// batas umur pembaca ("13 Tahun (minimal)", "18+", "Dewasa") → "13+"; selain itu kosong
+const toAge = (v: unknown): string | null => {
+  const t = String(v ?? "").trim();
+  const n = parseInt(t.match(/(\d{1,2})\s*(?:\+|tahun|th\b|thn|yo\b|years?)/i)?.[1] || t.match(/^\s*(\d{1,2})\s*$/)?.[1] || "", 10);
+  if (n >= 3 && n <= 21) return n + "+";
+  return /dewasa|adult|mature/i.test(t) ? "18+" : null;
+};
 const VIEW_KEYS = ["view_count", "views_count", "total_views", "total_view", "views", "view", "viewer", "viewers", "read_count", "total_read", "readers", "post_views", "hits"];
 const pickViews = (...objs: any[]): number | null => {
   for (const o of objs) if (o && typeof o === "object") for (const k of VIEW_KEYS) { const n = toNum(o[k]); if (n != null && n > 0) return n; }
@@ -513,7 +515,8 @@ async function komikuDetail(id: string): Promise<Detail> {
       status: normStatus(st), author: row("(?:Pengarang|Komikus|Author)"), url: page.url,
       publisher: row("(?:Penerbit|Publisher|Serialisasi|Serialization)").slice(0, 120),
       views: toNum(row("(?:Pembaca|Dibaca|Dilihat|Views?)")) ?? toNum(stripTags(top).match(/([\d.,]+\s*(?:rb|ribu|jt|juta|k|m)?)\s*(?:x\s*)?(?:dibaca|pembaca|views?)\b/i)?.[1] || ""),
-      score: toScore(row("(?:Skor|Score|Rating|Nilai)")) ?? scoreFromHtml(top) },
+      // Komiku tidak punya skor; yang ada batas umur pembaca ("13 Tahun (minimal)") → "13+"
+      score: null, age: toAge(row("(?:Umur\\s*Pembaca|Usia\\s*Pembaca|Rating\\s*Usia|Batas\\s*Usia)")) },
     chapters,
     more,
   };
@@ -655,7 +658,7 @@ async function kiryuuDetail(id: string): Promise<Detail> {
       desc: stripTags(String(m.content?.rendered || "").replace(/<\/p>\s*<p[^>]*>/gi, "\n\n")).trim(),
       tags: [...kiryuuTerms(m, "genre"), ...kiryuuTerms(m, "type")].slice(0, 8), status: kiryuuTerms(m, "status").map((s) => KIRYUU_STATUS[s] || normStatus(s)).find(Boolean) || "",
       author: kiryuuTerms(m, "series-author").join(", "), url: m.link || `${KIRYUU_SITE}/manga/${m.slug}/`,
-      views: pickViews(m, m.meta, m.acf), score: pickScore(m, m.meta, m.acf),
+      views: pickViews(m, m.meta, m.acf), score: null, // Kiryuu tidak punya skor komik (meta.score selalu kosong)
       publisher: ["series-publisher", "series-serialization", "serialization", "publisher"].map((t) => kiryuuTerms(m, t).join(", ")).find(Boolean) || pickPublisher(m.meta) || pickPublisher(m.acf),
     },
     chapters,
@@ -1154,9 +1157,13 @@ async function sha256hex(t: string) {
 async function bgUser(key: unknown): Promise<string | null> {
   const k = String(key || "");
   if (!/^[0-9a-f]{64}$/.test(k)) return null;
-  const { data } = await admin.from("bg_keys").select("user_id").eq("key_hash", await sha256hex(k)).maybeSingle();
-  if (data?.user_id) admin.from("bg_keys").update({ used_at: new Date().toISOString() }).eq("user_id", data.user_id).then(() => {}, () => {});
-  return data?.user_id || null;
+  const h = await sha256hex(k);
+  const { data } = await admin.from("bg_keys").select("user_id").eq("key_hash", h).maybeSingle();
+  if (data?.user_id) { admin.from("bg_keys").update({ used_at: new Date().toISOString() }).eq("user_id", data.user_id).then(() => {}, () => {}); return data.user_id; }
+  // kunci kedua untuk pengecek di Termux (bot WhatsApp); kolom belum ada di skema lama → anggap tidak cocok
+  const { data: t } = await admin.from("bg_keys").select("user_id").eq("termux_hash", h).maybeSingle();
+  if (t?.user_id) admin.from("bg_keys").update({ termux_used_at: new Date().toISOString() }).eq("user_id", t.user_id).then(() => {}, () => {});
+  return t?.user_id || null;
 }
 async function userOf(req: Request) {
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
@@ -1247,16 +1254,43 @@ Deno.serve(async (req) => {
     const user = await userOf(req);
     if (!user) return json({ error: "Masuk dulu untuk memakai fitur ini." }, 401);
 
-    // buat (atau ganti) kunci cek latar belakang untuk HP ini; kunci lama otomatis tidak berlaku
+    // buat (atau ganti) kunci cek latar belakang; kunci lama di slot yang sama otomatis tidak berlaku.
+    //   slot "app"    = pekerja latar belakang APK (bawaan)
+    //   slot "termux" = pengecek di Termux (bot WhatsApp); berdiri sendiri, tidak mematikan kunci APK
+    const rnd = () => [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, "0")).join("");
     if (action === "bg_key") {
       const { data: me } = await admin.from("profiles").select("role").eq("id", user.id).maybeSingle();
       if (me?.role !== "developer") return json({ error: "khusus developer" }, 403);
-      const key = [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, "0")).join("");
-      const { error } = await admin.from("bg_keys").upsert({ user_id: user.id, key_hash: await sha256hex(key), created_at: new Date().toISOString() }, { onConflict: "user_id" });
+      const key = rnd(), hash = await sha256hex(key), now = new Date().toISOString();
+      if (body.slot === "termux") {
+        const { data: row } = await admin.from("bg_keys").select("user_id").eq("user_id", user.id).maybeSingle();
+        // belum ada baris (APK belum pernah aktif): isi slot APK dengan kunci acak yang tidak pernah dibagikan
+        const { error } = row
+          ? await admin.from("bg_keys").update({ termux_hash: hash, termux_used_at: null }).eq("user_id", user.id)
+          : await admin.from("bg_keys").insert({ user_id: user.id, key_hash: await sha256hex(rnd()), created_at: now, termux_hash: hash });
+        if (error) return json({ error: "bg_keys: " + error.message + " — jalankan ulang ninokuu-schema.sql versi terbaru." }, 500);
+        return json({ ok: true, key });
+      }
+      const { error } = await admin.from("bg_keys").upsert({ user_id: user.id, key_hash: hash, created_at: now }, { onConflict: "user_id" });
       if (error) return json({ error: "bg_keys: " + error.message + " — jalankan ulang ninokuu-schema.sql versi terbaru." }, 500);
       return json({ ok: true, key });
     }
-    if (action === "bg_key_drop") { await admin.from("bg_keys").delete().eq("user_id", user.id); return json({ ok: true }); }
+    if (action === "bg_key_drop") {
+      if (body.slot === "termux") { await admin.from("bg_keys").update({ termux_hash: null, termux_used_at: null }).eq("user_id", user.id); return json({ ok: true }); }
+      // keluar akun di APK: kunci APK dimatikan, kunci Termux (bila ada) tetap jalan
+      const { data: row, error } = await admin.from("bg_keys").select("termux_hash").eq("user_id", user.id).maybeSingle();
+      if (!error && row?.termux_hash) await admin.from("bg_keys").update({ key_hash: await sha256hex(rnd()) }).eq("user_id", user.id);
+      else await admin.from("bg_keys").delete().eq("user_id", user.id);
+      return json({ ok: true });
+    }
+    // status kunci Termux untuk panel developer (kapan terakhir dipakai)
+    if (action === "bg_key_info") {
+      const { data: me } = await admin.from("profiles").select("role").eq("id", user.id).maybeSingle();
+      if (me?.role !== "developer") return json({ error: "khusus developer" }, 403);
+      const { data: row, error } = await admin.from("bg_keys").select("termux_hash, termux_used_at").eq("user_id", user.id).maybeSingle();
+      if (error) return json({ ok: true, termux: false, schema: false });
+      return json({ ok: true, termux: !!row?.termux_hash, used_at: row?.termux_used_at || null, schema: true });
+    }
 
     // Staf menghapus gambar chat dengan kunci server. Moderator tidak punya izin Storage atas folder orang lain, jadi tanpa
     // ini gambar pesan yang disembunyikan / dihapus / milik akun yang diblokir tetap bisa dibuka lewat alamat publiknya.

@@ -275,7 +275,8 @@ async function browse(src, opt) {
 }
 // Urutan di Beranda: hanya yang didukung sumbernya (sama dengan Edge Function / ekstensi Mihon)
 const SORT_NAME = { update: "Update terbaru", popular: "Populer", az: "Judul A-Z", za: "Judul Z-A", rating: "Rating tertinggi" };
-const SRC_SORTS = { komiku: ["update", "popular"], kiryuu: ["update", "popular", "az", "za", "rating"], shinigami: ["update", "popular", "rating"], westmanga: ["update", "popular", "az", "za"] };
+const NO_SCORE = new Set(["komiku", "kiryuu"]);
+const SRC_SORTS = { komiku: ["update", "popular"], kiryuu: ["update", "popular", "az", "za"], shinigami: ["update", "popular", "rating"], westmanga: ["update", "popular", "az", "za"] };
 const homeSortOf = (src) => { const v = (S.state.settings.homeSort || {})[src]; return (SRC_SORTS[src] || ["update"]).includes(v) ? v : "update"; };
 // daftar Beranda yang sudah dimuat (per sumber + urutan): kembali dari halaman komik → daftar & posisi gulir utuh
 const homeMem = new Map();
@@ -373,7 +374,21 @@ const readSet = new Set(api.lsGet("notifRead", []));
 const saveRead = () => api.lsSet("notifRead", [...readSet].slice(-200));
 async function loadNotifs() {
   if (!S.loggedIn()) { notifs = []; return; }
-  notifs = (await api.rest("notifications?select=id,title,body,source,comic_id,chapter,cover,created_at&order=created_at.desc&limit=30").catch(() => null)) || notifs;
+  const got = await api.rest("notifications?select=id,title,body,source,comic_id,chapter,cover,created_at&order=created_at.desc&limit=30").catch(() => null);
+  if (got) { notifs = got; applyNotifLatest(got); }
+}
+// notifikasi chapter baru langsung memperbarui "chapter terbaru" komik di Koleksi, jadi label NEW UPDATE muncul tanpa
+// harus membuka komiknya dulu (berlaku untuk semua sumber)
+const chNumOf = (v) => { const n = parseFloat(String(v ?? "").replace(",", ".")); return Number.isFinite(n) ? n : null; };
+function applyNotifLatest(list) {
+  for (const x of [...list].reverse()) {              // lama → baru, supaya yang terbaru menang
+    if (!x?.source || !x.comic_id || x.chapter == null) continue;
+    const row = S.libItem(x.source, x.comic_id), n = chNumOf(x.chapter);
+    if (!row || n == null) continue;
+    const cur = chNumOf(row.latest);
+    if (cur != null && (cur > n || (cur === n && row.latestAt))) continue;
+    S.updateLibMeta(x.source, x.comic_id, { latest: String(x.chapter), latestAt: x.created_at || null });
+  }
 }
 async function refreshBell() {
   await loadNotifs();
@@ -654,9 +669,12 @@ async function vDetail(src, id) {
     const heroCol = X.cachedCoverColor(m.cover);
     const ST = { ongoing: ["Berlangsung", "ok"], completed: ["Tamat", "blue"], hiatus: ["Hiatus", "gold"], dropped: ["Dihentikan", "red"] }[m.status];
     const views = Number(m.views) > 0 ? compactNum(m.views) : "";
-    const score = Number(m.score) > 0 ? (Math.round(Number(m.score) * 10) / 10).toFixed(1).replace(".", ",") : "";
+    // Komiku dan Kiryuu tidak punya skor komik (data lama di cache bisa masih membawa skor yang salah)
+    const score = !NO_SCORE.has(src) && Number(m.score) > 0 ? (Math.round(Number(m.score) * 10) / 10).toFixed(1).replace(".", ",") : "";
+    const age = src === "komiku" && /^\d{1,2}\+$/.test(String(m.age || "")) ? String(m.age) : "";
     // satu baris info ringkas di bawah judul; yang tidak tersedia dari sumber tidak ditampilkan
-    const infoLine = [score && `<span class="inf-score" title="Skor di situs sumber (dari 10)">${icon("star", 14, 2)}<b>${esc(score)}</b></span>`, ST && `<span class="inf-st inf-${ST[1]}">${esc(ST[0])}</span>`, views && `<span title="Dilihat di situs sumber">${icon("eye", 14)}${esc(views)}</span>`,
+    const infoLine = [score && `<span class="inf-score" title="Skor di situs sumber (dari 10)">${icon("star", 14, 2)}<b>${esc(score)}</b></span>`,
+      age && `<span class="inf-age${age === "18+" ? " adult" : ""}" title="Batas umur pembaca di situs sumber">${esc(age)}</span>`, ST && `<span class="inf-st inf-${ST[1]}">${esc(ST[0])}</span>`, views && `<span title="Dilihat di situs sumber">${icon("eye", 14)}${esc(views)}</span>`,
       m.publisher && `<span>${icon("book", 13)}<i>${esc(m.publisher)}</i></span>`, m.author && `<span>${icon("user", 13)}<i>${esc(m.author)}</i></span>`].filter(Boolean).join("");
     view.innerHTML = `
 <div class="dbar" id="dbar"><button class="r-round glass" data-act="back" aria-label="Kembali">${icon("back", 21, 2)}</button><span class="dbar-t">${esc(m.title)}</span>
@@ -1530,14 +1548,16 @@ async function vComments(src, id, chId) {
 /* ---------- Favorit ---------- */
 // Label "Terbaru" & urutan "Update terbaru" di Koleksi butuh chapter terbaru tiap komik. Sebelumnya baru diketahui
 // setelah komik dibuka (HP / pemasangan baru: kosong semua). Sekarang dicek di belakang layar saat Koleksi dibuka:
-// maks. 12 komik per kunjungan, 2 sekaligus, tiap komik paling sering 3 jam sekali. Shinigami/WestManga di APK
+// maks. 12 komik per putaran, 2 sekaligus, tiap komik paling sering 45 menit sekali. Putaran berjalan saat Koleksi
+// dibuka dan juga saat aplikasi dibuka / kembali dari latar belakang (paling sering 10 menit sekali). Shinigami/WestManga di APK
 // diambil lewat jaringan HP (detail), sumber lain lewat action "latest" yang hanya mengirim chapter terbaru.
 let latestRun = false;
 async function refreshLatest(items) {
   if (latestRun) return;
   const chk = api.lsGet("latestChk", {}) || {}, now = Date.now();
-  const due = items.filter((m) => now - (chk[m.source + "|" + m.comic_id] || 0) > 3 * 3600e3)
-    .sort((a, b) => (a.latest == null ? 0 : 1) - (b.latest == null ? 0 : 1)).slice(0, 12);
+  const last = (m) => chk[m.source + "|" + m.comic_id] || 0;
+  const due = items.filter((m) => now - last(m) > 45 * 60e3)
+    .sort((a, b) => (a.latest == null ? 0 : 1) - (b.latest == null ? 0 : 1) || last(a) - last(b)).slice(0, 12);
   if (!due.length) return;
   latestRun = true;
   const one = async (m) => {
@@ -1555,6 +1575,20 @@ async function refreshLatest(items) {
   try { for (let i = 0; i < due.length; i += 2) await Promise.all(due.slice(i, i + 2).map(one)); }
   finally { latestRun = false; }
 }
+// cek chapter terbaru koleksi di belakang layar saat aplikasi dibuka / kembali dibuka (tidak menunggu Koleksi dibuka)
+let latestBg = 0;
+function latestSoon(delay) {
+  setTimeout(() => {
+    if (document.visibilityState !== "visible" || Date.now() - latestBg < 10 * 60e3) return;
+    latestBg = Date.now();
+    loadNotifs().catch(() => {});
+    const all = [...S.state.lib.values()];
+    if (all.length) refreshLatest(all);
+  }, delay);
+}
+latestSoon(5000);
+setInterval(() => latestSoon(0), 5 * 60e3);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") latestSoon(1500); });
 const FAV_SORTS = [["update", "Update terbaru"], ["added", "Terakhir ditambah"], ["az", "Judul A-Z"], ["za", "Judul Z-A"]];
 let fav = { tab: "lib", q: "", filter: "all" };
 // perilaku tab Unduhan dilepas setiap kali Favorit digambar ulang (tidak menumpuk)
@@ -1981,7 +2015,7 @@ let exitArmed = false, exitT = null;
 function startApp() {
   document.body.classList.add("is-app");
   N.onKeyboard(setKeyboard);
-  N.onPushReceived(() => refreshDots());
+  N.onPushReceived(() => { refreshDots(); loadNotifs().catch(() => {}); });
   setTimeout(() => checkUpdate(false, true), 2500);              // aplikasi dibuka: selalu cek baru (tanpa simpanan)
   setInterval(updTick, 60e3);                                   // tiap menit dicek apakah sudah 15 menit sejak cek terakhir
   N.onResume(() => { if (Date.now() - updLast > 5 * 60e3) setTimeout(() => checkUpdate(false, true), 1200); });

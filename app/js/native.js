@@ -46,6 +46,13 @@ export const toScore = (v) => {
   const x = n <= 10 ? n : n <= 100 ? n / 10 : NaN;
   return Number.isFinite(x) ? Math.round(x * 10) / 10 : null;
 };
+// batas umur pembaca Komiku ("13 Tahun (minimal)", "18+", "Dewasa") → "13+"; sama dengan Edge Function
+export const toAge = (v) => {
+  const t = String(v ?? "").trim();
+  const n = parseInt(t.match(/(\d{1,2})\s*(?:\+|tahun|th\b|thn|yo\b|years?)/i)?.[1] || t.match(/^\s*(\d{1,2})\s*$/)?.[1] || "", 10);
+  if (n >= 3 && n <= 21) return n + "+";
+  return /dewasa|adult|mature/i.test(t) ? "18+" : null;
+};
 const SCORE_KEYS = ["user_rate", "rating", "score", "rate", "rating_avg", "avg_rating", "average_rating", "rating_value", "ratingValue", "star", "stars"];
 const pickScore = (...objs) => { for (const o of objs) if (o && typeof o === "object") for (const k of SCORE_KEYS) { const n = toScore(o[k]); if (n != null) return n; } return null; };
 const VIEW_KEYS = ["view_count", "views_count", "total_views", "total_view", "views", "view", "viewer", "viewers", "read_count", "total_read", "readers", "post_views", "hits"];
@@ -325,7 +332,8 @@ const KOMI = (() => {
       const tags = [...d.querySelectorAll("ul.genre li.genre")].map(txt).filter(Boolean).slice(0, 8);
       const tbl = d.querySelector("#Daftar_Chapter");
       return { ok: true, manga: { id: url, title, cover: cover(cv, 500), desc, tags, status: normStatus(row(/^status/i)), author: row(/^(pengarang|komikus|author)/i), url,
-        publisher: row(/^(penerbit|publisher|serialisasi|serialization)/i).slice(0, 120), views: toNum(row(/^(pembaca|dibaca|dilihat|views?)/i)), score: toScore(row(/^(skor|score|rating|nilai)/i)) },
+        publisher: row(/^(penerbit|publisher|serialisasi|serialization)/i).slice(0, 120), views: toNum(row(/^(pembaca|dibaca|dilihat|views?)/i)),
+        score: null, age: toAge(row(/^(umur|usia|rating\s*usia|batas\s*usia)/i)) },
         chapters: tbl ? rows(tbl, url) : [], more: null };
     },
     async pages(b) {

@@ -417,12 +417,13 @@ export async function vDev(view, ctx) {
   let form = { title: "", body: "", pin: true, push: false, days: 3 };
   let nf = (n) => Number(n || 0).toLocaleString("id-ID");
   const draw = async () => {
-    const [stats, reps, restricted, bugs, sto] = await Promise.all([
+    const [stats, reps, restricted, bugs, sto, tmx] = await Promise.all([
       dev ? api.rpc("dev_stats").catch(() => null) : null,
       api.rest("chat_reports?select=message_id,created_at&order=created_at.desc&limit=200").catch(() => []),
       api.rest(`profiles?select=id,name,banned,muted_until&or=${encodeURIComponent(`(banned.eq.true,muted_until.gt."${new Date().toISOString()}")`)}&limit=100`).catch(() => []),
       api.rest("bug_reports?select=*&resolved=eq.false&order=created_at.desc&limit=60").catch(() => []),
       dev ? api.rpc("dev_storage").catch((e) => ({ error: e.message })) : null,
+      dev ? api.call("bg_key_info").catch(() => null) : null,
     ]);
     const anns = dev ? (await api.rest("announcements?select=*&order=created_at.desc&limit=10").catch(() => [])) || [] : [];
     const KIND = { gambar: "Gambar tidak muncul / rusak", chapter: "Chapter hilang / tidak lengkap", urutan: "Urutan halaman salah", info: "Info komik salah", lainnya: "Lainnya" };
@@ -464,7 +465,9 @@ export async function vDev(view, ctx) {
       : `<div class="card center mu sm">Belum ada yang dibisukan atau diblokir.</div>`}</section>
   ${dev ? `<section class="col g10"><h2 class="cap m0">Alat</h2><div class="group">
     <div class="mrow"><span class="rc-mid"><b>Lihat sebagai pengguna biasa</b><span class="mu sm">Sembunyikan centang, DEV, dan alat moderasi untuk cek tampilan</span></span>${tog("asUser", !!S.state.settings.asUser)}</div>
-    <button class="mrow" data-d="test"><span class="mrow-ic">${icon("bell", 18)}</span><span class="rc-mid"><b>Kirim tes notifikasi ke HP ini</b><span class="mu sm">Butuh aplikasi APK dengan izin notifikasi</span></span></button></div>
+    <button class="mrow" data-d="test"><span class="mrow-ic">${icon("bell", 18)}</span><span class="rc-mid"><b>Kirim tes notifikasi ke HP ini</b><span class="mu sm">Butuh aplikasi APK dengan izin notifikasi</span></span></button>
+    <div class="mrow"><span class="mrow-ic">${icon("bell", 18)}</span><span class="rc-mid"><b>Pengecek chapter di Termux</b><span class="mu sm">${!tmx ? "Status tidak bisa dimuat" : tmx.schema === false ? "Jalankan ulang ninokuu-schema.sql dulu" : !tmx.termux ? "Belum ada kunci" : tmx.used_at ? "Aktif · terakhir mengecek " + esc(ago(tmx.used_at)) : "Kunci dibuat, belum pernah dipakai"}</span></span>
+      <span class="row g6">${tmx?.termux ? `<button class="btn ghost sm" data-d="tmxoff">Matikan</button>` : ""}<button class="btn ghost sm" data-d="tmxkey">${tmx?.termux ? "Ganti kunci" : "Buat kunci"}</button></span></div></div>
     <p class="mu xs lh m0">Peran Developer hanya bisa diberikan dari SQL Editor Supabase. Semua aksi di halaman ini dicek ulang oleh server.</p></section>` : ""}`;
   };
   root.addEventListener("change", (e) => { if (e.target.dataset?.d === "days") form.days = Number(e.target.value); });
@@ -493,6 +496,18 @@ export async function vDev(view, ctx) {
     }
     if (a === "cron") run(async () => { b.disabled = true; await api.call("run_cron"); }, "Cron selesai dijalankan");
     if (a === "test") run(() => api.call("test_push"), "Tes notifikasi dikirim");
+    // kunci untuk bot WhatsApp di Termux (NINOKUU_BG_KEY di .env). Hanya tampil sekali; server menyimpan hash-nya saja.
+    if (a === "tmxkey") {
+      if (b.textContent.includes("Ganti") && !(await ask("Ganti kunci Termux? Kunci lama langsung tidak berlaku, jadi .env di Termux harus diisi kunci baru.", { ok: "Ganti" }))) return;
+      try {
+        const r = await api.call("bg_key", { slot: "termux" });
+        const copy = await ask("", { title: "Kunci Termux", ok: "Salin", cancel: "Tutup",
+          html: `<p class="sm lh m0">Tempel ke file <b>.env</b> bot di Termux sebagai <b>NINOKUU_BG_KEY</b>. Kunci ini hanya ditampilkan sekali dan jangan dibagikan.</p><code class="xs" style="display:block;word-break:break-all;user-select:all;margin-top:10px">${esc(r.key)}</code>` });
+        if (copy) { try { await navigator.clipboard.writeText(r.key); toast("Kunci disalin"); } catch { toast("Tidak bisa menyalin otomatis. Tekan lama kuncinya untuk memilih."); } }
+        await draw();
+      } catch (er) { toast(er.message, 4000); }
+    }
+    if (a === "tmxoff") { if (!(await ask("Matikan pengecek di Termux? Bot berhenti bisa mengecek sampai diberi kunci baru.", { ok: "Matikan", danger: true }))) return; run(() => api.call("bg_key_drop", { slot: "termux" }), "Kunci Termux dimatikan"); }
     if (a === "hide") run(async () => { const hide = b.dataset.h !== "true"; await api.rpc("mod_set_hidden", { p_message: Number(b.dataset.id), p_hidden: hide }); if (hide) await purgeImages([b.dataset.p]); }, "Status pesan diperbarui");
     if (a === "del") { if (!(await ask("Hapus pesan ini untuk semua?", { ok: "Hapus", danger: true }))) return; run(async () => { await api.rest(`chat_messages?id=eq.${b.dataset.id}`, { method: "DELETE" }); await purgeImages([b.dataset.p]); }, "Pesan dihapus"); }
     if (a === "mute") run(() => api.rpc("mod_restrict", { p_user: b.dataset.u, p_mute_minutes: 60 }), `${b.dataset.n} dibisukan 1 jam`);
