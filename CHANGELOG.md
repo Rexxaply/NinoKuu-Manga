@@ -12,9 +12,10 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
-## 1.9.2 — belum dirilis
+## 1.10.0 — belum dirilis
 
 ### Ringkasan
+- Baru: sumber komik BacaKomik
 - Label NEW UPDATE di Koleksi kini muncul lebih cepat untuk semua sumber, tanpa harus membuka komiknya dulu
 - Komiku kini menampilkan batas umur pembaca (misalnya 13+ atau 18+), bukan skor
 - Skor komik Kiryuu kini tampil di halaman info komik
@@ -22,7 +23,8 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 ### Detail
 - Label NEW: notifikasi chapter baru (lonceng) langsung memperbarui `latest`/`latestAt` komik di Koleksi (`applyNotifLatest` di `loadNotifs`, juga saat push masuk); `refreshLatest` kini 45 menit per komik (dulu 3 jam), urut yang paling lama dicek, dan juga berjalan saat aplikasi dibuka / kembali dibuka / tiap 5 menit selama terbuka (putaran paling sering 10 menit sekali), tidak hanya saat Koleksi dibuka
 - Rating: Komiku `score: null` + `age` dari baris "Umur Pembaca" (`toAge` → "13+"), di Edge Function dan jalur HP (native.js); Kiryuu: skor dibaca dari `metadata.meta.score` (dulu dicari di `m.meta` yang tidak ada, jadi selalu kosong); info komik menyembunyikan skor lama di cache untuk Komiku dan menampilkan lencana umur `.inf-age` (18+ merah); `scoreFromHtml` dihapus
-- Edge Function ninokuu-api 1.7.1: kunci kedua untuk pengecek di Termux (`bg_key`/`bg_key_drop` dengan `slot: "termux"`, action baru `bg_key_info`); keluar akun di APK tidak mematikan kunci Termux
+- BacaKomik (sumber ke-5, dari ekstensi Keiyoushi "BacaKomik", konten aman): Edge `bkPage` (/daftar-komik/ dengan order/title/type/status/genre[]), `bkDetail` (infoanime/spe, skor dari angka di samping sampul, jumlah pembaca), `bkChapters` (#chapter_list .lchx/.dt), `bkPages` (img alt "Chapter", cadangan onerror, tanpa noscript), `bkFilters` (genre[] dari /daftar-komik/); ID komik & chapter = slug, domain lewat secret `BACAKOMIK_SITE` (bawaan https://bacakomik.my); dicek cron server (bukan REPORTABLE). Aplikasi: `SOURCES`, `SRC_SORTS`, titik warna, pilihan sumber lebih rapat untuk 5 penyedia, baris panduan domain
+- Edge Function ninokuu-api 1.8.0: kunci kedua untuk pengecek di Termux (`bg_key`/`bg_key_drop` dengan `slot: "termux"`, action baru `bg_key_info`); keluar akun di APK tidak mematikan kunci Termux
 - Skema: kolom `bg_keys.termux_hash` & `termux_used_at` (+ indeks unik). Edge 1.7.1 tetap jalan dengan skema lama (kunci Termux saja yang belum bisa dibuat)
 - Panel developer: baris "Pengecek chapter di Termux" (status, buat/ganti kunci, matikan)
 - Bot WhatsApp rexxa-bot: modul `lib/ninokuu.js` (bg_list → ambil chapter Komiku/Shinigami/WestManga dari HP → bg_report, tiap 5 menit; senggol cron server tiap 10 menit untuk Kiryuu) + perintah `.ninokuu`

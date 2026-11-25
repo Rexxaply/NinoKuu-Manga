@@ -276,7 +276,7 @@ async function browse(src, opt) {
 // Urutan di Beranda: hanya yang didukung sumbernya (sama dengan Edge Function / ekstensi Mihon)
 const SORT_NAME = { update: "Update terbaru", popular: "Populer", az: "Judul A-Z", za: "Judul Z-A", rating: "Rating tertinggi" };
 const NO_SCORE = new Set(["komiku"]);
-const SRC_SORTS = { komiku: ["update", "popular"], kiryuu: ["update", "popular", "az", "za", "rating"], shinigami: ["update", "popular", "rating"], westmanga: ["update", "popular", "az", "za"] };
+const SRC_SORTS = { komiku: ["update", "popular"], kiryuu: ["update", "popular", "az", "za", "rating"], shinigami: ["update", "popular", "rating"], westmanga: ["update", "popular", "az", "za"], bacakomik: ["update", "popular", "az", "za"] };
 const homeSortOf = (src) => { const v = (S.state.settings.homeSort || {})[src]; return (SRC_SORTS[src] || ["update"]).includes(v) ? v : "update"; };
 // daftar Beranda yang sudah dimuat (per sumber + urutan): kembali dari halaman komik → daftar & posisi gulir utuh
 const homeMem = new Map();
@@ -307,7 +307,7 @@ ${last ? `<section class="sec s16"><h2 class="cap">Lanjut baca</h2>
   <a class="cat" href="#/search"><span class="cat-ic">${icon("search", 20)}</span><span class="col"><b>Semua</b><span class="mu xs">Cari judul</span></span></a>
 </div></section>
 <section class="sec s26"><div class="sec-h"><h2 id="updH">${esc(SORT_NAME[homeSortOf(homeSrc)])}</h2><span class="row g8"><a class="link-red" href="#/search">Lihat semua</a><button class="sq-btn" data-act="hsort" aria-label="Urutkan">${icon("sort", 18, 2)}</button>${viewBtn(S.state.settings.updView === "grid", "updView")}</span></div>
-  ${seg(SOURCES, homeSrc, "src")}
+  ${seg(SOURCES, homeSrc, "src", "src")}
   <div id="upd">${loading(5, "sk-lrow")}</div>
   <button class="more-auto" data-act="more" id="updMore" hidden><span class="spin-s" aria-hidden="true"></span>Memuat lainnya…</button></section>
 <div class="pad-nav"></div>`;
@@ -474,7 +474,7 @@ async function vSearch(type) {
   <button type="button" class="clr" data-act="clear" aria-label="Hapus pencarian" ${sState.q ? "" : "hidden"}>${icon("x", 16, 2.2)}</button>
   <div class="sh-pop" id="shpop" role="listbox" aria-label="Pencarian terakhir"></div></label>
   <span id="fltbtn"></span></div>
-<div class="sec s14">${seg(SOURCES, sState.src, "src")}</div>
+<div class="sec s14">${seg(SOURCES, sState.src, "src", "src")}</div>
 <div class="px mt10 t-row"><div id="tchips"></div>${viewBtn(S.state.settings.searchView === "grid", "view")}</div>
 <div class="px" id="factive"></div>
 <div class="sec-h px mt10"><span class="mu sm" id="sinfo"></span></div>

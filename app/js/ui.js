@@ -33,6 +33,7 @@ export const SOURCES = [
   { id: "kiryuu", name: "Kiryuu" },
   { id: "shinigami", name: "Shinigami" },
   { id: "westmanga", name: "WestManga" },
+  { id: "bacakomik", name: "BacaKomik" },
 ];
 export const srcName = (id) => SOURCES.find((s) => s.id === id)?.name || id;
 export const TYPES = [{ id: "", name: "Semua" }, { id: "manga", name: "Manga" }, { id: "manhwa", name: "Manhwa" }, { id: "manhua", name: "Manhua" }];

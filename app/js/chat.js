@@ -364,6 +364,7 @@ ${row("KOMIKU_SITE", "Supabase", "Alamat situs Komiku, mis. <code>https://komiku
 ${row("KOMIKU_API", "Supabase", "Alamat daftar/cari Komiku, mis. <code>https://api.komiku.org</code>")}
 ${row("KIRYUU_SITE", "Supabase", "Alamat situs Kiryuu, mis. <code>https://v7.kiryuu.to</code> (dipakai untuk semua data Kiryuu)")}
 ${row("SHNGM_API · SHNGM_SITE", "Supabase", "Shinigami untuk server (notifikasi & web). APK membaca Shinigami sendiri, lihat baris di bawah")}
+${row("BACAKOMIK_SITE", "Supabase", "Alamat situs BacaKomik, mis. <code>https://bacakomik.my</code>")}
 ${row("WEST_SITE", "Supabase", "WestManga untuk server, boleh lebih dari satu dipisah koma: <code>https://v1.westmanga.my,https://v1.westmanga.top</code>")}
 ${row("IMG_PROXY", "Supabase", "Rem darurat kuota: <code>on</code> (normal), <code>cover</code> (proxy hanya sampul), <code>off</code> (proxy mati)")}
 ${row("Shinigami (API &amp; SITE)", "Kode", "<code>app/js/native.js</code> → baris <code>const API = …, SITE = …</code> di bagian Shinigami")}

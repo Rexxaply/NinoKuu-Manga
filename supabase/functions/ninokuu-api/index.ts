@@ -1,5 +1,5 @@
 // Ninokuu · Edge Function "ninokuu-api"
-// - Jelajah, detail, dan halaman chapter dari Komiku, Kiryuu, Shinigami, WestManga
+// - Jelajah, detail, dan halaman chapter dari Komiku, Kiryuu, Shinigami, WestManga, BacaKomik
 // - Proxy gambar bertanda tangan (hanya alamat yang dibuat server ini; bukan proxy terbuka)
 // - Cron tiap 15 menit: cek chapter baru untuk komik yang loncengnya menyala, kirim notifikasi,
 //   kirim pengumuman developer, bersihkan chat & notifikasi lama
@@ -11,9 +11,9 @@
 // kalau satu sumber rusak, isi secret KOMIKU_SITE / KIRYUU_SITE / SHNGM_SITE / WEST_SITE dengan domain barunya.
 import { createClient } from "npm:@supabase/supabase-js@2.76.1";
 
-const VERSION = "1.7.1";
+const VERSION = "1.8.0";
 const NAME = "ninokuu-api";
-const SOURCES = ["komiku", "kiryuu", "shinigami", "westmanga"] as const;
+const SOURCES = ["komiku", "kiryuu", "shinigami", "westmanga", "bacakomik"] as const;
 type Source = typeof SOURCES[number];
 // sumber yang sering menolak server (Cloudflare); aplikasi APK boleh melaporkan chapter-nya sendiri
 const BLOCKED: Source[] = ["shinigami", "westmanga"];
@@ -349,9 +349,9 @@ function newestChapter(list: any[]) {
 
 type Status = "" | "ongoing" | "completed" | "hiatus";
 // Urutan yang didukung tiap sumber (dari ekstensi Mihon/Keiyoushi; yang tidak didukung → "update"):
-// komiku: update, popular · kiryuu: update, popular, az, za, rating · shinigami: update, popular, rating · westmanga: update, popular, az, za
+// komiku: update, popular · kiryuu: update, popular, az, za, rating · shinigami: update, popular, rating · westmanga: update, popular, az, za · bacakomik: update, popular, az, za
 type Sort = "update" | "popular" | "az" | "za" | "rating";
-const SORTS: Record<string, Sort[]> = { komiku: ["update", "popular"], kiryuu: ["update", "popular", "az", "za", "rating"], shinigami: ["update", "popular", "rating"], westmanga: ["update", "popular", "az", "za"] };
+const SORTS: Record<string, Sort[]> = { komiku: ["update", "popular"], kiryuu: ["update", "popular", "az", "za", "rating"], shinigami: ["update", "popular", "rating"], westmanga: ["update", "popular", "az", "za"], bacakomik: ["update", "popular", "az", "za"] };
 type Opt = { sort: Sort; type: "" | "manga" | "manhwa" | "manhua"; limit: number; genres: string[]; status: Status };
 type Chapter = { id: string; ch: string | null; title: string; at: string | null; url: string };
 type Detail = { manga: { id: string; title: string; cover: string; desc: string; status: string; tags: string[]; author: string; url: string; views?: number | null; score?: number | null; age?: string | null; publisher?: string }; chapters: Chapter[]; more?: { offset: number } | null };
@@ -689,6 +689,106 @@ async function kiryuuPages(id: string) {
   return { ref: page.url, images: [...box.matchAll(/<img\b[^>]*>/gi)].map((m) => imgSrc(m[0], page.url)).filter(Boolean) };
 }
 
+/* ---------- BacaKomik (WordPress, HTML; dari ekstensi Keiyoushi "BacaKomik") ---------- */
+// ID komik = slug di /komik/<slug>/, ID chapter = slug halaman chapter (/<slug>/). Alamat situs bisa diganti lewat
+// secret BACAKOMIK_SITE bila pindah domain; data lama tetap berlaku karena yang disimpan hanya slug.
+const BK_SITE = (Deno.env.get("BACAKOMIK_SITE") || "https://bacakomik.my").replace(/\/+$/, "");
+const bkSlug = (id: string) => { const v = String(id || "").replace(/^https?:\/\/[^/]+/i, "").replace(/^\/+|\/+$/g, "").replace(/^komik\//, ""); if (!/^[\w%.-]{1,200}$/.test(v)) throw webErr("ID BacaKomik tidak valid", 400); return v; };
+const bkSlugOf = (href: string, comic: boolean) => { try { const p = new URL(href, BK_SITE).pathname.replace(/^\/+|\/+$/g, ""); return comic ? (p.match(/^komik\/([^/]+)$/)?.[1] || "") : (/^[^/]+$/.test(p) ? p : ""); } catch { return ""; } };
+async function bkFetch(path: string) {
+  const page = await webFetch(BK_SITE + path, { referer: BK_SITE + "/" });
+  // pengalihan ke domain lain tidak boleh lolos (gambar yang ditandatangani harus dari halaman BacaKomik sungguhan)
+  if (!/(^|\.)bacakomik\.[a-z.]+$/i.test(new URL(page.url).hostname)) throw webErr("Halaman bukan dari BacaKomik", 502);
+  return page;
+}
+const BK_SORT: Record<string, string> = { update: "update", popular: "popular", az: "title", za: "titlereverse" };
+async function bkPage(srcPage: number, q: string, o: Opt) {
+  const u = new URL(BK_SITE + "/daftar-komik/" + (srcPage > 1 ? `page/${srcPage}/` : ""));
+  if (q) u.searchParams.set("title", q);
+  u.searchParams.set("order", BK_SORT[o.sort] || "update");
+  if (o.type) u.searchParams.set("type", o.type[0].toUpperCase() + o.type.slice(1));
+  if (o.status) u.searchParams.set("status", o.status);
+  for (const g of o.genres) u.searchParams.append("genre[]", g);
+  const page = await bkFetch(u.pathname + u.search), html = page.text;
+  const items: any[] = [];
+  for (const m of html.matchAll(/<div\b[^>]*class=["'][^"']*\banimepost\b[^"']*["'][^>]*>/gi)) {
+    const b = block(html.slice(m.index!), /<div\b[^>]*>/i);
+    const href = b.match(/<a\b[^>]*href=["']([^"']+)["']/i)?.[1] || "", id = bkSlugOf(href, true);
+    const title = stripTags(b.match(/<h4\b[^>]*>([\s\S]*?)<\/h4>/i)?.[1] || "");
+    if (!id || !title) continue;
+    const img = imgSrc(b.match(/<img\b[^>]*>/i)?.[0] || "", page.url);
+    const tp = (b.match(/\btypeflag\s+(manga|manhwa|manhua)\b/i)?.[1] || o.type || "").toLowerCase();
+    items.push({ id, title, cover: await coverUrl(img, BK_SITE + "/"), type: tp });
+  }
+  return { items, hasNext: /class=["'][^"']*\bnext\b[^"']*page-numbers|page-numbers[^"']*\bnext\b/i.test(html) };
+}
+function bkChapters(html: string, base: string): Chapter[] {
+  const list = block(html, /<(?:ul|div)\b[^>]*id=["']chapter_list["'][^>]*>/i);
+  const out: Chapter[] = [];
+  for (const li of tagPairs(list, "li")) {
+    const lc = block(li.inner, /<[a-z]+\b[^>]*class=["'][^"']*\blchx\b[^"']*["'][^>]*>/i) || li.inner;
+    const a = lc.match(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
+    if (!a) continue;
+    const url = abs(a[1], base), id = bkSlugOf(url, false), name = stripTags(a[2]);
+    if (!id) continue;
+    const dt = stripTags(block(li.inner, /<[a-z]+\b[^>]*class=["'][^"']*\bdt\b[^"']*["'][^>]*>/i));
+    out.push({ id, ch: chNumFrom(name, url), title: chTitleFrom(name), at: parseWebDate(dt), url });
+  }
+  return out;
+}
+async function bkDetail(id: string): Promise<Detail> {
+  const slug = bkSlug(id), page = await bkFetch(`/komik/${slug}/`), h = page.text;
+  const listAt = h.search(/id=["']chapter_list["']/i);
+  const top = h.slice(0, listAt > 0 ? listAt : h.length);
+  const info = block(top, /<div\b[^>]*class=["'][^"']*\binfoanime\b[^"']*["'][^>]*>/i) || top;
+  // baris info: <span><b>Status:</b> Berjalan</span> dst.
+  const spe = (label: string) => {
+    for (const sp of tagPairs(info, "span")) { const t = stripTags(sp.inner); const m = t.match(new RegExp(`^\\s*(?:${label})\\s*:\\s*(.+)$`, "i")); if (m) return m[1].trim(); }
+    return "";
+  };
+  const title = stripTags(top.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] || "").replace(/^komik\s+/i, "") || metaContent(top, "og:title");
+  const thumb = block(top, /<div\b[^>]*class=["'][^"']*\bthumb\b[^"']*["'][^>]*>/i);
+  const cover = imgSrc(thumb.match(/<img\b[^>]*>/i)?.[0] || "", page.url);
+  // skor: angka satu-satunya di antara sampul dan baris info (mis. 7.3); juga dicoba penanda rating yang umum
+  const thumbAt = top.search(/class=["'][^"']*\bthumb\b/i), speAt = top.search(/class=["'][^"']*\bspe\b|Judul\s+Alternatif/i);
+  const near = thumbAt >= 0 && speAt > thumbAt ? top.slice(thumbAt, speAt) : "";
+  const score = toScore(near.replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, "").match(/>\s*(\d{1,2}(?:[.,]\d{1,2})?)\s*</)?.[1]
+    || top.match(/itemprop=["']ratingValue["'][^>]*content=["']([\d.,]+)/i)?.[1] || "");
+  const tags = [...block(info, /<div\b[^>]*class=["'][^"']*\bgenre-info\b[^"']*["'][^>]*>/i).matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/gi)].map((x) => stripTags(x[1])).filter(Boolean);
+  const type = spe("Jenis\\s+Komik");
+  const descBox = block(h, /<div\b[^>]*class=["'][^"']*\bentry-content-single\b[^"']*["'][^>]*>/i);
+  const pText = [...descBox.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)].map((x) => stripTags(x[1])).filter(Boolean).join("\n\n");
+  const desc = (pText.split(/bercerita tentang\s+/i)[1] || pText || metaContent(top, "og:description")).trim();
+  return {
+    manga: { id: slug, title, cover: await coverUrl(cover, BK_SITE + "/"), desc, tags: [...tags, ...(type ? [type] : [])].slice(0, 8),
+      status: normStatus(spe("Status")), author: spe("Author|Pengarang"), url: page.url, publisher: spe("Serialisasi").slice(0, 120),
+      views: toNum(spe("Jumlah\\s+Pembaca")), score },
+    chapters: bkChapters(h, page.url),
+  };
+}
+async function bkPages(id: string) {
+  const page = await bkFetch(`/${bkSlug(id)}/`);
+  const html = dropBlocks(page.text, "noscript");
+  const out: string[] = [];
+  for (const m of html.matchAll(/<img\b[^>]*>/gi)) {
+    const t = m[0];
+    if (!/\balt=["'][^"']*chapter/i.test(t)) continue;
+    // sebagian gambar memakai cadangan di onerror="this.src='...'" (server gambar utama sering mati)
+    const alt = t.match(/onerror=["'][^"']*src\s*=\s*\\?'([^'\\]+)\\?'/i)?.[1];
+    const u = alt ? abs(alt, page.url) : imgSrc(t, page.url);
+    if (u && !out.includes(u)) out.push(u);
+  }
+  return { ref: page.url, images: out };
+}
+async function bkFilters(): Promise<Filters> {
+  const html = (await bkFetch("/daftar-komik/")).text, genres: { id: string; name: string }[] = [];
+  for (const m of html.matchAll(/<input\b[^>]*name=["']genre\[\]["'][^>]*>\s*(?:<label\b[^>]*>([\s\S]*?)<\/label>)?/gi)) {
+    const id = attr(m[0], "value"); if (!id || genres.some((g) => g.id === id)) continue;
+    genres.push({ id, name: stripTags(m[1] || "") || id });
+  }
+  return { genres: genres.sort((a, b) => a.name.localeCompare(b.name)), status: ["ongoing", "completed", "hiatus"], maxGenres: 10 };
+}
+
 /* ---------- WestManga (API JSON + visit token) ---------- */
 const WEST_SITES = (Deno.env.get("WEST_SITE") || "https://v1.westmanga.my,https://v1.westmanga.top").split(",").map((x) => x.trim().replace(/\/+$/, "")).filter(Boolean);
 let westBase = WEST_SITES[0];
@@ -793,6 +893,7 @@ async function browse(src: Source, page: number, q: string, o: Opt) {
   const plain = !q && !o.genres.length && !o.type && !o.status;
   if (src === "komiku") return await windowed("komiku", page, o.limit, (sp) => komikuPage(sp, q, o), plain);
   if (src === "kiryuu") return await windowed("kiryuu", page, o.limit, (sp) => kiryuuSearchPage(sp, q, o), plain);
+  if (src === "bacakomik") return await windowed("bacakomik", page, o.limit, (sp) => bkPage(sp, q, o), plain);
   return await westBrowse(page, q, o);
 }
 /* ---------- daftar filter per sumber (genre asli dari penyedia) ---------- */
@@ -807,6 +908,7 @@ async function filters(src: Source): Promise<Filters> {
   let data: Filters;
   if (src === "komiku") data = { genres: parseList(KOMIKU_GENRES), status: ["ongoing", "completed"], maxGenres: 2 };
   else if (src === "shinigami") data = { genres: parseList(SHNG_GENRES), status: ["ongoing", "completed", "hiatus"], maxGenres: 10 };
+  else if (src === "bacakomik") data = await bkFilters();
   else if (src === "kiryuu") {
     const list: any[] = await kiryuuJson("/wp-json/wp/v2/genre?per_page=100&page=1&orderby=count&order=desc&_fields=slug,name,count");
     data = { genres: (Array.isArray(list) ? list : []).filter((t) => t?.slug && Number(t.count ?? 1) > 0)
@@ -824,6 +926,7 @@ async function detail(src: Source, id: string): Promise<Detail> {
   if (src === "shinigami") return await shngDetail(id);
   if (src === "komiku") return await komikuDetail(id);
   if (src === "kiryuu") return await kiryuuDetail(id);
+  if (src === "bacakomik") return await bkDetail(id);
   return await westDetail(id);
 }
 async function chaptersOf(src: Source, id: string): Promise<Chapter[]> {
@@ -832,7 +935,7 @@ async function chaptersOf(src: Source, id: string): Promise<Chapter[]> {
   return (await detail(src, id)).chapters;
 }
 async function pages(src: Source, chapterId: string) {
-  const r = src === "shinigami" ? await shngPages(chapterId) : src === "komiku" ? await komikuPages(chapterId) : src === "kiryuu" ? await kiryuuPages(chapterId) : await westPages(chapterId);
+  const r = src === "shinigami" ? await shngPages(chapterId) : src === "komiku" ? await komikuPages(chapterId) : src === "kiryuu" ? await kiryuuPages(chapterId) : src === "bacakomik" ? await bkPages(chapterId) : await westPages(chapterId);
   if (!r.images.length) throw webErr("Tidak menemukan gambar di chapter ini. Mungkin chapter terkunci atau situsnya berubah.", 422);
   return { ref: r.ref, images: await Promise.all(r.images.map(async (u) => ({ u, p: await signImg(u, r.ref) }))) };
 }
@@ -932,7 +1035,7 @@ const rawImg = (u: string) => { try { const x = new URL(u); return /\/functions\
 const deepLink = (src: string, id: string) => `ninokuu://comic/${src}/${encodeURIComponent(id)}`;
 // Gambar notifikasi diunduh oleh HP penerima, jadi hanya host sampul sumber yang dikenal (https, dan akar domainnya
 // salah satu kata kunci di bawah atau domain di secret IMG_HOSTS) yang dipakai; selain itu notifikasi tanpa gambar.
-const IMG_ROOTS = ["komiku", "kiryuu", "shngm", "shinigami", "westmanga"];
+const IMG_ROOTS = ["komiku", "kiryuu", "shngm", "shinigami", "westmanga", "bacakomik"];
 const IMG_EXTRA = (Deno.env.get("IMG_HOSTS") || "").split(",").map((x) => x.trim().toLowerCase().replace(/^\.+/, "")).filter(Boolean);
 function imgHostOk(raw: string): boolean {
   try {
