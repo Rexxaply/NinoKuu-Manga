@@ -405,7 +405,7 @@ async function vHome() {
   const last = S.history()[0];
   view.innerHTML = `
 <header class="top"><img class="logo" src="icons/logo.png" alt="Ninokuu" width="110" height="34">
-  <span class="top-r"><a class="gl-btn" href="#/chat" aria-label="Chat publik">${icon("msg", 20)}<span class="c-dot" id="chatDot" hidden></span></a><button class="gl-btn" data-act="bell" aria-label="Notifikasi" aria-expanded="false">${icon("bell", 21)}<span class="bell-n" id="bellN" hidden></span></button></span></header>
+  <span class="top-r"><a class="gl-btn gl-chat${O.count() ? " on" : ""}" id="chatBtn" href="#/chat" aria-label="Chat publik${O.count() ? ` · ${O.count()} pembaca aktif` : ""}">${icon("msg", 20)}<span class="onl-n" id="onlN"><i></i><b>${O.count() || ""}</b></span><span class="c-dot" id="chatDot" hidden></span></a><button class="gl-btn" data-act="bell" aria-label="Notifikasi" aria-expanded="false">${icon("bell", 21)}<span class="bell-n" id="bellN" hidden></span></button></span></header>
 <section class="hello"><h1>${greeting()}${name ? `, <span class="gold">${esc(name)}</span>` : ""}</h1>
   <button class="quote" data-act="quote" title="Ketuk untuk kutipan lain">“${esc(QUOTES[qi])}”</button></section>
 ${last ? `<section class="sec s16"><h2 class="cap">Lanjut baca</h2>
@@ -2948,6 +2948,12 @@ if (!N.isApp && "serviceWorker" in navigator && location.protocol === "https:") 
   if (N.isApp) startApp();
   // pembaca aktif realtime (Presence); kunci = akun, tersambung ulang saat masuk/keluar akun
   O.start({ url: api.SB_URL, apikey: api.SB_KEY, userKey: () => api.userId() });
+  // jumlah pembaca aktif di samping ikon chat publik Beranda ("● 3"); hilang bila belum tersambung
+  O.onCount((n) => {
+    const b = document.getElementById("chatBtn"); if (!b) return;
+    b.classList.toggle("on", n > 0); $("#onlN b", b).textContent = n || "";
+    b.setAttribute("aria-label", n ? `Chat publik · ${n} pembaca aktif` : "Chat publik");
+  });
   { let last = api.userId(); api.onAuth(() => { const u = api.userId(); if (u !== last) { last = u; O.restart(); } }); }
   // pop-up "Yang baru" sekali setelah pembaruan (Dev: sekali setiap isi changelog berubah)
   T.maybeShow({ version: VERSION, build: N.BUILD, dev: N.DEV, go });

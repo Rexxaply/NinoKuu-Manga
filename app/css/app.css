@@ -1670,3 +1670,9 @@ body[data-screen="reader"] .dl-pop { display: none; }
 .share-wait { position: fixed; inset: 0; z-index: 130; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px; text-align: center; background: rgba(0, 0, 0, .92); animation: fadeIn .15s ease; }
 .share-wait.out { opacity: 0; transition: opacity .2s; }
 .cf-in .cover.cf img { will-change: transform; }
+/* Beranda: jumlah pembaca aktif di samping ikon chat publik ("● 3") */
+.gl-chat { width: auto; min-width: 44px; padding: 0 12px; display: flex; align-items: center; justify-content: center; gap: 8px; transition: padding .2s; }
+.gl-chat .onl-n { display: none; align-items: center; gap: 5px; font-size: 13px; font-weight: 700; color: var(--tx); font-variant-numeric: tabular-nums; }
+.gl-chat.on .onl-n { display: inline-flex; }
+.gl-chat .onl-n i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px rgba(93, 211, 158, .22); }
+.gl-chat .c-dot { top: 7px; right: auto; left: 27px; }   /* titik pesan baru menempel di ikon, tidak menutupi angka */
