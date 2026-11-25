@@ -169,7 +169,7 @@ const SHNG = (() => {
       if (b.genres?.length) { p.set("genre_include", b.genres.join(",")); p.set("genre_include_mode", "and"); }
       if (b.status) p.set("status", b.status);
       const j = await get(`/v1/manga/list?${p}`);
-      const items = (j?.data || []).filter((m) => m?.manga_id).map((m) => ({ id: String(m.manga_id), title: String(m.title || ""), cover: coverOf(m), type: b.type || "" }));
+      const items = (j?.data || []).filter((m) => m?.manga_id).map((m) => ({ id: String(m.manga_id), title: String(m.title || ""), cover: coverOf(m), type: b.type || "", score: pickScore(m, m.stats) }));
       const more = j?.meta?.has_next;
       return { ok: true, items, hasNext: typeof more === "boolean" ? more : items.length >= limit };
     },
@@ -236,7 +236,7 @@ const WEST = (() => {
       if (b.status) p.set("status", b.status[0].toUpperCase() + b.status.slice(1));
       (b.genres || []).forEach((g) => p.append("genre[]", g));
       const j = await get(`/api/contents?${p}`);
-      const items = (j?.data || []).filter((m) => m?.slug).map((m) => ({ id: String(m.slug), title: String(m.title || m.slug), cover: abs(m.cover), type: TYPE[m.country_id] || b.type || "" }));
+      const items = (j?.data || []).filter((m) => m?.slug).map((m) => ({ id: String(m.slug), title: String(m.title || m.slug), cover: abs(m.cover), type: TYPE[m.country_id] || b.type || "", score: pickScore(m, m.stats) }));
       const last = j?.paginator?.last_page != null ? Number(j.paginator.last_page) : null;
       return { ok: true, items, hasNext: last != null ? page < last : items.length >= limit };
     },

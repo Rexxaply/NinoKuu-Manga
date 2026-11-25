@@ -420,7 +420,7 @@ async function shngBrowse(page: number, q: string, o: Opt) {
   if (o.status) p.set("status", o.status);
   const j = await shngJson(`/v1/manga/list?${p}`);
   const items = await Promise.all((j?.data || []).filter((m: any) => m?.manga_id).map(async (m: any) => ({
-    id: String(m.manga_id), title: String(m.title || ""), cover: await coverUrl(shngCover(m), SHNGM_SITE + "/"), type: o.type || "",
+    id: String(m.manga_id), title: String(m.title || ""), cover: await coverUrl(shngCover(m), SHNGM_SITE + "/"), type: o.type || "", score: pickScore(m, m.stats),
   })));
   const more = j?.meta?.has_next;
   return { items, hasNext: typeof more === "boolean" ? more : items.length >= o.limit };
@@ -628,7 +628,7 @@ async function kiryuuSearchPage(srcPage: number, q: string, o: Opt, retry = true
   const bySlug = new Map((Array.isArray(list) ? list : []).filter((m) => m?.id && !kiryuuTerms(m, "type").includes("Novel")).map((m) => [m.slug, m]));
   const items = await Promise.all(slugs.map((sl) => bySlug.get(sl)).filter(Boolean).map(async (m: any) => ({
     id: String(m.id), title: decodeEnt(stripTags(m.title?.rendered || m.slug || "")), cover: await coverUrl(kiryuuCover(m), KIRYUU_SITE + "/"),
-    type: (kiryuuTerms(m, "type")[0] || "").toLowerCase(),
+    type: (kiryuuTerms(m, "type")[0] || "").toLowerCase(), score: pickScore(m.metadata?.meta),
   })));
   return { items, hasNext };
 }
@@ -718,7 +718,10 @@ async function bkPage(srcPage: number, q: string, o: Opt) {
     if (!id || !title) continue;
     const img = imgSrc(b.match(/<img\b[^>]*>/i)?.[0] || "", page.url);
     const tp = (b.match(/\btypeflag\s+(manga|manhwa|manhua)\b/i)?.[1] || o.type || "").toLowerCase();
-    items.push({ id, title, cover: await coverUrl(img, BK_SITE + "/"), type: tp });
+    // skor = angka terakhir setelah judul di kartu (mis. 7.3)
+    const after = b.slice(Math.max(0, b.search(/<\/h4>/i)));
+    const sc = [...after.matchAll(/>\s*(\d{1,2}(?:[.,]\d{1,2})?)\s*</g)].pop()?.[1];
+    items.push({ id, title, cover: await coverUrl(img, BK_SITE + "/"), type: tp, score: toScore(sc || "") });
   }
   return { items, hasNext: /class=["'][^"']*\bnext\b[^"']*page-numbers|page-numbers[^"']*\bnext\b/i.test(html) };
 }
@@ -830,7 +833,7 @@ async function westBrowse(page: number, q: string, o: Opt) {
   o.genres.forEach((g) => p.append("genre[]", g));
   const j = await westApi(`/api/contents?${p}`);
   const items = await Promise.all((j?.data || []).filter((m: any) => m?.slug).map(async (m: any) => ({
-    id: String(m.slug), title: String(m.title || m.slug), cover: await coverUrl(westAbs(m.cover), westBase + "/"), type: WEST_TYPE[String(m.country_id || "")] || o.type || "",
+    id: String(m.slug), title: String(m.title || m.slug), cover: await coverUrl(westAbs(m.cover), westBase + "/"), type: WEST_TYPE[String(m.country_id || "")] || o.type || "", score: pickScore(m, m.stats),
   })));
   const pg = j?.paginator || {};
   const last = pg.last_page != null ? Number(pg.last_page) : null;

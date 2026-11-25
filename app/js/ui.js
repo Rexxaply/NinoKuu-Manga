@@ -189,7 +189,7 @@ new MutationObserver((ms) => {
    Satu "jempol" (latar pilihan aktif) meluncur ke pilihan baru dengan pegas, bukan latar yang berpindah
    tiba-tiba. Ringan: hanya transform (dikerjakan GPU) + lebar 1 elemen kosong; tanpa pustaka.
    Berlaku otomatis untuk .seg, .fseg, .chips, juga yang digambar ulang (posisi lama diingat ±0,8 dtk). */
-const SEG_SEL = ".seg, .fseg, .chips";
+const SEG_SEL = ".seg, .fseg, .chips, .src-rail";
 const SEG_ON = '[aria-selected="true"], [aria-checked="true"], [aria-pressed="true"]';
 const segLast = new Map();
 const segReduce = matchMedia("(prefers-reduced-motion: reduce)");
