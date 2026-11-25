@@ -1528,9 +1528,10 @@ body[data-screen="reader"] .dl-pop { display: none; }
 .fav-bar .seg { margin: 0; }
 .seg .seg-ic { flex: 0 0 46px; display: grid; place-items: center; color: var(--tx); border-left: 1px solid var(--line); border-radius: 0 11px 11px 0; }
 .seg .seg-ic:active { background: rgba(255, 255, 255, .08); }
-.fb-search { min-height: 48px; animation: fbIn .26s cubic-bezier(.32, .72, 0, 1); transform-origin: 100% 50%; }
+.fb-search { min-height: 46px; margin-top: 8px; animation: fbIn .26s cubic-bezier(.32, .72, 0, 1); transform-origin: 50% 0; }
+.seg .seg-ic.on { color: #fff; background: rgba(255, 255, 255, .1); }
 .fb-search input { font-size: 15px; }
 .fb-x { flex: none; width: 36px; height: 36px; margin-right: -6px; border-radius: 50%; display: grid; place-items: center; color: var(--mu); }
 .fb-x:active { background: rgba(255, 255, 255, .08); }
-@keyframes fbIn { from { opacity: 0; transform: scaleX(.86); } to { opacity: 1; transform: none; } }
+@keyframes fbIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .fav-bar, .fb-search { transition: none; animation: none; } }

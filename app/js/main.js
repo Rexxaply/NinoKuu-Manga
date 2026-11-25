@@ -1681,9 +1681,10 @@ function vFav(tab, soft = false) {
   if (fav.tab !== "lib") fav.bar = false;
   const barOn = fav.bar || favBarOn;
   // kotak pilihan di bilah atas: tab + tombol cari (hanya di Koleksi) menyatu; mode cari: kolom pencarian + tombol tutup
-  const favBar = `<div class="fav-bar${barOn ? " on" : ""}" id="favbar" aria-hidden="${!barOn}"${barOn ? "" : " inert"}>${fav.bar
-    ? `<label class="search box fb-search"><span class="mu">${icon("search", 18)}</span><span class="sr">Cari di koleksi</span><input id="fbq" type="search" enterkeyhint="search" autocomplete="off" placeholder="Cari di koleksimu" value="${esc(fav.q)}"><button type="button" class="fb-x" data-act="fbx" aria-label="Tutup pencarian">${icon("x", 17, 2.2)}</button></label>`
-    : `<div class="seg s2 fb-seg" role="tablist">${TABS.map((x) => `<button role="tab" aria-selected="${x.id === fav.tab}" data-act="tab" data-v="${x.id}">${x.name}</button>`).join("")}${fav.tab === "lib" ? `<button type="button" class="seg-ic" data-act="fbs" aria-label="Cari di koleksi">${icon("search", 18, 2.2)}</button>` : ""}</div>`}</div>`;
+  // tombol cari menyatu di kotak pilihan; saat diketuk kolom pencarian muncul di BAWAH kotak (pilihan tab tetap ada)
+  const favBar = `<div class="fav-bar${barOn ? " on" : ""}" id="favbar" aria-hidden="${!barOn}"${barOn ? "" : " inert"}>
+    <div class="seg s2 fb-seg" role="tablist">${TABS.map((x) => `<button role="tab" aria-selected="${x.id === fav.tab}" data-act="tab" data-v="${x.id}">${x.name}</button>`).join("")}${fav.tab === "lib" ? `<button type="button" class="seg-ic${fav.bar ? " on" : ""}" data-act="${fav.bar ? "fbx" : "fbs"}" aria-label="${fav.bar ? "Tutup pencarian" : "Cari di koleksi"}" aria-expanded="${fav.bar}">${icon(fav.bar ? "x" : "search", 18, 2.2)}</button>` : ""}</div>
+    ${fav.bar ? `<label class="search box fb-search"><span class="mu">${icon("search", 18)}</span><span class="sr">Cari di koleksi</span><input id="fbq" type="search" enterkeyhint="search" autocomplete="off" placeholder="Cari di koleksimu" value="${esc(fav.q)}">${fav.q ? `<button type="button" class="fb-x" data-act="fbclr" aria-label="Hapus kata kunci">${icon("x", 16, 2.2)}</button>` : ""}</label>` : ""}</div>`;
   const shell = `${favBar}
 <div class="page-h" id="favtop"><h1>Favorit</h1>${seg(TABS, fav.tab, "tab")}</div>
 ${!S.loggedIn() && fav.tab !== "dl" ? `<div class="note mx">${icon("cloud", 18)}<span>Tersimpan di HP ini saja. <a href="#/more">Masuk</a> agar tersinkron di semua perangkat.</span></div>` : ""}
@@ -1719,6 +1720,7 @@ ${!S.loggedIn() && fav.tab !== "dl" ? `<div class="note mx">${icon("cloud", 18)}
     tab: (el) => { const fromBar = !!el.closest("#favbar"); fav.tab = el.dataset.v; vFav(); if (fromBar) { const t = $("#favtop"); if (t) scrollTo({ top: t.offsetTop + t.offsetHeight - 4, behavior: "auto" }); favBarTick(); } },
     fbs: () => { fav.bar = true; vFav(); const n = $("#fbq"); if (n) { n.focus({ preventScroll: true }); const l = n.value.length; n.setSelectionRange(l, l); } },
     fbx: () => { fav.bar = false; if (fav.q) fav.q = ""; vFav(); },
+    fbclr: () => { fav.q = ""; vFav(); const n = $("#fbq"); if (n) n.focus({ preventScroll: true }); },
     ff: (el) => { fav.filter = el.dataset.v; vFav(); },
     fview: () => S.setSetting("favView", grid ? "list" : "grid"),
     fsort: () => sortSheet("Urutkan koleksi", FAV_SORTS, fs, (v) => S.setSetting("favSort", v)),

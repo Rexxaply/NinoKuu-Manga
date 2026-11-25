@@ -18,7 +18,7 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 - Baru: di Favorit, pilihan Koleksi/Riwayat/Unduhan tetap terlihat di atas saat menggulir, lengkap dengan tombol cari
 
 ### Detail
-- Favorit: `#favbar` (fixed, kaca buram) muncul saat `#favtop` tergulir keluar layar (`favBarTick` di scroll/resize); isinya kotak segmen tab + tombol cari `.seg-ic` yang menyatu (hanya di Koleksi). Ketuk cari → kolom `#fbq` (fokus otomatis, sinkron dengan `fav.q`, Esc/✕ menutup & menghapus kata kunci); selama mode cari bilah tetap tampil. Pindah tab dari bilah menggulir ke awal daftar. Diuji di Chrome 390 px (tampil saat digulir, cari mengetik & menyaring)
+- Favorit: `#favbar` (fixed, kaca buram) muncul saat `#favtop` tergulir keluar layar (`favBarTick` di scroll/resize); isinya kotak segmen tab + tombol cari `.seg-ic` yang menyatu (hanya di Koleksi). Ketuk cari → kolom `#fbq` muncul di bawah kotak pilihan (tab tetap ada; fokus otomatis, sinkron dengan `fav.q`); tombol cari berubah jadi ✕ untuk menutup & menghapus kata kunci, ✕ kecil di kolom hanya menghapus teks; selama mode cari bilah tetap tampil. Pindah tab dari bilah menggulir ke awal daftar. Diuji di Chrome 390 px (tampil saat digulir, cari mengetik & menyaring)
 
 ---
 
