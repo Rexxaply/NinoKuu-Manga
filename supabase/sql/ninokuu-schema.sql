@@ -200,6 +200,13 @@ create table if not exists public.library (
     and char_length(title) <= 300 and char_length(coalesce(cover, '')) <= 1000)
 );
 create index if not exists library_notify_idx on public.library (source, comic_id) where notify;
+-- Rak (kategori koleksi buatan pengguna): satu rak per komik, nama maks. 30 huruf.
+alter table public.library add column if not exists shelf text;
+do $$ begin
+  if not exists (select 1 from pg_catalog.pg_constraint where conname = 'library_shelf_len') then
+    alter table public.library add constraint library_shelf_len check (shelf is null or char_length(shelf) between 1 and 30);
+  end if;
+end $$;
 alter table public.library enable row level security;
 revoke all on table public.library from anon, authenticated;
 grant select, insert, update, delete on table public.library to authenticated;

@@ -73,6 +73,50 @@ export async function toggleLib(m) {
   }
   return true;
 }
+/* ---------- rak (kategori koleksi buatan pengguna) ----------
+   Satu komik di satu rak (atau tanpa rak). Nama rak = kolom library.shelf (ikut sinkron); rak yang masih kosong
+   disimpan di setelan HP (settings.shelves) supaya tidak hilang sebelum diisi. */
+const SHELF_MAX = 30;
+export const cleanShelf = (v) => String(v || "").replace(/\s+/g, " ").trim().slice(0, SHELF_MAX);
+export function shelves() {
+  const own = Array.isArray(state.settings.shelves) ? state.settings.shelves.map(cleanShelf).filter(Boolean) : [];
+  const used = [...state.lib.values()].map((m) => cleanShelf(m.shelf)).filter(Boolean);
+  const seen = new Set(), out = [];
+  for (const n of [...own, ...used.sort((a, b) => a.localeCompare(b, "id"))]) { const k = n.toLowerCase(); if (!seen.has(k)) { seen.add(k); out.push(n); } }
+  return out;
+}
+const saveShelfList = (list) => setSetting("shelves", list.slice(0, 40));
+export function addShelf(name) {
+  name = cleanShelf(name); if (!name) return "";
+  const cur = shelves(); const hit = cur.find((x) => x.toLowerCase() === name.toLowerCase());
+  if (hit) return hit;
+  saveShelfList([...cur, name]); return name;
+}
+const patchShelf = (filter, shelf) => loggedIn()
+  ? api.rest(`library?${filter}`, { method: "PATCH", body: { shelf }, prefer: "return=minimal" }).catch((e) => {
+    // database belum punya kolom shelf: rak tetap tersimpan di HP ini
+    if (!/shelf/i.test(e?.message || "")) throw e;
+  }) : Promise.resolve();
+export async function setShelf(src, id, name) {
+  const row = state.lib.get(keyOf(src, id)); if (!row) return;
+  const old = row.shelf || null, v = cleanShelf(name) || null;
+  if (v) addShelf(v);
+  row.shelf = v; saveLocal(); emit();
+  await patchShelf(`source=eq.${enc(src)}&comic_id=eq.${enc(id)}`, v).catch((e) => { row.shelf = old; saveLocal(); emit(); throw e; });
+}
+export async function renameShelf(from, to) {
+  to = cleanShelf(to); if (!to || to === from) return;
+  saveShelfList(shelves().map((x) => (x === from ? to : x)));
+  for (const m of state.lib.values()) if (m.shelf === from) m.shelf = to;
+  saveLocal(); emit();
+  await patchShelf(`shelf=eq.${enc(from)}`, to);
+}
+export async function deleteShelf(name) {
+  saveShelfList(shelves().filter((x) => x !== name));
+  for (const m of state.lib.values()) if (m.shelf === name) m.shelf = null;
+  saveLocal(); emit();
+  await patchShelf(`shelf=eq.${enc(name)}`, null);
+}
 // lonceng: butuh login karena notifikasi dikirim server ke HP
 export async function setNotify(m, on) {
   const k = keyOf(m.source, m.comic_id);
@@ -187,7 +231,7 @@ export async function setName(name) {
 export async function syncAfterLogin() {
   await loadProfile();
   // kirim data tamu yang belum ada di server, lalu ambil versi server
-  const libRows = [...state.lib.values()].map(({ source, comic_id, title, cover, notify, added_at }) => ({ source, comic_id, title, cover, notify: !!notify, added_at }));
+  const libRows = [...state.lib.values()].map(({ source, comic_id, title, cover, notify, added_at, shelf }) => ({ source, comic_id, title, cover, notify: !!notify, added_at, shelf: shelf || null }));
   if (libRows.length) await api.rest("library?on_conflict=user_id,source,comic_id", { method: "POST", body: libRows, prefer: "resolution=ignore-duplicates,return=minimal" }).catch(() => {});
   const histRows = [...state.hist.values()].map(histRow);
   if (histRows.length) await api.rest("history?on_conflict=user_id,source,comic_id", { method: "POST", body: histRows, prefer: "resolution=merge-duplicates,return=minimal" }).catch(() => {});
@@ -195,8 +239,10 @@ export async function syncAfterLogin() {
 }
 export async function pull() {
   if (!loggedIn()) return;
+  const libQ = (cols) => api.rest(`library?select=${cols}&order=added_at.desc&limit=2000`);
   const [lib, hist] = await Promise.all([
-    api.rest("library?select=source,comic_id,title,cover,notify,added_at&order=added_at.desc&limit=2000"),
+    // kolom shelf (rak) belum ada di database lama: ambil tanpa rak, rak di HP dipertahankan
+    libQ("source,comic_id,title,cover,notify,added_at,shelf").catch((e) => (/shelf/i.test(e?.message || "") ? libQ("source,comic_id,title,cover,notify,added_at") : Promise.reject(e))),
     api.rest("history?select=source,comic_id,title,cover,chapter,page,read_at&order=read_at.desc&limit=300"),
   ]);
   const oldLib = state.lib;

@@ -4,7 +4,7 @@ import * as S from "./store.js";
 import { QUOTES } from "./assets.js";
 import { DOCS } from "./docs.js";
 import * as N from "./native.js";
-import { openFilter, activeCount, genreName, STATUS_NAME } from "./filters.js";
+import { openFilter, activeCount, genreName, STATUS_NAME, loadFilters } from "./filters.js";
 import { vChat, vDev, roomFor, roomPreview, roomCount, miniMsg, bindSpoilers, watchAvatars, framesReady } from "./chat.js";
 import * as X from "./exp.js";
 import * as DL from "./dl.js";
@@ -202,6 +202,27 @@ view.addEventListener("click", (e) => {
   if (fn) { e.preventDefault(); fn(el, e); }
 });
 const setActs = (a) => { acts = a; };
+// kotak isian sederhana (nama rak, dll.): hasil = teks, atau null bila dibatalkan
+async function promptText(title, { value = "", placeholder = "", ok = "Simpan", max = 30 } = {}) {
+  let v = null;
+  const p = ask("", { title, ok, html: `<input class="ask-in" id="askIn" maxlength="${max}" autocomplete="off" placeholder="${esc(placeholder)}" value="${esc(value)}">` });
+  requestAnimationFrame(() => { const i = $("#askIn"); if (i) { i.focus(); i.select(); } });
+  if (await p) v = ($("#askIn")?.value || "").trim();
+  return v || null;
+}
+// lembar pilih rak untuk satu komik di koleksi
+function shelfSheet(src, id, after) {
+  const cur = S.libItem(src, id)?.shelf || "", list = S.shelves();
+  openSheet(`<span class="sheet-ttl">Simpan di rak</span><div class="col g4" role="radiogroup">
+    ${[["", "Tanpa rak"], ...list.map((n) => [n, n])].map(([k, n]) => `<button class="sh-row" role="radio" aria-checked="${k === cur}" data-s="pick" data-v="${esc(k)}"><span class="mu">${icon(k ? "folder" : "x", 17)}</span><span class="grow">${esc(n)}</span>${k === cur ? `<span class="redt">${icon("check", 18, 2.4)}</span>` : ""}</button>`).join("")}
+    <button class="sh-row" data-s="new"><span class="redt">${icon("plus", 18, 2.2)}</span><span class="grow redt">Rak baru…</span></button></div>`,
+  async (b) => {
+    let v = b.dataset.v ?? "";
+    if (b.dataset.s === "new") { closeSheet(); v = await promptText("Rak baru", { placeholder: "mis. Sedang dibaca, Nanti, Tamat" }); if (!v) return; }
+    else closeSheet();
+    try { await S.setShelf(src, id, v); toast(v ? `Disimpan di rak ${S.cleanShelf(v)}` : "Dikeluarkan dari rak"); after?.(); } catch (e) { toast(e.message); }
+  });
+}
 const soon = (msg) => toast(typeof msg === "string" ? msg : "Fitur ini hadir di bagian berikutnya.");
 
 /* ---------- lembar bawah (laporan masalah) ---------- */
@@ -674,6 +695,78 @@ async function fillMore(src, id, data) {
   } catch { /* coba lagi saat komik dibuka berikutnya */ }
   finally { filling.delete(k); }
 }
+// ---------- pindah sumber ----------
+// Cari judul yang sama di sumber lain. Dari koleksi: pindahkan koleksi, lonceng, rak, posisi baca (chapter dengan nomor
+// yang sama), dan tanda chapter yang sudah dibaca. Tanpa koleksi: cukup buka komiknya di sumber lain.
+const titleQ = (t) => String(t || "").split(/\s[~(\[|–—:]|\s-\s|[~(\[]/)[0].trim().split(/\s+/).slice(0, 6).join(" ");
+function migrateSheet(src, id, m) {
+  const inLib = S.inLib(src, id), q = titleQ(m.title), want = normQ(m.title);
+  const others = SOURCES.filter((x) => x.id !== src);
+  const el = openSheet(`<span class="sheet-ttl">${inLib ? "Pindah sumber" : "Cari di sumber lain"}</span>
+    <span class="sheet-prev">${inLib ? "Koleksi, lonceng, rak, dan posisi baca ikut pindah." : "Buka komik ini dari sumber lain."} Pencarian: “${esc(q)}”</span>
+    <div class="mg-list">${others.map((x) => `<div class="mg-src"><span class="mg-h"><i class="fa-dot s-${esc(x.id)}"></i>${esc(x.name)}</span><div class="mg-res" data-src="${esc(x.id)}"><span class="mu xs">Mencari…</span></div></div>`).join("")}</div>`,
+  async (b) => {
+    if (b.dataset.s !== "pick") return;
+    const to = { source: b.dataset.src, comic_id: b.dataset.id, title: b.dataset.t, cover: b.dataset.c };
+    if (!inLib) { closeSheet(); go(comicHref(to.source, to.comic_id)); return; }
+    closeSheet();
+    if (!(await ask(`Pindahkan “${m.title}” dari ${srcName(src)} ke ${srcName(to.source)}?\nKoleksi, lonceng, rak, posisi baca, dan tanda chapter yang sudah dibaca ikut pindah.`, { ok: "Pindahkan" }))) return;
+    toast("Memindahkan…", 8000);
+    try { await migrateComic(src, id, to); toast(`Dipindah ke ${srcName(to.source)}`); goReplace(comicHref(to.source, to.comic_id)); }
+    catch (e) { toast(e.message || "Gagal memindahkan", 4000); }
+  });
+  // urutan hasil: judul persis sama dulu, lalu yang memuat semua kata pencarian
+  const rank = (it) => { const t = normQ(it.title), a = normQ(it.alt || ""); return t === want || a.includes(want) ? 0 : matchQ(q)(it) ? 1 : 2; };
+  for (const x of others) {
+    api.call("browse", { source: x.id, q, type: "", status: "", genres: [], sort: "update", page: 1, limit: 12 }).then((r) => {
+      const box = el.querySelector(`.mg-res[data-src="${x.id}"]`); if (!box || !el.isConnected) return;
+      const list = (r.items || []).map((it) => [rank(it), it]).filter(([k]) => k < 2).sort((a, b) => a[0] - b[0]).slice(0, 4).map(([, it]) => it);
+      box.innerHTML = list.length ? list.map((it) => `<button class="mg-it" data-s="pick" data-src="${esc(x.id)}" data-id="${esc(it.id)}" data-t="${esc(it.title)}" data-c="${esc(it.cover || "")}">${cover(it.cover, it.title, "sm")}<span class="grow t2">${esc(it.title)}</span><span class="redt sm">${inLib ? "Pindah" : "Buka"}</span></button>`).join("")
+        : `<span class="mu xs">Tidak ditemukan</span>`;
+    }).catch(() => { const box = el.querySelector(`.mg-res[data-src="${x.id}"]`); if (box) box.innerHTML = `<span class="mu xs">Sumber ini sedang tidak bisa dicari</span>`; });
+  }
+}
+async function migrateComic(src, id, to) {
+  const old = S.libItem(src, id), hist = S.histItem(src, id);
+  const [od, nd] = await Promise.all([getDetail(src, id).catch(() => null), getDetail(to.source, to.comic_id)]);
+  const num = (c) => { const n = parseFloat(c?.ch); return Number.isFinite(n) ? n : null; };
+  const byNum = new Map(nd.chapters.map((c) => [num(c), c]).filter(([n]) => n != null));
+  const nm = nd.manga || {}, latest = nd.chapters[nd.chapters.length - 1];
+  const meta = { source: to.source, comic_id: to.comic_id, title: nm.title || to.title, cover: nm.cover || to.cover };
+  // 1. koleksi baru (lonceng & rak ikut), baru setelah itu yang lama dilepas
+  if (!S.inLib(to.source, to.comic_id)) await S.toggleLib(meta);
+  S.updateLibMeta(to.source, to.comic_id, { type: typeFromTags(nm.tags), latest: latest?.ch ?? null, latestAt: latest?.at ?? null });
+  if (old?.notify && S.loggedIn()) await S.setNotify(meta, true).catch(() => {});
+  if (old?.shelf) await S.setShelf(to.source, to.comic_id, old.shelf).catch(() => {});
+  // 2. tanda chapter yang sudah dibaca: dicocokkan lewat nomor chapter
+  if (od) {
+    const rs = S.chReadSet(src, id), ids = [];
+    for (const c of od.chapters) if (rs.has(c.id)) { const t = byNum.get(num(c)); if (t) ids.push(t.id); }
+    if (ids.length) S.mergeReadChs(to.source, to.comic_id, ids);
+  }
+  // 3. posisi baca: chapter dengan nomor yang sama di sumber baru
+  const at = hist && byNum.get(parseFloat(hist.chapter));
+  if (at) S.saveHistory({ source: to.source, comic_id: to.comic_id, title: meta.title, cover: meta.cover, type: typeFromTags(nm.tags), chapter: at.ch, chapter_id: at.id, page: 1, pages: 0 });
+  if (old) await S.toggleLib({ source: src, comic_id: id, title: old.title, cover: old.cover });
+}
+// ---------- mirip ini: komik populer dengan genre yang sama dari sumber yang sama ----------
+const simMem = new Map();
+async function similarOf(src, id, tags) {
+  const k = src + "|" + id; if (simMem.has(k)) return simMem.get(k);
+  const f = await loadFilters(src).catch(() => null);
+  const byName = new Map((f?.genres || []).map((g) => [normQ(g.name), g.id]));
+  const ids = (tags || []).map((t) => byName.get(normQ(t))).filter(Boolean);
+  if (!ids.length) { simMem.set(k, []); return []; }
+  let items = [];
+  // dua genre pertama dulu (lebih mirip); bila terlalu sedikit, cukup genre pertama
+  for (const g of src === "komiku" ? [ids.slice(0, 1)] : [ids.slice(0, 2), ids.slice(0, 1)]) {
+    const r = await api.call("browse", { source: src, q: "", type: "", status: "", genres: g, sort: "popular", page: 1, limit: 18 }).catch(() => null);
+    items = (r?.items || []).filter((it) => it.id !== id);
+    if (items.length >= 6 || g.length === 1) break;
+  }
+  items = items.slice(0, 12); simMem.set(k, items); if (simMem.size > 30) simMem.delete(simMem.keys().next().value);
+  return items;
+}
 // halaman komik: latar berhenti di baris tombol "Mulai baca"
 function fitDetail() {
   const bg = $("#dtbg"), row = $(".act-row");
@@ -732,11 +825,13 @@ async function vDetail(src, id) {
     <button class="round-btn ${bell ? "on gold" : ""}" data-act="bell" aria-pressed="${bell}" aria-label="${bell ? "Matikan notifikasi" : "Nyalakan notifikasi chapter baru"}">${icon(bell ? "bellF" : "bell", 22)}</button>
     ${likeBtn(lk)}
   </div>
+  <div class="dt-tools">${fav ? `<button class="dt-chip${S.libItem(src, id)?.shelf ? " on" : ""}" data-act="shelf">${icon("folder", 16)}<span class="t1">${esc(S.libItem(src, id)?.shelf || "Simpan di rak")}</span></button>` : ""}<button class="dt-chip" data-act="migrate">${icon("swap", 16)}${fav ? "Pindah sumber" : "Sumber lain"}</button></div>
   ${m.tags?.length ? `<div class="tags">${m.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</div>` : ""}
   <p class="syn-h">Sinopsis <b>${esc(m.title)}</b></p>
   ${m.desc ? `<p class="desc ${descOpen ? "open" : ""}" data-act="desc">${esc(m.desc)}</p>` : `<p class="desc mu">Belum ada sinopsis dari sumber.</p>`}
   <div class="sec-h mt24"><h2>Chapter</h2><a class="link-red" href="${chaptersHref(src, id)}">Lihat semua (${d.chapters.length})${icon("chev", 16, 2)}</a></div>
   <div class="ch-card">${preview.map((c) => chRow(c)).join("") || `<div class="empty"><b>Belum ada chapter</b></div>`}</div>
+  <div id="simsec">${simHtml()}</div>
   <div id="cmsec">${cmHtml()}</div>
 </div><div style="height:calc(120px + env(safe-area-inset-bottom))"></div>
 <div class="rfab-wrap"><a class="rfab glass" href="${resumeCh ? readHref(src, id, resumeCh.id) : first ? readHref(src, id, first.id) : chaptersHref(src, id)}"><span class="rfab-ic">${icon("play", 18, 2)}</span><b class="redt">${resumeCh ? "Lanjut baca" : "Mulai baca"}</b><span class="grow">${resumeCh ? "Chapter " + esc(resumeCh.ch) : first ? "Chapter " + esc(first.ch) : ""}</span><span class="redt">${icon("chev", 20, 2)}</span></a></div>`;
@@ -745,8 +840,27 @@ async function vDetail(src, id) {
     if (!heroCol) X.coverColor(m.cover).then((c) => { const el = $("#dtbg"); if (c && el && parse().name === "detail") { el.style.setProperty("--hc", c); el.classList.add("tinted"); } });
     onBarScroll();
     fitDetail();
+    watchSim();
   };
-  let cmList = null, cmN = 0, lk = null, lkBusy = false;
+  let cmList = null, cmN = 0, lk = null, lkBusy = false, sim = null;
+  // "Mirip ini": dimuat saat bagiannya hampir terlihat (hemat permintaan untuk yang tidak menggulir sejauh itu)
+  function simHtml() {
+    if (sim && !sim.length) return "";
+    return `<div class="sec-h mt24"><h2>Mirip ini</h2><span class="mu sm">${esc(srcName(src))} · genre sama</span></div>
+  <div class="hs sim-row">${sim === null ? loading(3, "sk-top") : sim.map((it) => `<a class="top10" href="${comicHref(src, it.id)}"><span class="t10-cv">${cover(it.cover, it.title, "top")}${scoreTag(it, src)}</span><span class="t10-t"><b class="t2">${esc(it.title)}</b></span></a>`).join("")}</div>`;
+  }
+  const paintSim = () => { const el = $("#simsec"); if (el) el.innerHTML = simHtml(); };
+  let simIo = null;
+  const watchSim = () => {
+    if (sim !== null || simIo) return;
+    const el = $("#simsec"); if (!el) return;
+    simIo = new IntersectionObserver((es) => {
+      if (!es.some((e) => e.isIntersecting)) return;
+      simIo.disconnect();
+      similarOf(src, id, m.tags).then((l) => { sim = l; if (parse().name === "detail") paintSim(); }).catch(() => { sim = []; paintSim(); });
+    }, { rootMargin: "300px 0px" });
+    simIo.observe(el);
+  };
   // bagian komentar digambar terpisah: saat komentar datang, hanya bagian ini yang diganti
   // (sebelumnya seluruh halaman digambar ulang → gambar sampul & latar sempat berkedip)
   function cmHtml() { return `  <div class="sec-h mt24"><h2>Komentar${cmN ? ` <span class="mu cm-n">${cmN}</span>` : ""}</h2><a class="link-red" href="${commentsHref(src, id)}">${cmN ? "Lihat semua" : "Tulis komentar"}${icon("chev", 16, 2)}</a></div>
@@ -759,7 +873,7 @@ async function vDetail(src, id) {
   window.addEventListener("scroll", onBarScroll, { passive: true });
   const onMore = (e) => { if (e.detail.key === src + "|" + id && parse().name === "detail") { const y = window.scrollY; draw(); window.scrollTo(0, y); } };
   window.addEventListener("nk:chapters", onMore);
-  cleanup = () => { window.removeEventListener("scroll", onBarScroll); window.removeEventListener("nk:chapters", onMore); };
+  cleanup = () => { window.removeEventListener("scroll", onBarScroll); window.removeEventListener("nk:chapters", onMore); simIo?.disconnect(); };
   const room = roomFor(src, id);
   Promise.all([roomPreview(room, 3), roomCount(room).catch(() => 0), new Promise((r) => setTimeout(r, 450)).then(framesReady)]).then(([l, n]) => { cmList = l; cmN = n; if (parse().name === "detail") paintComments(); })
     .catch(() => { cmList = []; if (parse().name === "detail") paintComments(); });
@@ -769,6 +883,8 @@ async function vDetail(src, id) {
     desc: (el) => { descOpen = !descOpen; el.classList.toggle("open", descOpen); },
     dl: dlOpen(src, id),
     report: () => openReport({ source: src, comic_id: id, title: m.title }),
+    shelf: () => shelfSheet(src, id, draw),
+    migrate: () => migrateSheet(src, id, m),
     like: async () => {
       if (!S.loggedIn()) { toast("Masuk dulu untuk memberi like."); return; }
       if (lkBusy) return; lkBusy = true;
@@ -1258,6 +1374,34 @@ async function vReader(src, id, chId) {
   // Ketukan pertama langsung menampilkan/menyembunyikan menu (tanpa menunggu 320 ms). Bila ternyata ketukan
   // kedua datang cepat (ketuk 2×), menu dikembalikan ke keadaan semula lalu halaman diperbesar.
   const setUi = (on) => (on ? showUi() : rd.classList.remove("ui"));
+  // Tekan lama satu gambar (±0,55 dtk, jari tidak bergeser) → lembar "Bagikan gambar ini" lewat menu bagikan HP
+  let lp = null, lpFired = 0;
+  const pageSheet = (i) => {
+    const im = p.images[i - 1]; if (!im) return;
+    const el = $(`.r-img[data-i="${i}"]`, box), title = d.manga?.title || "";
+    openSheet(`<span class="sheet-ttl">Halaman ${i} dari ${total}</span><span class="sheet-prev">${esc(title)} · Chapter ${esc(ch.ch)}</span>
+      ${el?.currentSrc ? `<img class="pg-prev" src="${esc(el.currentSrc)}" alt="Pratinjau halaman ${i}">` : ""}
+      <button class="sh-row" data-s="share"><span class="redt">${icon("share", 19)}</span><span class="grow">Bagikan gambar ini</span></button>`,
+    async (b) => {
+      if (b.dataset.s !== "share") return;
+      closeSheet(); toast("Menyiapkan gambar…", 6000);
+      const name = ("ninokuu-" + title.slice(0, 40) + "-ch" + ch.ch + "-" + i).toLowerCase().replace(/[^a-z0-9.]+/g, "-").replace(/^-+|-+$/g, "");
+      try { await DL.sharePage(im, p.ref || "", name, `${title} · Chapter ${ch.ch} — dibaca di Ninokuu`); }
+      catch (e) { toast(e?.message || "Gagal membagikan gambar", 4000); }
+    });
+  };
+  const lpCancel = () => { if (lp) { clearTimeout(lp.t); lp = null; } };
+  box.addEventListener("pointerdown", (e) => {
+    const im = e.target.closest?.(".r-img"); if (!im || e.button > 0 || !e.isPrimary) { lpCancel(); return; }
+    lpCancel();
+    lp = { x: e.clientX, y: e.clientY, t: setTimeout(() => { lp = null; if (zoom > 1.05 || seeking) return; lpFired = Date.now(); navigator.vibrate?.(12); pageSheet(Number(im.dataset.i)); }, 550) };
+  });
+  box.addEventListener("pointermove", (e) => { if (lp && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > 10) lpCancel(); }, { passive: true });
+  ["pointerup", "pointercancel", "scroll"].forEach((ev) => box.addEventListener(ev, lpCancel, { passive: true }));
+  box.addEventListener("touchstart", (e) => { if (e.touches.length > 1) lpCancel(); }, { passive: true });
+  box.addEventListener("contextmenu", (e) => { if (e.target.closest?.(".r-img")) e.preventDefault(); });
+  // ketukan yang mengakhiri tekan lama tidak ikut memunculkan/menyembunyikan menu
+  box.addEventListener("click", (e) => { if (Date.now() - lpFired < 700) { e.stopImmediatePropagation(); e.preventDefault(); } }, true);
   box.addEventListener("click", (e) => {
     if (e.target.closest("a,button")) return;
     const now = Date.now();
@@ -1726,7 +1870,7 @@ function vFav(tab, soft = false) {
   const libAll = [...S.state.lib.values()].sort(fs === "added" ? byAdded : fs === "az" ? byTitle : fs === "za" ? (a, b) => byTitle(b, a)
     : (a, b) => (tsOf(b.latestAt) || tsOf(b.added_at)) - (tsOf(a.latestAt) || tsOf(a.added_at)) || byTitle(a, b));   // dibanding sebagai waktu (format tanggal tiap sumber berbeda)
   const lib = libAll.filter((m) => (!fav.q || m.title.toLowerCase().includes(fav.q.toLowerCase()))
-    && (fav.filter === "all" || (fav.filter === "new" ? isFresh(m) : m.type === fav.filter)));
+    && (fav.filter === "all" || (fav.filter === "new" ? isFresh(m) : fav.filter.startsWith("r:") ? m.shelf === fav.filter.slice(2) : m.type === fav.filter)));
   const hist = S.history();
   // baris riwayat: judul, sumber · waktu, "Ch. 23 · hal 12/48" + bar halaman; tombol Lanjut (ke halaman terakhir)
   // atau Berikutnya (bila chapter itu sudah selesai dibaca)
@@ -1758,10 +1902,17 @@ function vFav(tab, soft = false) {
     </span>${badge}</a>`;
   };
   let body = "", cards = null;
+  // chip Koleksi: Semua, New update, lalu rak buatan sendiri, jenis komik, dan "+ Rak"
+  const shelfList = S.shelves();
+  if (fav.filter.startsWith("r:") && !shelfList.includes(fav.filter.slice(2))) fav.filter = "all";
+  const shelfOn = fav.filter.startsWith("r:") ? fav.filter.slice(2) : "";
+  const favChips = () => `<div class="chips" role="group">${[{ id: "all", name: "Semua" }, { id: "new", name: "New update" }, ...shelfList.map((n) => ({ id: "r:" + n, name: n, shelf: 1 })),
+    { id: "manga", name: "Manga" }, { id: "manhwa", name: "Manhwa" }, { id: "manhua", name: "Manhua" }].map((x) => `<button aria-pressed="${x.id === fav.filter}" data-act="ff" data-v="${esc(x.id)}"${x.shelf ? ` class="ch-shelf"` : ""}>${x.shelf ? icon("folder", 14) : ""}${esc(x.name)}</button>`).join("")}<button class="ch-add" data-act="shelfNew" aria-label="Buat rak baru">${icon("plus", 15, 2.2)}Rak</button></div>`;
   if (fav.tab === "lib") {
     body = `<div class="row g8"><label class="search box grow"><span class="mu">${icon("search", 19)}</span><span class="sr">Cari di koleksi</span><input id="fq" placeholder="Cari di koleksimu" value="${esc(fav.q)}"></label><button class="sq-btn lg" data-act="fsort" aria-label="Urutkan: ${esc(FAV_SORTS.find(([k]) => k === fs)[1])}">${icon("sort", 18, 2)}</button>${viewBtn(grid, "fview", "lg")}</div>
-  ${chips([{ id: "all", name: "Semua" }, { id: "new", name: "New update" }, { id: "manga", name: "Manga" }, { id: "manhwa", name: "Manhwa" }, { id: "manhua", name: "Manhua" }], fav.filter, "ff")}
-  <div class="mu xs info">${libAll.length ? `${lib.length} dari ${libAll.length} judul · ${esc(FAV_SORTS.find(([k]) => k === fs)[1])} · ${S.loggedIn() ? "tersinkron" : "tersimpan di HP ini"}` : ""}</div>
+  ${favChips()}
+  ${shelfOn ? `<div class="shelf-bar"><span class="mu xs">${icon("folder", 14)}Rak <b>${esc(shelfOn)}</b> · ${lib.length} judul</span><button class="link-red sm" data-act="shelfRen">Ubah nama</button><button class="link-red sm" data-act="shelfDel">Hapus rak</button></div>`
+    : `<div class="mu xs info">${libAll.length ? `${lib.length} dari ${libAll.length} judul · ${esc(FAV_SORTS.find(([k]) => k === fs)[1])} · ${S.loggedIn() ? "tersinkron" : "tersimpan di HP ini"}` : ""}</div>`}
   ${!lib.length ? (libAll.length ? `<div class="empty"><b>Tidak ada yang cocok</b><span>Ubah kata kunci atau filter.</span></div>`
       : `<div class="empty"><span class="empty-ic">${icon("heart", 24)}</span><b>Koleksi masih kosong</b><span>Ketuk ikon hati di halaman komik untuk menyimpannya di sini.</span><a class="btn ghost" href="#/search">Cari komik</a></div>`)
     : grid ? `<div class="g3 favg">${FAV_CARDS}</div>`
@@ -1823,6 +1974,21 @@ ${!S.loggedIn() && fav.tab !== "dl" ? `<div class="note mx">${icon("cloud", 18)}
     fbx: () => { fav.bar = false; if (fav.q) fav.q = ""; vFav(); },
     fbclr: () => { fav.q = ""; vFav(); const n = $("#fbq"); if (n) n.focus({ preventScroll: true }); },
     ff: (el) => { fav.filter = el.dataset.v; vFav(); },
+    shelfNew: async () => {
+      const v = await promptText("Rak baru", { placeholder: "mis. Sedang dibaca, Nanti, Tamat" }); if (!v) return;
+      const n = S.addShelf(v); fav.filter = "r:" + n; vFav();
+      toast(`Rak ${n} dibuat. Masukkan komik lewat tombol Rak di halaman komik.`, 3600);
+    },
+    shelfRen: async () => {
+      const from = fav.filter.slice(2), v = await promptText("Ubah nama rak", { value: from }); if (!v || v === from) return;
+      if (S.shelves().some((x) => x !== from && x.toLowerCase() === v.toLowerCase())) { toast("Nama rak itu sudah ada."); return; }
+      try { await S.renameShelf(from, v); fav.filter = "r:" + S.cleanShelf(v); vFav(); } catch (e) { toast(e.message); }
+    },
+    shelfDel: async () => {
+      const n = fav.filter.slice(2);
+      if (!(await ask(`Hapus rak ${n}? Komiknya tetap ada di koleksi, hanya keluar dari rak ini.`, { ok: "Hapus", danger: true }))) return;
+      try { await S.deleteShelf(n); fav.filter = "all"; vFav(); toast("Rak dihapus"); } catch (e) { toast(e.message); }
+    },
     fview: () => S.setSetting("favView", grid ? "list" : "grid"),
     fsort: () => sortSheet("Urutkan koleksi", FAV_SORTS, fs, (v) => S.setSetting("favSort", v)),
     clearHist: async () => { if (!(await ask("Hapus semua riwayat baca?", { ok: "Hapus", danger: true }))) return; try { await S.clearHistory(); toast("Riwayat dibersihkan"); } catch (e) { toast(e.message); } },

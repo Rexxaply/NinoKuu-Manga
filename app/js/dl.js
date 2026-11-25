@@ -179,6 +179,26 @@ async function pageBytes(im, ref) {
   if (!r.ok) throw new Error(`Gambar gagal diunduh (HTTP ${r.status})`);
   return { u8: new Uint8Array(await r.arrayBuffer()), type: r.headers.get("content-type") || "image/jpeg" };
 }
+// Bagikan satu halaman chapter (tekan lama gambar di pembaca). APK: simpan di cache lalu lembar bagikan Android;
+// web: Web Share API (file) atau unduh.
+export async function sharePage(im, ref, name, text) {
+  const { u8, type } = im.local ? await (async () => { const r = await fetch(im.u); return { u8: new Uint8Array(await r.arrayBuffer()), type: r.headers.get("content-type") || "image/jpeg" }; })()
+    : await retry(() => pageBytes(im, ref), 2);
+  const ext = /png/i.test(type) ? "png" : /webp/i.test(type) ? "webp" : /gif/i.test(type) ? "gif" : "jpg";
+  const file = `${name}.${ext}`;
+  const C = N.isApp ? window.Capacitor : null;
+  if (C?.isPluginAvailable?.("Filesystem") && C.isPluginAvailable("Share")) {
+    const f = fs() || C.Plugins?.Filesystem || C.registerPlugin?.("Filesystem"), SH = C.Plugins?.Share || C.registerPlugin?.("Share");
+    const { uri } = await f.writeFile({ path: "share/" + file, data: await b64(u8), directory: "CACHE", recursive: true });
+    try { await SH.share({ title: text, text, files: [uri], dialogTitle: "Bagikan halaman" }); }
+    catch (e) { if (!/cancel/i.test(e?.message || "")) throw e; }
+    return;
+  }
+  const blob = new Blob([u8], { type }), fl = new File([blob], file, { type });
+  if (navigator.canShare?.({ files: [fl] })) { try { await navigator.share({ files: [fl], text }); } catch (e) { if (e?.name !== "AbortError") throw e; } return; }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = file; document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000); toast("Gambar disimpan ke Unduhan");
+}
 const retry = async (fn, n = 3) => { let e; for (let i = 0; i < n; i++) { try { return await fn(); } catch (x) { e = x; await new Promise((r) => setTimeout(r, 600 * (i + 1))); } } throw e; };
 
 /* ---------- antrean ---------- */
