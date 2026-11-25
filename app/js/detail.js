@@ -16,23 +16,32 @@ export function bindDetail(c) { ({ detailCache, normQ, matchQ, openSheet, closeS
 /* ---------- Detail komik ---------- */
 const byCh = (a, b) => (parseFloat(a.ch) || 0) - (parseFloat(b.ch) || 0);
 const saveDetail = (k, data) => { try { sessionStorage.setItem("ninokuu:d:" + k, JSON.stringify(data)); } catch {} };
+// posisi baca tanpa id chapter (impor dari aplikasi lain / sinkron dari perangkat lain): dicocokkan lewat nomor chapter
+function histFill(src, id, d) {
+  const h = S.histItem(src, id); if (!h || h.chapter_id || h.chapter == null || !d?.chapters?.length) return;
+  const n = parseFloat(h.chapter);
+  const c = d.chapters.find((x) => String(x.ch) === String(h.chapter)) || (Number.isFinite(n) ? d.chapters.find((x) => parseFloat(x.ch) === n) : null);
+  if (c) S.fillHistChapter(src, id, c.id);
+}
 export async function getDetail(src, id, force = false) {
   const k = src + "|" + id;
   const c = detailCache.get(k);
-  if (c && !force && Date.now() - c.at < 10 * 60e3) { fillMore(src, id, c.data); return c.data; }
+  if (c && !force && Date.now() - c.at < 10 * 60e3) { fillMore(src, id, c.data); histFill(src, id, c.data); return c.data; }
   const data = await api.call("detail", { source: src, comic_id: id });
   data.chapters = (data.chapters || []).slice().sort(byCh);
   detailCache.set(k, { at: Date.now(), data });
   saveDetail(k, data);
   fillMore(src, id, data);
+  histFill(src, id, data);
   return data;
 }
 // Buka chapter sesudah chapter yang terakhir dibaca (dipakai lencana +N di Koleksi & tombol di Riwayat).
 // Memakai detail yang tersimpan dulu; bila chapter berikutnya belum ada di situ, ambil daftar terbaru.
-export async function openNextChapter(src, id, chId, chNum, el) {
+// same = buka chapter itu sendiri (tombol Lanjut pada riwayat tanpa id chapter, mis. hasil impor)
+export async function openNextChapter(src, id, chId, chNum, el, same = false) {
   if (el?.classList.contains("busy")) return;
   el?.classList.add("busy");
-  const find = (d) => { const chs = d?.chapters || []; let i = chId ? chs.findIndex((c) => c.id === chId) : -1; if (i < 0 && chNum != null && chNum !== "") i = chs.findIndex((c) => String(c.ch) === String(chNum)); return i >= 0 ? chs[i + 1] || null : undefined; };
+  const find = (d) => { const chs = d?.chapters || []; let i = chId ? chs.findIndex((c) => c.id === chId) : -1; if (i < 0 && chNum != null && chNum !== "") i = chs.findIndex((c) => String(c.ch) === String(chNum)); return i >= 0 ? chs[i + (same ? 0 : 1)] || null : undefined; };
   try {
     let nx = find(cachedDetail(src, id));
     if (!nx) nx = find(await getDetail(src, id, true));
@@ -47,7 +56,7 @@ document.addEventListener("click", (e) => {
   const b = e.target.closest?.("[data-next], [data-go]"); if (!b) return;
   e.preventDefault(); e.stopPropagation();
   if (b.dataset.go) location.hash = b.dataset.go;
-  else openNextChapter(b.dataset.src, b.dataset.id, b.dataset.ch, b.dataset.n, b);
+  else openNextChapter(b.dataset.src, b.dataset.id, b.dataset.ch, b.dataset.n, b, b.dataset.same != null);
 }, true);
 export function cachedDetail(src, id) {
   const k = src + "|" + id;

@@ -73,6 +73,36 @@ export async function toggleLib(m) {
   }
   return true;
 }
+// Impor massal dari aplikasi lain (Lainnya → Impor): koleksi + posisi baca sekaligus. Yang sudah ada di koleksi
+// dilewati; riwayat hanya ditimpa bila tanggal bacanya lebih baru. Ke server per 100 baris (bukan satu per komik).
+export async function importBulk(libRows, histRows) {
+  const base = Date.now(), addLib = [], addHist = [];
+  libRows.forEach((m, i) => {
+    const k = keyOf(m.source, m.comic_id); if (state.lib.has(k)) return;
+    const row = { source: m.source, comic_id: m.comic_id, title: String(m.title || "").slice(0, 300), cover: String(m.cover || "").slice(0, 1000), notify: false,
+      added_at: new Date(base - i * 1000).toISOString(), shelf: cleanShelf(m.shelf) || null };
+    state.lib.set(k, { ...row, ...(m.type ? { type: m.type } : {}) }); addLib.push(row);
+  });
+  for (const h of histRows) {
+    const k = keyOf(h.source, h.comic_id), cur = state.hist.get(k);
+    if (cur && (cur.read_at || "") >= (h.read_at || "")) continue;
+    state.hist.set(k, { ...cur, ...h }); addHist.push(state.hist.get(k));
+  }
+  if (!addLib.length && !addHist.length) return;
+  saveLocal(); emit();
+  if (!loggedIn()) return;
+  for (let i = 0; i < addLib.length; i += 100)
+    await api.rest("library?on_conflict=user_id,source,comic_id", { method: "POST", body: addLib.slice(i, i + 100), prefer: "resolution=ignore-duplicates,return=minimal" });
+  for (let i = 0; i < addHist.length; i += 100)
+    await api.rest("history?on_conflict=user_id,source,comic_id", { method: "POST", body: addHist.slice(i, i + 100).map(histRow), prefer: "resolution=merge-duplicates,return=minimal" });
+  if (addLib.length) refreshExp();
+}
+// posisi baca tanpa id chapter (dari impor / sinkron perangkat lain): id-nya dilengkapi saat daftar chapter termuat,
+// tanpa mengubah urutan riwayat
+export function fillHistChapter(src, id, chId) {
+  const h = state.hist.get(keyOf(src, id)); if (!h || h.chapter_id || !chId) return;
+  h.chapter_id = chId; saveLocal(); emit();
+}
 /* ---------- rak (kategori koleksi buatan pengguna) ----------
    Satu komik di satu rak (atau tanpa rak). Nama rak = kolom library.shelf (ikut sinkron); rak yang masih kosong
    disimpan di setelan HP (settings.shelves) supaya tidak hilang sebelum diisi. */

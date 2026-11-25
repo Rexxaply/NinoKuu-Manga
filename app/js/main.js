@@ -15,6 +15,7 @@ import { vSearch, bindSearch, setSrc, normQ, matchQ } from "./search.js";
 import { vHome, bindHome, savedSrc, SRC_IDS, NO_SCORE, sortSheet, browseCache, setHomeSrc } from "./home.js";
 import { vDetail, vChapters, cachedDetail, getDetail, chaptersHref, chLike, matchCh, bindDetail } from "./detail.js";
 import { vReader, bindReader, closeCrop } from "./reader.js";
+import { vImport } from "./import.js";
 import { esc, icon, $, $$, toast, ago, SOURCES, srcName, TYPES, typeName, cover, comicHref, readHref, greeting, errBox, loading, rankBadge, ask, closeAsk } from "./ui.js";
 
 const VERSION = window.NINOKUU_CONFIG?.VERSION || "1.0.0";
@@ -545,7 +546,7 @@ ${group("Bacaanmu", mrow("star", "Level &amp; Rank", user ? `${lv.rank} · Lv ${
 ${N.DEV ? group("Ninokuu Dev", mrow("bug", "Log error", `${N.devLog().length} catatan · salin & kirim ke developer`, "devlog") + mrow("info", "Build uji", `v${esc(VERSION)} · build ${esc(N.BUILD)} · function ${esc(api.FN.split("/").pop())}`, "")) : ""}
 ${N.isApp ? group("Aplikasi", `<span id="updrow"></span>` + (N.pushSupported() || !N.DEV ? mrow("bell", "Notifikasi HP", `<span id="pushst">Memeriksa…</span>`, "pushset") : mrow("bell", "Notifikasi HP", "Belum aktif di Ninokuu Dev (paket .dev belum didaftarkan di Firebase)", "")) + mrow("info", "Versi aplikasi", `v${esc(VERSION)}${N.DEV ? " Dev" : ""} · ketuk untuk cek pembaruan`, "checkupd"))
   : group("Aplikasi Android", mrow("down", "Pasang aplikasi Android (APK)", "Baca Shinigami &amp; WestManga, notifikasi chapter baru di HP", "getapk"))}
-${group("Data &amp; penyimpanan", mrow("cloud", "Backup data offline", "Simpan koleksi, riwayat, dan pengaturan ke file", "backup") + mrow("restore", "Pulihkan data", "Dari file backup", "restore") + mrow("trash", "Bersihkan cache", `<span id="cachesub">Menghitung cache di HP…</span>`, "cache"))}
+${group("Data &amp; penyimpanan", mrow("cloud", "Backup data offline", "Simpan koleksi, riwayat, dan pengaturan ke file", "backup") + mrow("restore", "Pulihkan data", "Dari file backup", "restore") + mrow("swap", "Impor dari aplikasi lain", "Koleksi & riwayat dari backup BacaKomik", "import") + mrow("trash", "Bersihkan cache", `<span id="cachesub">Menghitung cache di HP…</span>`, "cache"))}
 <section class="sec s20"><button class="tk-card" data-act="trakteer" aria-label="Dukung Ninokuu di Trakteer">
   <span class="tk-ic">${icon("gift", 26, 2)}</span>
   <span class="tk-t"><b>Traktir Ninokuu</b><span>Gratis &amp; tanpa iklan berkat dukunganmu. Kirim hadiah kecil lewat Trakteer.</span></span>
@@ -580,7 +581,7 @@ ${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord 
     goHist: () => go("#/fav/hist"), goDl: () => go("#/fav/dl"),
     whatsnew: () => { if (!T.showNow({ version: VERSION, build: N.BUILD, dev: N.DEV, go })) toast("Belum ada catatan untuk versi ini"); },
     about: () => go("#/p/about"), privacy: () => go("#/p/privacy"), terms: () => go("#/p/terms"),
-    backup: () => go("#/p/backup"), restore: () => go("#/p/restore"),
+    backup: () => go("#/p/backup"), restore: () => go("#/p/restore"), import: () => go("#/p/import"),
     getapk: () => window.open(N.SITE_URL, "_blank"),
     update: () => checkUpdate(true),
     checkupd: () => checkUpdate(true),
@@ -828,6 +829,7 @@ async function vPage(name) {
   let html = "";
   const acts2 = { back: () => back("#/more") };
   if (name === "level") { cleanup = await X.vLevel(view, lctx()); return; }
+  if (name === "import") { cleanup = await vImport(view, ctx()); return; }
   if (name === "recap") { await X.vRecap(view, lctx()); return; }
   if (name === "name") {
     html = topbar("Nama tampilan") + `<form class="px col g14 mt6" id="pf"><p class="mu sm lh m0">Nama ini dipakai untuk sapaan di Beranda dan tampil di chat publik.</p>

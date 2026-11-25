@@ -100,7 +100,8 @@ export function vFav(tab, soft = false) {
   // atau Berikutnya (bila chapter itu sudah selesai dibaca)
   const histBtn = (x, cls = "") => {
     const done = x.pages && x.page >= x.pages;
-    return !x.chapter_id ? "" : done
+    if (!x.chapter_id) return x.chapter != null && x.chapter !== "?" ? `<button class="hl-go${cls}" type="button" data-next data-same data-src="${esc(x.source)}" data-id="${esc(x.comic_id)}" data-ch="" data-n="${esc(x.chapter)}">${icon("play", 12, 2.6)}${cls ? "Lanjut baca" : "Lanjut"}</button>` : "";
+    return done
       ? `<button class="hl-go nx${cls}" type="button" data-next data-src="${esc(x.source)}" data-id="${esc(x.comic_id)}" data-ch="${esc(x.chapter_id)}" data-n="${esc(x.chapter ?? "")}">Berikutnya${icon("chev", 13, 2.6)}</button>`
       : `<button class="hl-go${cls}" type="button" data-go="${esc(readHref(x.source, x.comic_id, x.chapter_id))}">${icon("play", 12, 2.6)}${cls ? "Lanjut baca" : "Lanjut"}</button>`;
   };
@@ -117,7 +118,7 @@ export function vFav(tab, soft = false) {
   };
   const histRow = (x) => {
     const done = x.pages && x.page >= x.pages;
-    const btn = !x.chapter_id ? "" : done
+    const btn = !x.chapter_id ? histBtn(x) : done
       ? `<button class="hl-go nx" type="button" data-next data-src="${esc(x.source)}" data-id="${esc(x.comic_id)}" data-ch="${esc(x.chapter_id)}" data-n="${esc(x.chapter ?? "")}">Berikutnya${icon("chev", 13, 2.6)}</button>`
       : `<button class="hl-go" type="button" data-go="${esc(readHref(x.source, x.comic_id, x.chapter_id))}">${icon("play", 12, 2.6)}Lanjut</button>`;
     return `<a class="fa-row" href="${comicHref(x.source, x.comic_id)}">${cover(x.cover, x.title, "sm")}<span class="fa-mid">
@@ -231,13 +232,14 @@ ${!S.loggedIn() && fav.tab !== "dl" ? `<div class="note mx">${icon("cloud", 18)}
       const x = S.histItem(el.dataset.src, el.dataset.id); if (!x) return;
       const done = x.pages && x.page >= x.pages;
       openSheet(`<span class="sheet-ttl">${esc(x.title)}</span><div class="col g4">
-        ${x.chapter_id ? `<button class="sh-row" data-s="${done ? "next" : "go"}">${icon(done ? "chev" : "play", 18, 2.2)}<span class="grow">${done ? "Baca chapter berikutnya" : `Lanjut baca Ch. ${esc(x.chapter)}`}</span></button>` : ""}
+        ${x.chapter_id || (x.chapter != null && x.chapter !== "?") ? `<button class="sh-row" data-s="${!x.chapter_id ? "same" : done ? "next" : "go"}">${icon(done ? "chev" : "play", 18, 2.2)}<span class="grow">${done ? "Baca chapter berikutnya" : `Lanjut baca Ch. ${esc(x.chapter)}`}</span></button>` : ""}
         <button class="sh-row" data-s="open">${icon("book", 18, 2)}<span class="grow">Buka halaman komik</span></button>
         <button class="sh-row redt" data-s="del">${icon("trash", 18, 2)}<span class="grow">Hapus dari riwayat</span></button></div>`,
       async (b) => {
         const a = b.dataset.s; closeSheet();
         if (a === "go") location.hash = readHref(x.source, x.comic_id, x.chapter_id);
         else if (a === "next") openNextChapter(x.source, x.comic_id, x.chapter_id, x.chapter);
+        else if (a === "same") openNextChapter(x.source, x.comic_id, "", x.chapter, null, true);
         else if (a === "open") location.hash = comicHref(x.source, x.comic_id);
         else if (a === "del") { try { await S.removeHistory(x.source, x.comic_id); toast("Dihapus dari riwayat"); } catch (er) { toast(er.message); } }
       });

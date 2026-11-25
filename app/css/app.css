@@ -1690,3 +1690,13 @@ body[data-screen="reader"] .dl-pop { display: none; }
 .hl-more::before { content: ""; position: absolute; inset: -6px; }
 .hl-more:active { background: rgba(255, 255, 255, .08); }
 .fa-row .hl-go { margin-right: -2px; }
+
+/* Impor dari aplikasi lain: daftar pilih judul, bilah Impor menempel di bawah, progres */
+.im-row .cover.sm, .im-ask .cover.sm, .im-none .cover.sm { width: 40px; height: 54px; border-radius: 8px; flex: none; }
+.im-row b.t1, .im-none b.t1 { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.im-row.off { opacity: .55; }
+.im-opt { border-radius: 14px; background: var(--s1); border: 1px solid var(--line); }
+.im-bar { position: sticky; z-index: 5; bottom: calc(92px + env(safe-area-inset-bottom)); margin: 12px 14px 0; padding: 10px; border-radius: 18px; }
+.im-pg { height: 6px; border-radius: 3px; }
+.im-none { width: 100%; border: 0; background: none; color: inherit; font: inherit; }
+.im-ask .mg-it { width: 100%; }

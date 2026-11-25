@@ -13,6 +13,8 @@ export function bindSearch(c) { ({ view, seg, viewBtn, chips, gcard, minRow, set
 /* ---------- Pencarian (hasil muncul sambil mengetik) ---------- */
 let sState = { q: "", src: savedSrc("homeSrc"), type: "", status: "", genres: [] };
 // Sumber di Beranda dan Pencarian satu pilihan yang sama: diganti di salah satu, ikut di yang lain
+// dibuka dengan kata kunci dari halaman lain (mis. Impor: judul yang tidak ketemu)
+export function setSearchQ(q) { sState.q = String(q || "").trim(); sState.type = ""; sState.status = ""; sState.genres = []; sMem = null; }
 export function setSrc(v) {
   if (!SRC_IDS.includes(v)) return;
   setHomeSrc(v); api.lsSet("homeSrc", v); api.lsSet("searchSrc", v);
