@@ -1574,7 +1574,9 @@ body[data-screen="reader"] .dl-pop { display: none; }
   color: var(--mu); background: rgba(255, 255, 255, .06); border: 1px solid var(--line); }
 .dt-chip.on { color: var(--tx); border-color: rgba(255, 255, 255, .22); }
 .dt-chip:active { transform: scale(.97); }
-.dt-body .sim-row { margin: 0 -18px; }
+.dt-body .sim-row { margin: 0 -18px; padding-bottom: 6px; }
+/* judul "Mirip ini" maks. 2 baris utuh (dulu tingginya dikunci 34 px seperti Top 10 → baris kedua terpotong) */
+.sim-row .t10-t .t2 { height: auto; max-height: none; font-size: 13px; line-height: 1.32; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 
 /* ---------- lembar pindah sumber ---------- */
 .mg-list { display: flex; flex-direction: column; gap: 12px; max-height: min(62vh, 560px); overflow-y: auto; overscroll-behavior: contain; padding: 4px 4px 8px; }
