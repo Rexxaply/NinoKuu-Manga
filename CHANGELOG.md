@@ -12,7 +12,7 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
-## 1.10.2 — belum dirilis
+## 1.10.2 — 25 Nov 2026
 
 ### Ringkasan
 - Pencarian di Shinigami dan WestManga kini tepat sasaran, tidak lagi menampilkan komik yang hanya cocok sebagian kata
