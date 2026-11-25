@@ -1723,66 +1723,89 @@ async function vReader(src, id, chId) {
   // Efek jeli = meregang seperti gulir bawaan Android di halaman mentok: gambar DIREGANGKAN dari tepi yang ditarik
   // (tepi itu diam di tempatnya), bukan digeser — jadi tidak pernah ada latar hitam yang terlihat. rub.x / rub.y =
   // besar regangan (px, sudah diberi hambatan); positif = tepi kiri/atas yang ditarik.
-  let pan = null, panRaf = 0, rub = { x: 0, y: 0, el: null, sc: null }, rubRaf = 0;
+  // Stabil: jari hanya mencatat sasaran; posisi gulir & regangan digambar SEKALI per frame (rAF), dan regangan yang
+  // tampil mengejar sasarannya dengan peredam (dulu ditulis di tiap touchmove — sentuhan 120 Hz + baca tata letak
+  // tiap kejadian membuat gambar bergetar/goyang). Saat dilepas, regangan kembali dengan peredam yang lebih pelan.
+  let pan = null, panRaf = 0, rubRaf = 0, rubT = 0;
+  let rub = { x: 0, y: 0, tx: 0, ty: 0, el: null, sc: null, ex: 0, ey: 0, sl: 0, st: 0 };
   const rubber = (o, dim) => Math.sign(o) * (1 - 1 / ((Math.abs(o) * 0.55) / dim + 1)) * dim;
   const inv0 = (r, dim) => (r ? (Math.sign(r) * dim * (1 / (1 - Math.min(0.95, Math.abs(r) / dim)) - 1)) / 0.55 : 0);
   const rubPaint = () => {
     const el = rub.el, sc = rub.sc; if (!el || !sc) return;
-    if (!rub.x && !rub.y) { el.style.transform = el.style.transformOrigin = ""; return; }
-    // posisi gambar di dalam wadah gulir (tanpa pengaruh transform)
-    const same = el.offsetParent === sc, ex = same ? el.offsetLeft : el.offsetLeft - sc.offsetLeft - sc.clientLeft, ey = same ? el.offsetTop : el.offsetTop - sc.offsetTop - sc.clientTop;
-    const ox = sc.scrollLeft - ex + (rub.x < 0 ? sc.clientWidth : 0), oy = sc.scrollTop - ey + (rub.y < 0 ? sc.clientHeight : 0);
-    const sx = 1 + (Math.abs(rub.x) / sc.clientWidth) * 0.5, sy = 1 + (Math.abs(rub.y) / sc.clientHeight) * 0.5;
+    if (Math.abs(rub.x) < 0.25 && Math.abs(rub.y) < 0.25) { el.style.transform = el.style.transformOrigin = ""; return; }
+    const W = sc.clientWidth, H = sc.clientHeight;
+    const ox = rub.sl - rub.ex + (rub.x < 0 ? W : 0), oy = rub.st - rub.ey + (rub.y < 0 ? H : 0);
+    const sx = 1 + (Math.abs(rub.x) / W) * 0.5, sy = 1 + (Math.abs(rub.y) / H) * 0.5;
     el.style.transformOrigin = `${ox.toFixed(1)}px ${oy.toFixed(1)}px`;
     el.style.transform = `scale(${sx.toFixed(4)}, ${sy.toFixed(4)})`;
   };
-  const rubClear = () => { cancelAnimationFrame(rubRaf); rubRaf = 0; if (rub.el) rub.el.style.transform = rub.el.style.transformOrigin = ""; rub = { x: 0, y: 0, el: null, sc: null }; };
-  const rubBack = () => {
-    cancelAnimationFrame(rubRaf);
-    if (!rub.el || (!rub.x && !rub.y)) { rubClear(); return; }
-    const x0 = rub.x, y0 = rub.y, t0 = performance.now(), dur = 380;
-    const step = (t) => {
-      const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3) * (1 + 1.6 * k);   // kembali halus seperti per
-      rub.x = x0 * (1 - e); rub.y = y0 * (1 - e); rubPaint();
-      if (k < 1) rubRaf = requestAnimationFrame(step); else rubClear();
-    };
-    rubRaf = requestAnimationFrame(step);
+  const rubClear = () => {
+    cancelAnimationFrame(rubRaf); rubRaf = 0;
+    if (rub.el) rub.el.style.transform = rub.el.style.transformOrigin = "";
+    rub = { x: 0, y: 0, tx: 0, ty: 0, el: null, sc: null, ex: 0, ey: 0, sl: 0, st: 0 };
   };
+  const frame = (t) => {
+    rubRaf = 0;
+    const dt = Math.min(50, t - (rubT || t)); rubT = t;
+    if (pan?.dirty) {                                                       // posisi gulir dari jari, sekali per frame
+      pan.dirty = false;
+      if (pan.sc.scrollLeft !== pan.cx) pan.sc.scrollLeft = pan.cx;
+      if (pan.sc.scrollTop !== pan.cy) pan.sc.scrollTop = pan.cy;
+      rub.sl = pan.cx; rub.st = pan.cy;
+    }
+    const k = 1 - Math.exp(-dt / (pan ? 34 : 95));                          // peredam: ikut jari / kembali pelan
+    rub.x += (rub.tx - rub.x) * k; rub.y += (rub.ty - rub.y) * k;
+    if (!pan && Math.abs(rub.x) < 0.3 && Math.abs(rub.y) < 0.3) { rubClear(); return; }
+    rubPaint();
+    if (pan || rub.x || rub.y) rubRaf = requestAnimationFrame(frame);
+  };
+  const kick = () => { if (!rubRaf) { rubT = 0; rubRaf = requestAnimationFrame(frame); } };
+  const rubBack = () => { rub.tx = rub.ty = 0; if (rub.el) kick(); };
   box.addEventListener("touchstart", (e) => {
     cancelAnimationFrame(panRaf); panRaf = 0;
     if (zoom <= 1.01 || e.touches.length !== 1) { pan = null; if (e.touches.length > 1) rubClear(); return; }
     const t = e.touches[0], sc = slide ? zTarget()?.parentElement : box;
     if (!sc) { pan = null; return; }
-    cancelAnimationFrame(rubRaf); rubRaf = 0;
-    const el = zTarget(); if (rub.el && rub.el !== el) rubClear(); rub.el = el; rub.sc = sc;
+    const el = zTarget(); if (rub.el && rub.el !== el) rubClear();
+    if (!rub.el) {
+      // posisi gambar di dalam wadah gulir (dibaca sekali di awal, tidak di tiap frame)
+      const same = el.offsetParent === sc;
+      rub.ex = same ? el.offsetLeft : el.offsetLeft - sc.offsetLeft - sc.clientLeft;
+      rub.ey = same ? el.offsetTop : el.offsetTop - sc.offsetTop - sc.clientTop;
+    }
+    rub.el = el; rub.sc = sc; rub.sl = sc.scrollLeft; rub.st = sc.scrollTop;
     // posisi "mentah" = posisi gulir + regangan yang sedang berlangsung (supaya bisa ditangkap lagi saat kembali)
-    pan = { x: t.clientX, y: t.clientY, x0: t.clientX, y0: t.clientY, dir: rub.x ? "h" : rub.y ? "v" : "", sc, vx: 0, vy: 0, t: performance.now(),
+    pan = { x: t.clientX, y: t.clientY, x0: t.clientX, y0: t.clientY, dir: Math.abs(rub.x) > 0.5 ? "h" : Math.abs(rub.y) > 0.5 ? "v" : "", sc,
+      vx: 0, vy: 0, t: performance.now(), cx: sc.scrollLeft, cy: sc.scrollTop, dirty: false,
+      W: sc.clientWidth, H: sc.clientHeight, mx: Math.max(0, sc.scrollWidth - sc.clientWidth), my: Math.max(0, sc.scrollHeight - sc.clientHeight),
       rx: sc.scrollLeft - inv0(rub.x, sc.clientWidth), ry: sc.scrollTop - inv0(rub.y, sc.clientHeight) };
+    rub.tx = rub.x; rub.ty = rub.y;
   }, { passive: true });
   box.addEventListener("touchmove", (e) => {
     if (!pan || pinch || e.touches.length !== 1) return;
     const t = e.touches[0], dx = t.clientX - pan.x, dy = t.clientY - pan.y, now = performance.now(), dt = Math.max(1, now - pan.t);
     if (e.cancelable) e.preventDefault();
-    const sc = pan.sc, W = sc.clientWidth, H = sc.clientHeight, mx = Math.max(0, sc.scrollWidth - W), my = Math.max(0, sc.scrollHeight - H);
+    const { W, H, mx, my } = pan;
     // Arah gerakan ditentukan setelah 8 px. Regangan hanya di sumbu gerakan itu dan hanya bila tepinya sudah mentok:
     // dorong ke samping di tepi kiri/kanan → meregang mendatar; tarik naik/turun di awal/akhir chapter → meregang tegak.
     // Gulir naik-turun yang jarinya sedikit miring tidak meregang ke samping.
     if (!pan.dir) { const ax = Math.abs(t.clientX - pan.x0), ay = Math.abs(t.clientY - pan.y0); if (Math.max(ax, ay) >= 8) pan.dir = ax > ay * 1.2 ? "h" : "v"; }
     pan.rx -= dx; pan.ry -= dy;
     const cx = Math.min(mx, Math.max(0, pan.rx)), cy = Math.min(my, Math.max(0, pan.ry));
-    if (pan.dir === "h") rub.x = rubber(cx - pan.rx, W); else pan.rx = cx - inv0(rub.x, W);
-    if (pan.dir === "v") rub.y = rubber(cy - pan.ry, H); else pan.ry = cy - inv0(rub.y, H);
-    sc.scrollLeft = cx; sc.scrollTop = cy; rubPaint();
+    if (pan.dir === "h") rub.tx = rubber(cx - pan.rx, W); else { rub.tx = 0; pan.rx = cx; }
+    if (pan.dir === "v") rub.ty = rubber(cy - pan.ry, H); else { rub.ty = 0; pan.ry = cy; }
+    pan.cx = cx; pan.cy = cy; pan.dirty = true; kick();
     pan.vx = (-dx / dt) * 0.7 + pan.vx * 0.3; pan.vy = (-dy / dt) * 0.7 + pan.vy * 0.3;
     pan.x = t.clientX; pan.y = t.clientY; pan.t = now;
   }, { passive: false });
   box.addEventListener("touchend", (e) => {
     if (!pan || e.touches.length) return;
     const p = pan; pan = null;
-    const pulled = rub.x || rub.y;
-    if (pulled) rubBack();
+    if (p.dirty) { p.sc.scrollLeft = p.cx; p.sc.scrollTop = p.cy; }
+    const pulledX = Math.abs(rub.tx) > 0.5, pulledY = Math.abs(rub.ty) > 0.5;
+    rubBack();
     if (performance.now() - p.t > 90 || Math.hypot(p.vx, p.vy) < 0.05) return;   // jari sudah berhenti → tanpa luncuran
-    let vx = rub.x ? 0 : p.vx, vy = rub.y ? 0 : p.vy, last = performance.now();
+    let vx = pulledX ? 0 : p.vx, vy = pulledY ? 0 : p.vy, last = performance.now();
     const step = (t) => {
       const dt = Math.min(40, t - last); last = t;
       const sc = p.sc, mx = sc.scrollWidth - sc.clientWidth, my = sc.scrollHeight - sc.clientHeight;
