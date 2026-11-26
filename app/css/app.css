@@ -1744,3 +1744,10 @@ body[data-screen="reader"] .dl-pop { display: none; }
 .srccfg > summary::-webkit-details-marker { display: none; }
 .srccfg > summary .t1 { flex: 1; min-width: 0; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .srccfg input { font-size: 13px; }
+
+/* tombol jeda gulir otomatis: pojok kanan bawah, tetap tampil walau menu hilang; naik di atas bilah bawah saat menu tampil */
+.r-as { position: absolute; right: 14px; bottom: calc(18px + env(safe-area-inset-bottom)); z-index: 7; transition: bottom .4s cubic-bezier(.32, .72, 0, 1), transform .15s; }
+.reader.ui .r-as { bottom: calc(14px + var(--rbh, 124px) + 12px + env(safe-area-inset-bottom)); }
+.r-as[hidden] { display: none; }
+.r-as:active { transform: scale(.92); }
+.r-as.paused { color: #fff; background: var(--red, #e5242b); box-shadow: 0 6px 18px rgba(229, 36, 43, .35); }
