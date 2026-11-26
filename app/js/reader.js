@@ -498,7 +498,8 @@ export async function vReader(src, id, chId) {
   };
   const lpCancel = () => { if (lp) { clearTimeout(lp.t); lp = null; } };
   box.addEventListener("pointerdown", (e) => {
-    const im = e.target.closest?.(".r-img"); if (!im || e.button > 0 || !e.isPrimary) { lpCancel(); return; }
+    // tekan lama untuk bagikan: bawaan mati, dinyalakan di Pengaturan → Bacaan
+    const im = e.target.closest?.(".r-img"); if (!im || e.button > 0 || !e.isPrimary || !S.state.settings.holdShare) { lpCancel(); return; }
     lpCancel();
     lp = { x: e.clientX, y: e.clientY, t: setTimeout(() => { lp = null; if (zoom > 1.05 || seeking) return; lpFired = Date.now(); navigator.vibrate?.(12); pageSheet(Number(im.dataset.i)); }, 550) };
   });

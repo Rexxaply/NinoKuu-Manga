@@ -18,7 +18,7 @@ export const WHATS_NEW = {
       ["Pindah sumber", "Pindahkan komik ke sumber lain beserta posisi baca, lonceng, dan raknya."],
       ["Riwayat bisa dicari", "Kolom cari, bagian Terakhir dibuka, dan tombol ⋯ untuk menghapus satu komik dari riwayat."],
       ["Top 10 & Mirip ini", "Top 10 di Beranda kini carousel dengan kartu tengah menyala; halaman komik punya bagian Mirip ini."],
-      ["Bagikan potongan halaman", "Tekan lama gambar saat membaca, pilih bagian panel yang mau dibagikan."],
+      ["Bagikan potongan halaman", "Nyalakan di Pengaturan → Bacaan, lalu tekan lama gambar saat membaca dan pilih bagian panel yang mau dibagikan."],
     ],
     fixes: [
       "Zoom saat membaca bisa digeser ke samping, dengan efek kenyal saat mentok.",

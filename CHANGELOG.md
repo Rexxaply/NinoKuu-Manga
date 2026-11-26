@@ -14,6 +14,12 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ## Berikutnya (belum dirilis)
 
+### Ringkasan
+- Tekan lama gambar untuk membagikan halaman kini bisa dinyalakan/dimatikan di Pengaturan → Bacaan (bawaan: mati)
+
+### Detail
+- Pengaturan `holdShare` (READ_OPTS + label singkat di menu cepat pembaca); `pointerdown` di pembaca hanya memulai tekan lama bila menyala. Bawaan mati (pengguna lama ikut mati). Teks slide "Bagikan potongan halaman" menyebut cara menyalakannya
+
 ## 1.11.1 — 26 Nov 2026
 
 ### Ringkasan

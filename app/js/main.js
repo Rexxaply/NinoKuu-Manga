@@ -469,6 +469,7 @@ const mrow = (ic, label, sub, act, opt = {}) => {
 // pilihan bacaan: dipakai di Pengaturan dan di menu ⋯ pembaca
 const READ_OPTS = [
   ["autoHide", "Sembunyikan menu otomatis", "Menu bacaan hilang setelah digulir sedikit (±40 px)"],
+  ["holdShare", "Tekan lama untuk bagikan", "Tekan lama gambar saat membaca untuk membagikan halaman itu"],
 ];
 // pilihan dua mode (bawaan = yang pertama)
 const READ_CHOICES = [
@@ -485,7 +486,7 @@ const flipChoice = (el) => {
   const o = READ_CHOICES.find((x) => x[0] === k)[2].find((x) => x[0] === v); const d = box.querySelector(".lh"); if (o && d) d.textContent = o[2];
 };
 // versi ringkas untuk menu ⋯ pembaca: 1 baris per pilihan, tanpa keterangan panjang
-const SHORT = { autoScroll: "Gulir otomatis", autoHide: "Sembunyikan menu otomatis", screenMode: "Layar", nextDelay: "Lanjut otomatis", standard: "Standar", fullscreen: "Fullscreen" };
+const SHORT = { autoScroll: "Gulir otomatis", autoHide: "Sembunyikan menu otomatis", holdShare: "Tekan lama untuk bagikan", screenMode: "Layar", nextDelay: "Lanjut otomatis", standard: "Standar", fullscreen: "Fullscreen" };
 const readPrefsCompact = () => READ_OPTS.map(([k, t]) => { const on = !!S.state.settings[k]; return `<button class="mrow rq-tog" data-act="rtog" data-k="${k}" role="switch" aria-checked="${on}"><b>${SHORT[k] || t}</b><span class="switch ${on ? "on" : ""}"><span></span></span></button>`; }).join("")
   + READ_CHOICES.map(([k, t, opts]) => { const cur = choiceVal(k); return `<div class="ch-opt rq-row" data-ck="${k}"><b>${SHORT[k] || t}</b><div class="seg s2" role="tablist">${opts.map(([v, n]) => `<button role="tab" aria-selected="${v === cur}" data-act="rch" data-k="${k}" data-v="${v}" aria-label="${n}">${SHORT[v] || n}</button>`).join("")}</div></div>`; }).join("");
 const choiceRow = (k) => {
