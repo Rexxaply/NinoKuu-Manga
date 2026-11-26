@@ -1175,6 +1175,45 @@ async function pushAnnouncements() {
   return out;
 }
 
+/* ---------- rilis baru → notifikasi ke semua HP ---------- */
+// Tiap jalan cron (global saja; Ninokuu Dev tidak menjalankan cron) rilis APK terbaru di GitHub dicek. Versi yang lebih
+// baru dari yang terakhir diumumkan → push sekali ke semua HP: ketuk = halaman unduh pembaruan (alamat https biasa, jadi
+// aplikasi versi lama pun bisa membukanya). Jalan pertama hanya mencatat versi sekarang (tidak mengumumkan ulang).
+// Tanpa kunci rahasia: API publik GitHub (cadangan: halaman rilisnya) dan cron_claim mencegah dua cron serentak.
+const GH_REPO = Deno.env.get("GITHUB_REPO") || "Rexxaply/NinoKuu-Manga";
+const UPDATE_PAGE = Deno.env.get("UPDATE_URL") || "https://ninokuu.site/update/";
+const cmpVer = (a: string, b: string) => { const x = a.split(".").map(Number), y = b.split(".").map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); return 0; };
+async function latestRelease(): Promise<{ version: string; notes: string[] } | null> {
+  try {
+    const r = await fetchT(`https://api.github.com/repos/${GH_REPO}/releases/tags/apk-terbaru`, { headers: { Accept: "application/vnd.github+json", "User-Agent": "ninokuu-api" } }, 10000);
+    if (r.ok) {
+      const j = await r.json();
+      const version = String(j?.name || "").match(/v(\d+\.\d+\.\d+)/i)?.[1];
+      if (version) return { version, notes: String(j?.body || "").split(/\r?\n/).map((x) => x.trim()).filter((x) => /^[-*•]\s/.test(x)).map((x) => x.replace(/^[-*•]\s*/, "")) };
+    } else await r.body?.cancel().catch(() => {});
+  } catch { /* API GitHub dibatasi / tidak bisa dihubungi → halaman rilis */ }
+  const html = (await webFetch(`https://github.com/${GH_REPO}/releases/tag/apk-terbaru`, { timeout: 12000 })).text;
+  const version = html.match(/Ninokuu v(\d+\.\d+\.\d+) \(build \d+\)/i)?.[1];
+  return version ? { version, notes: [] } : null;
+}
+async function announceRelease() {
+  const rel = await latestRelease();
+  if (!rel) return { skipped: "versi rilis tidak terbaca" };
+  const { data: st } = await admin.from("server_state").select("v").eq("k", "release").maybeSingle();
+  const last = String(st?.v?.version || "");
+  if (last && cmpVer(rel.version, last) <= 0) return { version: rel.version, same: true };
+  await admin.from("server_state").upsert({ k: "release", v: { version: rel.version, at: new Date().toISOString() }, updated_at: new Date().toISOString() });
+  if (!last) return { version: rel.version, first: true };
+  // isi notifikasi: dua poin pertama dari Ringkasan changelog (tanpa awalan "Baru:")
+  const pts = rel.notes.filter((x) => !/^(Unduh|Pembaruan bisa)/i.test(x)).slice(0, 2).map((x) => x.replace(/^(Baru|Perbaikan)\s*:\s*/i, ""));
+  const body = clip(pts.length ? pts.join(" · ") + ". Ketuk untuk memperbarui." : "Ketuk untuk mengunduh pembaruannya.", 230);
+  const users = await fetchAll<any>((x, y) => admin.from("profiles").select("id").eq("banned", false).order("id").range(x, y), 100000);
+  const tokens = (await tokensOf(users.map((u: any) => u.id as string))).slice(0, PUSH_MAX);
+  if (!tokens.length || !Deno.env.get("FCM_SERVICE_ACCOUNT")) return { version: rel.version, sent: 0 };
+  const r = await pushTokens(tokens, { title: `Ninokuu ${rel.version} tersedia`, body, url: UPDATE_PAGE, tag: "release" });
+  return { version: rel.version, from: last, sent: r.sent, errors: r.errors };
+}
+
 /* ---------- bersih-bersih ---------- */
 async function cleanup() {
   const { data: paths, error } = await admin.rpc("chat_cleanup", { older_than: "30 days" });
@@ -1214,7 +1253,7 @@ async function runCron(force: boolean) {
     }
   }
   const result: any = { at };
-  for (const [k, fn] of [["chapters", checkChapters], ["announcements", pushAnnouncements], ["cleanup", cleanup]] as const) {
+  for (const [k, fn] of [["chapters", checkChapters], ["announcements", pushAnnouncements], ["release", announceRelease], ["cleanup", cleanup]] as const) {
     try { result[k] = await (fn as () => Promise<unknown>)(); } catch (e: any) { result[k] = { error: String(e?.message || e) }; }
   }
   await admin.from("server_state").upsert({ k: "cron", v: { at, result }, updated_at: new Date().toISOString() });
