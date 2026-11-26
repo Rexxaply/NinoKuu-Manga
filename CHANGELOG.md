@@ -12,6 +12,16 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
+## Berikutnya (belum dirilis)
+
+## 1.11.1 — 26 Nov 2026
+
+### Ringkasan
+- Perbaikan bug
+
+### Detail
+- Perbaikan bug dan peningkatan stabilitas
+
 ## 1.11.0 — 26 Nov 2026
 
 ### Ringkasan

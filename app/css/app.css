@@ -1735,3 +1735,11 @@ body[data-screen="reader"] .dl-pop { display: none; }
 .rep-bar .t1 { display: flex; align-items: center; gap: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bubble.bq > .m-q { display: flex; width: 100%; margin: -3px -7px 6px; width: calc(100% + 14px); white-space: normal; }
 .mine .bubble.bq > .m-q { background: rgba(0, 0, 0, .18); }
+
+/* Panel developer → Domain sumber */
+.srccfg { border-top: 1px solid var(--line); padding-top: 8px; }
+.srccfg:first-of-type { border-top: 0; }
+.srccfg > summary { display: flex; align-items: baseline; gap: 8px; cursor: pointer; list-style: none; padding: 4px 0; }
+.srccfg > summary::-webkit-details-marker { display: none; }
+.srccfg > summary .t1 { flex: 1; min-width: 0; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.srccfg input { font-size: 13px; }

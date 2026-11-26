@@ -1647,3 +1647,59 @@ alter table public.notifications add column if not exists msg_id bigint;
 alter table public.notifications drop constraint if exists notifications_link_len;
 alter table public.notifications add constraint notifications_link_len check (link is null or (char_length(link) <= 600 and link ~ '^#/'));
 create unique index if not exists notifications_user_msg_uq on public.notifications (user_id, msg_id);
+-- Domain / API / mode sumber yang bisa diganti tanpa update APK (Panel developer → Domain sumber).
+-- Dibaca semua orang (aplikasi & server), hanya bisa diubah developer lewat set_source_config.
+create table if not exists public.app_config (
+  key text primary key,
+  value jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now(),
+  updated_by uuid
+);
+alter table public.app_config enable row level security;
+drop policy if exists app_config_read on public.app_config;
+create policy app_config_read on public.app_config for select using (true);
+revoke all on table public.app_config from anon, authenticated;
+grant select (key, value, updated_at) on table public.app_config to anon, authenticated;
+
+create or replace function public.set_source_config(p_source text, p_site text, p_api text, p_mode text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_site text := nullif(pg_catalog.btrim(coalesce(p_site, '')), '');
+  v_api text := nullif(pg_catalog.btrim(coalesce(p_api, '')), '');
+  v_mode text := coalesce(nullif(p_mode, ''), 'auto');
+  u text;
+  entry jsonb;
+  cur jsonb;
+begin
+  if not exists (select 1 from public.profiles where id = auth.uid() and role = 'developer' and not banned) then
+    raise exception 'khusus developer';
+  end if;
+  if p_source not in ('komiku', 'kiryuu', 'shinigami', 'westmanga', 'bacakomik') then raise exception 'sumber tidak dikenal'; end if;
+  if v_mode not in ('auto', 'app', 'server') then raise exception 'mode tidak valid'; end if;
+  -- alamat: https://nama.domain (boleh beberapa dipisah koma untuk situs), tanpa jalur, bukan IP/localhost
+  foreach u in array pg_catalog.string_to_array(coalesce(v_site, '') || ',' || coalesce(v_api, ''), ',') loop
+    u := pg_catalog.lower(pg_catalog.btrim(u));
+    continue when u = '';
+    if u !~ '^https://[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+/?$' or u ~ '^https://[0-9.]+/?$' or u ~ '(localhost|\.local|\.internal|\.arpa)/?$' then
+      raise exception 'alamat tidak valid: % (harus https://nama.domain, tanpa jalur)', u;
+    end if;
+  end loop;
+  if pg_catalog.length(coalesce(v_site, '')) > 300 or pg_catalog.length(coalesce(v_api, '')) > 200 then raise exception 'alamat terlalu panjang'; end if;
+  entry := pg_catalog.jsonb_strip_nulls(pg_catalog.jsonb_build_object(
+    'site', pg_catalog.regexp_replace(pg_catalog.lower(v_site), '/+(,|$)', '\1', 'g'),
+    'api', pg_catalog.regexp_replace(pg_catalog.lower(v_api), '/+$', ''),
+    'mode', nullif(v_mode, 'auto')));
+  select value into cur from public.app_config where key = 'sources';
+  cur := coalesce(cur, '{}'::jsonb);
+  cur := case when entry = '{}'::jsonb then cur - p_source else pg_catalog.jsonb_set(cur, array[p_source], entry) end;
+  insert into public.app_config (key, value, updated_at, updated_by) values ('sources', cur, pg_catalog.now(), auth.uid())
+  on conflict (key) do update set value = excluded.value, updated_at = excluded.updated_at, updated_by = excluded.updated_by;
+  return cur;
+end;
+$$;
+revoke all on function public.set_source_config(text, text, text, text) from public, anon;
+grant execute on function public.set_source_config(text, text, text, text) to authenticated;

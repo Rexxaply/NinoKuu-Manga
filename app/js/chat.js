@@ -4,6 +4,7 @@ import * as S from "./store.js";
 import { esc, icon, $, $$, toast, ago, rankBadge, ask } from "./ui.js";
 import { frameImage } from "./exp.js";
 import * as O from "./online.js";
+import { setSourceConfig } from "./native.js";
 
 // bingkai avatar rank untuk chat & komentar: gambar bingkai yang sama dengan profil, dibuat sekali per rank
 // (lihat frameImage di exp.js) supaya chat panjang tetap lancar. Mode Ringan: bingkai diam.
@@ -456,7 +457,29 @@ const gh = (path, label) => `<a href="https://github.com/Rexxaply/NinoKuu-Manga/
 const SB = (path, label) => `<a href="https://supabase.com/dashboard/project/ocersqyrztzegwzjvvoh/${path}" target="_blank" rel="noopener">${label}</a>`;
 const step = (n, t, hint = "") => `<li><span class="gs-n">${n}</span><span class="gs-t"><b>${t}</b>${hint ? `<span class="mu xs">${hint}</span>` : ""}</span></li>`;
 const card = (title, sub, inner, foot = "") => `<details class="card guide"><summary><b>${title}</b><span class="mu xs">${sub}</span></summary>${inner}${foot ? `<p class="mu xs gs-foot">${foot}</p>` : ""}</details>`;
-const row = (k, where, what) => `<li class="gmap-r"><code>${k}</code><span class="mu xs">${what}</span><span class="gmap-w ${where === "Supabase" ? "sb" : "apk"}">${where === "Supabase" ? "Supabase · tanpa APK" : "Kode · APK baru"}</span></li>`;
+const row = (k, where, what) => `<li class="gmap-r"><code>${k}</code><span class="mu xs">${what}</span><span class="gmap-w ${where === "Kode" ? "apk" : "sb"}">${where === "Supabase" ? "Supabase · tanpa APK" : where === "Panel" ? "Panel · tanpa APK" : "Kode · APK baru"}</span></li>`;
+// Domain sumber (app_config "sources"): diubah developer, dibaca APK (disimpan di HP, diperbarui ≤ 6 jam) & server (±5 menit)
+const SRC_DEF = {
+  shinigami: { name: "Shinigami", site: "https://s1.shinigami.mx", api: "https://api.shinigami.io", mode: true },
+  westmanga: { name: "WestManga", site: "https://v1.westmanga.my,https://v1.westmanga.top", mode: true, multi: true },
+  komiku: { name: "Komiku", site: "https://komiku.org", api: "https://api.komiku.org", mode: true },
+  kiryuu: { name: "Kiryuu", site: "https://v7.kiryuu.to" },
+  bacakomik: { name: "BacaKomik", site: "https://bacakomik.my" },
+};
+const MODE_NAME = { auto: "Otomatis (bawaan)", app: "Lewat HP", server: "Lewat server" };
+function srcCfgSection(cfg, at) {
+  return `<section class="col g10"><h2 class="cap m0">Domain sumber</h2><div class="card col g8">
+    <span class="mu xs lh">Ganti domain situs / alamat API tanpa update aplikasi. Kosongkan = alamat bawaan. Berlaku di server ±5 menit, di HP pengguna saat aplikasi dibuka (paling lama 6 jam). <b>Ambil data</b>: <i>Lewat server</i> dipakai bila cara lewat HP rusak (selama situsnya tidak menolak server).${at ? ` Terakhir diubah ${esc(ago(at))}.` : ""}</span>
+    ${Object.entries(SRC_DEF).map(([k, d]) => { const c = cfg[k] || {}; const on = c.site || c.api || c.mode;
+      return `<details class="srccfg" data-src="${k}"><summary><b>${d.name}</b><span class="mu xs t1">${on ? esc([c.site, c.api, c.mode && MODE_NAME[c.mode]].filter(Boolean).join(" · ")) : "alamat bawaan"}</span></summary>
+      <div class="col g8 mt6">
+        <label class="fld">Domain situs${d.multi ? " (boleh beberapa, pisah koma)" : ""}<input data-cf="site" inputmode="url" autocomplete="off" spellcheck="false" placeholder="${esc(d.site)}" value="${esc(c.site || "")}"></label>
+        ${d.api ? `<label class="fld">Alamat API<input data-cf="api" inputmode="url" autocomplete="off" spellcheck="false" placeholder="${esc(d.api)}" value="${esc(c.api || "")}"></label>` : ""}
+        ${d.mode ? `<label class="fld">Ambil data (APK)<select class="sel" data-cf="mode">${Object.entries(MODE_NAME).map(([v, l]) => `<option value="${v}" ${(c.mode || "auto") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>` : ""}
+        <div class="row g8"><button class="btn ghost sm grow" data-d="srcreset" data-src="${k}">Kembali ke bawaan</button><button class="btn primary sm grow" data-d="srcsave" data-src="${k}">Simpan</button></div>
+      </div></details>`; }).join("")}
+  </div></section>`;
+}
 const SITE_GUIDE = `<section class="col g10"><h2 class="cap m0">Panduan ganti API &amp; domain</h2>
 ${card("1. Peta: apa saja yang bisa diganti", "Mana yang cukup di Supabase, mana yang harus jadi APK baru", `
 <ul class="gmap">
@@ -467,8 +490,7 @@ ${row("SHNGM_API · SHNGM_SITE", "Supabase", "Shinigami untuk server (notifikasi
 ${row("BACAKOMIK_SITE", "Supabase", "Alamat situs BacaKomik, mis. <code>https://bacakomik.my</code>")}
 ${row("WEST_SITE", "Supabase", "WestManga untuk server, boleh lebih dari satu dipisah koma: <code>https://v1.westmanga.my,https://v1.westmanga.top</code>")}
 ${row("IMG_PROXY", "Supabase", "Rem darurat kuota: <code>on</code> (normal), <code>cover</code> (proxy hanya sampul), <code>off</code> (proxy mati)")}
-${row("Shinigami (API &amp; SITE)", "Kode", "<code>app/js/native.js</code> → baris <code>const API = …, SITE = …</code> di bagian Shinigami")}
-${row("WestManga (SITES)", "Kode", "<code>app/js/native.js</code> → baris <code>const SITES = [ … ]</code> di bagian WestManga")}
+${row("Domain sumber (semua)", "Panel", "Panel developer → <b>Domain sumber</b>: domain situs, alamat API, dan cara ambil data (lewat HP / server) tiap sumber. Berlaku di APK &amp; server tanpa APK baru")}
 ${row("ninokuu.site", "Kode", "<code>app/js/native.js</code> (<code>SITE_URL</code>) dan <code>app/js/api.js</code> (<code>VERIFY_URL</code>, <code>RESET_URL</code>)")}
 ${row("Supabase URL &amp; anon key", "Kode", "GitHub → Settings → Secrets → <code>SUPABASE_URL</code>, <code>SUPABASE_ANON_KEY</code> (dibaca saat APK dibangun)")}
 </ul>`, "Aturannya: yang dibaca <b>server</b> (Edge Function) cukup diganti di Supabase dan langsung berlaku untuk semua pengguna. Yang dibaca <b>aplikasi di HP</b> tertanam di APK, jadi harus dibangun APK baru lalu dipasang ulang.")}
@@ -518,13 +540,14 @@ export async function vDev(view, ctx) {
   let form = { title: "", body: "", pin: true, push: false, days: 3 };
   let nf = (n) => Number(n || 0).toLocaleString("id-ID");
   const draw = async () => {
-    const [stats, reps, restricted, bugs, sto, tmx] = await Promise.all([
+    const [stats, reps, restricted, bugs, sto, tmx, scfg] = await Promise.all([
       dev ? api.rpc("dev_stats").catch(() => null) : null,
       api.rest("chat_reports?select=message_id,created_at&order=created_at.desc&limit=200").catch(() => []),
       api.rest(`profiles?select=id,name,banned,muted_until&or=${encodeURIComponent(`(banned.eq.true,muted_until.gt."${new Date().toISOString()}")`)}&limit=100`).catch(() => []),
       api.rest("bug_reports?select=*&resolved=eq.false&order=created_at.desc&limit=60").catch(() => []),
       dev ? api.rpc("dev_storage").catch((e) => ({ error: e.message })) : null,
       dev ? api.call("bg_key_info").catch(() => null) : null,
+      dev ? api.rest("app_config?select=value,updated_at&key=eq.sources").catch(() => null) : null,
     ]);
     const anns = dev ? (await api.rest("announcements?select=*&order=created_at.desc&limit=10").catch(() => [])) || [] : [];
     const KIND = { gambar: "Gambar tidak muncul / rusak", chapter: "Chapter hilang / tidak lengkap", urutan: "Urutan halaman salah", info: "Info komik salah", lainnya: "Lainnya" };
@@ -540,6 +563,7 @@ export async function vDev(view, ctx) {
       <div class="stat"><b>${nf(stats?.reports_open)}</b><span class="mu xs">Laporan chat</span></div><div class="stat"><b>${nf(stats?.bugs_open)}</b><span class="mu xs">Laporan komik</span></div></div>
     <div class="card row g10 sm"><span class="online-dot"></span><span class="grow">Keepalive terakhir ${stats?.last_keepalive ? esc(ago(stats.last_keepalive)) : "belum ada"} · cron ${stats?.last_cron ? esc(ago(stats.last_cron)) : "belum jalan"}</span><button class="btn ghost sm" data-d="cron">Jalankan cron</button></div></section>
   ${storageHtml(sto)}
+  ${dev ? srcCfgSection(scfg?.[0]?.value || {}, scfg?.[0]?.updated_at) : ""}
   ${dev ? SITE_GUIDE : ""}
   <section class="col g10"><h2 class="cap m0">Pengumuman</h2><div class="card col g12">
     <label class="fld">Judul<input id="at" maxlength="80" placeholder="Contoh: Maintenance server malam ini" value="${esc(form.title)}"></label>
@@ -594,6 +618,11 @@ export async function vDev(view, ctx) {
         form = { title: "", body: "", pin: true, push: false, days: 3 };
       },
         form.push ? "Pengumuman terkirim · notifikasi dikirim pada jalan cron berikutnya" : "Pengumuman terkirim");
+    }
+    if (a === "srcsave" || a === "srcreset") {
+      const box = b.closest(".srccfg"), src = b.dataset.src, val = (f) => (a === "srcreset" ? "" : (box.querySelector(`[data-cf=${f}]`)?.value || "").trim().toLowerCase());
+      if (a === "srcreset" && !(await ask(`Kembalikan ${SRC_DEF[src].name} ke alamat bawaan?`, { ok: "Kembalikan" }))) return;
+      return run(async () => { const v = await api.rpc("set_source_config", { p_source: src, p_site: val("site"), p_api: val("api"), p_mode: a === "srcreset" ? "auto" : (box.querySelector("[data-cf=mode]")?.value || "auto") }); setSourceConfig(v || {}); }, a === "srcreset" ? "Kembali ke alamat bawaan" : "Domain sumber disimpan");
     }
     if (a === "cron") run(async () => { b.disabled = true; await api.call("run_cron"); }, "Cron selesai dijalankan");
     if (a === "test") run(() => api.call("test_push"), "Tes notifikasi dikirim");

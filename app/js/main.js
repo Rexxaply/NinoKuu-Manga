@@ -769,14 +769,26 @@ function updBanner(r) {
 }
 const updTick = () => { if (document.visibilityState === "visible" && Date.now() - updLast > 14 * 60e3) checkUpdate(false); };
 
+// Domain sumber (Panel developer → Domain sumber, tabel app_config): APK memakai salinan di HP dan memperbaruinya
+// paling sering tiap 6 jam, atau 10 menit sekali bila pengambilan lewat HP gagal (domain mungkin baru pindah)
+let srcCfgBusy = false;
+async function loadSrcCfg(maxAge = 6 * 3600e3) {
+  if (!N.isApp || srcCfgBusy || N.sourceConfigAge() < maxAge) return;
+  srcCfgBusy = true;
+  try { const r = await api.rest("app_config?select=value&key=eq.sources"); if (Array.isArray(r)) N.setSourceConfig(r[0]?.value || {}); }
+  catch {} finally { srcCfgBusy = false; }
+}
+addEventListener("nk:srcfail", () => loadSrcCfg(10 * 60e3));
+
 let exitArmed = false, exitT = null;
 function startApp() {
+  loadSrcCfg();
   document.body.classList.add("is-app");
   N.onKeyboard(setKeyboard);
   N.onPushReceived(() => { refreshDots(); loadNotifs().catch(() => {}); });
   setTimeout(() => checkUpdate(false, true), 2500);              // aplikasi dibuka: selalu cek baru (tanpa simpanan)
   setInterval(updTick, 60e3);                                   // tiap menit dicek apakah sudah 15 menit sejak cek terakhir
-  N.onResume(() => { if (Date.now() - updLast > 5 * 60e3) setTimeout(() => checkUpdate(false, true), 1200); });
+  N.onResume(() => { if (Date.now() - updLast > 5 * 60e3) setTimeout(() => checkUpdate(false, true), 1200); loadSrcCfg(); });
   N.onPushOpen((h) => go(h));
   N.onUrlOpen((h, why) => {
     go(h);
