@@ -1305,7 +1305,7 @@ button.fa-new:active, .hl-go:active { scale: .92; }
   border: 1px solid rgba(255, 255, 255, .14); box-shadow: 0 24px 60px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .08); }
 .r-menu .seg { background: rgba(255, 255, 255, .08); border-color: rgba(255, 255, 255, .08); }
 .r-menu .r-togs { background: rgba(255, 255, 255, .08); }
-.r-menu .r-togs.rq .rq-row { border-top-color: rgba(255, 255, 255, .08); }
+.r-menu .r-togs.rq .rq-row, .r-menu .r-togs.rq .rq-tog { border-top-color: rgba(255, 255, 255, .08); }
 .r-menu .rq-act { background: rgba(255, 255, 255, .06); border-color: rgba(255, 255, 255, .12); }
 .r-menu .cap, .r-menu .rm-note { color: rgba(235, 240, 250, .62); }
 .r-menu-bg { background: rgba(0, 0, 0, .18); }
