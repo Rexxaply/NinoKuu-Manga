@@ -200,6 +200,13 @@ create table if not exists public.library (
     and char_length(title) <= 300 and char_length(coalesce(cover, '')) <= 1000)
 );
 create index if not exists library_notify_idx on public.library (source, comic_id) where notify;
+-- Rak (kategori koleksi buatan pengguna): satu rak per komik, nama maks. 30 huruf.
+alter table public.library add column if not exists shelf text;
+do $$ begin
+  if not exists (select 1 from pg_catalog.pg_constraint where conname = 'library_shelf_len') then
+    alter table public.library add constraint library_shelf_len check (shelf is null or char_length(shelf) between 1 and 30);
+  end if;
+end $$;
 alter table public.library enable row level security;
 revoke all on table public.library from anon, authenticated;
 grant select, insert, update, delete on table public.library to authenticated;
@@ -258,7 +265,8 @@ drop policy if exists "log baca ditulis sendiri" on public.read_log;
 create policy "log baca ditulis sendiri" on public.read_log for insert to authenticated
   with check ((select auth.uid()) = user_id);
 
--- Penghitung harian, hanya disentuh trigger (tanpa policy = tidak bisa diakses dari aplikasi).
+-- Ringkasan EXP per hari (WIB) dari riwayat EXP yang sudah dihapus pembersihan (> 7 hari), disimpan 31 hari,
+-- supaya Rekap 30 hari tetap menghitung EXP dengan benar. Hanya disentuh fungsi server (tanpa policy).
 create table if not exists public.exp_daily (
   user_id uuid not null references auth.users (id) on delete cascade,
   day date not null,
@@ -597,16 +605,38 @@ create trigger chat_reports_hide after insert on public.chat_reports
   for each row execute function public.chat_report_hide();
 
 -- Daftar chat siap tampil (nama + EXP pengirim). Mengikuti RLS pembaca.
+-- Balas pesan/komentar: reply_to menunjuk pesan lain di ruang yang sama (pesan induk dihapus → balasan tetap ada, kutipannya hilang)
+alter table public.chat_messages add column if not exists reply_to bigint references public.chat_messages (id) on delete set null;
+create index if not exists chat_reply_idx on public.chat_messages (reply_to) where reply_to is not null;
+grant insert (body, image_path, image_spoiler, room, reply_to) on table public.chat_messages to authenticated;
+create or replace function public.chat_reply_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  -- hanya boleh membalas pesan di ruang yang sama (bukan lintas komik/chat publik)
+  if new.reply_to is not null and not exists (select 1 from public.chat_messages p where p.id = new.reply_to and p.room = new.room) then
+    new.reply_to := null;
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.chat_reply_guard() from public, anon, authenticated;
+drop trigger if exists chat_messages_reply_guard on public.chat_messages;
+create trigger chat_messages_reply_guard before insert on public.chat_messages
+  for each row execute function public.chat_reply_guard();
 create or replace view public.chat_feed with (security_invoker = true) as
 select c.id, c.user_id, p.name, p.exp, c.body, c.image_path, c.image_spoiler, c.created_at,
-       p.role, p.verified, c.hidden, c.room, p.avatar_path
+       p.role, p.verified, c.hidden, c.room, p.avatar_path, c.reply_to
 from public.chat_messages c
 join public.profiles p on p.id = c.user_id;
 revoke all on table public.chat_feed from anon, authenticated;
 grant select on table public.chat_feed to anon, authenticated;
 
 -- Pembersihan berkala (dipanggil cron Edge Function): chat publik lebih dari 30 hari,
--- komentar komik/chapter lebih dari 180 hari, dan riwayat EXP lebih dari 30 hari dihapus.
+-- komentar komik/chapter lebih dari 180 hari, dan riwayat EXP lebih dari 7 hari dihapus (diringkas per hari ke exp_daily).
 -- File gambarnya dihapus oleh Edge Function lewat Storage API.
 create or replace function public.chat_cleanup(older_than interval default interval '30 days')
 returns setof text
@@ -615,9 +645,16 @@ security definer
 set search_path = ''
 as $$
 begin
-  -- riwayat EXP hanya disimpan 30 hari (hemat ruang); total EXP di profil tidak berubah
+  -- riwayat EXP hanya disimpan 7 hari (hemat ruang; batas EXP harian hanya butuh hari ini, halaman Level
+  -- menampilkan 300 terbaru). Sebelum dihapus, jumlahnya diringkas per hari ke exp_daily (31 hari) untuk Rekap 30 hari.
+  -- Total EXP di profil tidak berubah.
   if pg_catalog.to_regclass('public.exp_log') is not null then
-    delete from public.exp_log where created_at < pg_catalog.now() - interval '30 days';
+    insert into public.exp_daily (user_id, day, gained)
+      select l.user_id, (l.created_at at time zone 'Asia/Jakarta')::date, sum(l.amount)::integer
+      from public.exp_log l where l.created_at < pg_catalog.now() - interval '7 days' group by 1, 2
+    on conflict (user_id, day) do update set gained = public.exp_daily.gained + excluded.gained;
+    delete from public.exp_log where created_at < pg_catalog.now() - interval '7 days';
+    delete from public.exp_daily where day < public.wib_today() - 31;
   end if;
   -- log baca (pencegah EXP ganda) disimpan 1 tahun; HP yang tidak pernah membuka aplikasi 90 hari dilepas
   -- (aplikasi mendaftarkan ulang tokennya setiap dibuka)
@@ -1333,7 +1370,8 @@ begin
     'days', n, 'from', d0, 'to', public.wib_today(),
     'chapters', (select pg_catalog.count(*) from public.read_log where user_id = uid and read_at >= since),
     'series', (select pg_catalog.count(distinct (source, comic_id)) from public.read_log where user_id = uid and read_at >= since),
-    'exp', (select coalesce(sum(amount), 0) from public.exp_log where user_id = uid and created_at >= since),
+    'exp', (select coalesce(sum(amount), 0) from public.exp_log where user_id = uid and created_at >= since)
+         + (select coalesce(sum(gained), 0) from public.exp_daily where user_id = uid and day >= d0),
     'likes', (select pg_catalog.count(*) from public.likes where user_id = uid and created_at >= since),
     'saved', (select pg_catalog.count(*) from public.library where user_id = uid and added_at >= since),
     'active', (select pg_catalog.count(distinct (read_at at time zone 'Asia/Jakarta')::date) from public.read_log where user_id = uid and read_at >= since),
@@ -1601,3 +1639,11 @@ alter default privileges in schema public grant all on sequences to service_role
 alter default privileges in schema public grant execute on functions to service_role;
 
 commit;
+
+-- Notifikasi balasan pesan/komentar (Edge Function action notify_reply): link = halaman tujuan (#/chat, #/k/…, #/kc/…),
+-- msg_id = pesan balasan; satu pesan hanya menghasilkan satu notifikasi per penerima.
+alter table public.notifications add column if not exists link text;
+alter table public.notifications add column if not exists msg_id bigint;
+alter table public.notifications drop constraint if exists notifications_link_len;
+alter table public.notifications add constraint notifications_link_len check (link is null or (char_length(link) <= 600 and link ~ '^#/'));
+create unique index if not exists notifications_user_msg_uq on public.notifications (user_id, msg_id);

@@ -7,6 +7,32 @@ import { esc, icon } from "./ui.js";
 
 // Isi per versi. Slide: img = nama file di img/new/ (tanpa .webp).
 export const WHATS_NEW = {
+  "1.11.0": {
+    title: "Yang baru di Ninokuu 1.11",
+    intro: "Balas pesan dan komentar, impor koleksi dari aplikasi lain, rak di Koleksi, pindah sumber, dan Top 10 bergaya carousel.",
+    features: [
+      ["Balas pesan & komentar", "Di chat publik geser pesan ke kanan untuk membalas, seperti WhatsApp. Di komentar tekan Balas; balasan tampil di bawah komentarnya dan bisa disembunyikan."],
+      ["Notifikasi balasan", "Saat pesan atau komentarmu dibalas, notifikasi muncul di HP dan di lonceng. Ketuk untuk langsung membuka percakapannya."],
+      ["Impor dari aplikasi lain", "Lainnya → Impor dari aplikasi lain: pilih file backup BacaKomik, centang judulnya, dan Ninokuu mencarikannya beserta posisi baca terakhir."],
+      ["Rak di Koleksi", "Kelompokkan komik sendiri, misalnya Sedang dibaca, Nanti, atau Tamat."],
+      ["Pindah sumber", "Pindahkan komik ke sumber lain beserta posisi baca, lonceng, dan raknya."],
+      ["Riwayat bisa dicari", "Kolom cari, bagian Terakhir dibuka, dan tombol ⋯ untuk menghapus satu komik dari riwayat."],
+      ["Top 10 & Mirip ini", "Top 10 di Beranda kini carousel dengan kartu tengah menyala; halaman komik punya bagian Mirip ini."],
+      ["Bagikan potongan halaman", "Tekan lama gambar saat membaca, pilih bagian panel yang mau dibagikan."],
+    ],
+    fixes: [
+      "Zoom saat membaca bisa digeser ke samping, dengan efek kenyal saat mentok.",
+      "Pencarian memuat hasil berikutnya otomatis dengan animasi.",
+      "Tab Koleksi/Riwayat/Unduhan meluncur halus, dan mengetuk chapter saat keyboard terbuka langsung bereaksi.",
+      "Riwayat EXP disimpan 7 hari supaya hemat ruang; total EXP tidak berubah.",
+    ],
+    tour: [
+      { img: "balas", title: "Balas pesan", text: "Di chat publik, geser pesan ke kanan atau pilih ⋯ → Balas. Ketuk kutipannya untuk melompat ke pesan asli." },
+      { img: "utas", title: "Balas komentar", text: "Tekan Balas di bawah komentar. Balasan dikumpulkan di bawahnya; ketuk Lihat/Sembunyikan balasan." },
+      { img: "impor", title: "Impor dari aplikasi lain", text: "Lainnya → Impor dari aplikasi lain. Pilih file backup, centang judul, lalu tekan Impor." },
+      { img: "rak", title: "Rak di Koleksi", text: "Buat rak lewat chip + Rak di Koleksi, atau tombol Simpan di rak di halaman komik." },
+    ],
+  },
   "1.10.0": {
     title: "Yang baru di Ninokuu 1.10",
     intro: "Sumber baru BacaKomik, skor di sampul komik, label NEW UPDATE lebih cepat, dan pindah chapter yang tidak lagi terlihat macet.",

@@ -53,6 +53,9 @@ export const toAge = (v) => {
   if (n >= 3 && n <= 21) return n + "+";
   return /dewasa|adult|mature/i.test(t) ? "18+" : null;
 };
+// judul alternatif dari API (nama kolomnya berbeda-beda), untuk menyaring hasil pencarian di aplikasi
+const altOf = (m) => [m?.alternative_title, m?.alternative_titles, m?.alternative_name, m?.alternative, m?.alt_title, m?.native_title, m?.title_alt]
+  .flat().filter((x) => typeof x === "string" && x.trim()).join(" · ").slice(0, 400);
 const SCORE_KEYS = ["user_rate", "rating", "score", "rate", "rating_avg", "avg_rating", "average_rating", "rating_value", "ratingValue", "star", "stars"];
 const pickScore = (...objs) => { for (const o of objs) if (o && typeof o === "object") for (const k of SCORE_KEYS) { const n = toScore(o[k]); if (n != null) return n; } return null; };
 const VIEW_KEYS = ["view_count", "views_count", "total_views", "total_view", "views", "view", "viewer", "viewers", "read_count", "total_read", "readers", "post_views", "hits"];
@@ -169,7 +172,7 @@ const SHNG = (() => {
       if (b.genres?.length) { p.set("genre_include", b.genres.join(",")); p.set("genre_include_mode", "and"); }
       if (b.status) p.set("status", b.status);
       const j = await get(`/v1/manga/list?${p}`);
-      const items = (j?.data || []).filter((m) => m?.manga_id).map((m) => ({ id: String(m.manga_id), title: String(m.title || ""), cover: coverOf(m), type: b.type || "", score: pickScore(m, m.stats) }));
+      const items = (j?.data || []).filter((m) => m?.manga_id).map((m) => ({ id: String(m.manga_id), title: String(m.title || ""), cover: coverOf(m), type: b.type || "", score: pickScore(m, m.stats), alt: altOf(m) }));
       const more = j?.meta?.has_next;
       return { ok: true, items, hasNext: typeof more === "boolean" ? more : items.length >= limit };
     },
@@ -236,7 +239,7 @@ const WEST = (() => {
       if (b.status) p.set("status", b.status[0].toUpperCase() + b.status.slice(1));
       (b.genres || []).forEach((g) => p.append("genre[]", g));
       const j = await get(`/api/contents?${p}`);
-      const items = (j?.data || []).filter((m) => m?.slug).map((m) => ({ id: String(m.slug), title: String(m.title || m.slug), cover: abs(m.cover), type: TYPE[m.country_id] || b.type || "", score: pickScore(m, m.stats) }));
+      const items = (j?.data || []).filter((m) => m?.slug).map((m) => ({ id: String(m.slug), title: String(m.title || m.slug), cover: abs(m.cover), type: TYPE[m.country_id] || b.type || "", score: pickScore(m, m.stats), alt: altOf(m) }));
       const last = j?.paginator?.last_page != null ? Number(j.paginator.last_page) : null;
       return { ok: true, items, hasNext: last != null ? page < last : items.length >= limit };
     },
@@ -300,7 +303,8 @@ const KOMI = (() => {
       const tp = (txt(el.querySelector(".tpe1_inf")).match(/\b(manga|manhwa|manhua)\b/i)?.[1] || b.type || "").toLowerCase();
       items.push({ id: absU(a.getAttribute("href"), SITE), title, cover: cover(imgOf(el.querySelector("img"), SITE).replace(/\?.*$/, ""), 300), type: tp });
     }
-    return { items, hasNext: !!d.querySelector("span[hx-get]") || items.length >= 10 };
+    // penanda "muat berikutnya" ikut tampil walau hasilnya sedikit; halaman yang tidak penuh = halaman terakhir
+    return { items, hasNext: items.length >= 10 };
   }
   const rows = (root, base) => [...root.querySelectorAll("tr")].map((tr) => {
     const td = tr.querySelector(".judulseries"), a = td?.querySelector("a[href]") || (td && tr.querySelector("a[href]"));
@@ -419,6 +423,8 @@ function openLink(u, go) {
   const m = u.match(/^ninokuu:\/\/comic\/([a-z0-9]+)\/(.+)$/i);
   if (m) go(`#/c/${m[1]}/${m[2]}`);
   else if (/^ninokuu:\/\/chat/i.test(u)) go("#/chat");
+  // ninokuu://go/<#/halaman> (balasan komentar/chat): hanya halaman chat & komentar
+  else if (/^ninokuu:\/\/go\//i.test(u)) { let h = ""; try { h = decodeURIComponent(u.slice(13)); } catch {} go(/^#\/(chat|k|kc)(\/|$)/.test(h) ? h : "#/home"); }
   else if (/^ninokuu:\/\/verified/i.test(u)) go("#/more", "verified");
   else if (/^ninokuu:\/\/reset/i.test(u)) go("#/more", "reset");          // ninokuu.site/resetpassword setelah password diganti
   else if (/^ninokuu:\/\/more/i.test(u)) go("#/more");
@@ -483,6 +489,19 @@ export async function bgEnsure(uid, call, url, apikey) {
   await p.bgSetup({ url, key: r.key, apikey });
   try { localStorage.setItem(k, url); } catch {}
   logDev("bg", "cek latar belakang aktif (±tiap 30 menit)");
+}
+// Bot Termux yang aktif (melapor ≤ 30 menit terakhir) sudah mengecek tiap 5 menit, jadi worker di HP ini dimatikan
+// (dobel: boros baterai & kuota). Bila Termux berhenti melapor, worker HP ini dinyalakan lagi sebagai cadangan
+// saat aplikasi dibuka berikutnya.
+export async function bgAuto(uid, call, url, apikey) {
+  if (!cachePlugin() || !uid) return;
+  let info = null;
+  try { info = await call("bg_key_info", {}); } catch { return; }
+  const live = !!info?.termux && !!info.used_at && Date.now() - Date.parse(info.used_at) < 30 * 60e3;
+  if (!live) return bgEnsure(uid, call, url, apikey);
+  let on = false;
+  try { on = !!localStorage.getItem("ninokuu:bgKey:" + uid); } catch {}
+  if (on) { await bgStop(call); logDev("bg", "cek latar belakang HP dimatikan: bot Termux aktif"); }
 }
 export async function bgStop(call) {
   const p = cachePlugin();

@@ -16,12 +16,21 @@ export const state = {
   // (menggantikan chapterEnd "menu"/"auto" sejak 1.8.3; bawaan 3 detik)
   settings: { readMode: "scroll", updView: "list", searchView: "grid", autoHide: true, screenMode: "standard", nextDelay: "3", ...api.lsGet("settings", {}) },
 };
-const saveLocal = () => {
+// Menulis koleksi + riwayat ke penyimpanan HP itu berat (seluruh data diubah ke teks & riwayat diurutkan) dan dulu
+// terjadi di setiap ganti halaman saat membaca. Kini digabung: paling sering sekali per 400 ms, dan langsung ditulis
+// saat aplikasi ke latar belakang / ditutup, jadi tidak ada yang hilang.
+const writeLocal = () => {
+  saveT = 0;
   api.lsSet("lib", Object.fromEntries(state.lib));
   api.lsSet("hist", Object.fromEntries([...state.hist.entries()].sort((a, b) => (b[1].read_at || "").localeCompare(a[1].read_at || "")).slice(0, 300)));
   api.lsSet("profile", state.profile);
   api.lsSet("settings", state.settings);
 };
+let saveT = 0;
+const saveLocal = () => { if (!saveT) saveT = setTimeout(writeLocal, 400); };
+export const flushLocal = () => { if (saveT) { clearTimeout(saveT); writeLocal(); } };
+addEventListener("pagehide", flushLocal);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushLocal(); });
 export const setSetting = (k, v) => { state.settings[k] = v; saveLocal(); emit(); };
 export const loggedIn = () => !!api.currentUser();
 
@@ -64,6 +73,80 @@ export async function toggleLib(m) {
   }
   return true;
 }
+// Impor massal dari aplikasi lain (Lainnya → Impor): koleksi + posisi baca sekaligus. Yang sudah ada di koleksi
+// dilewati; riwayat hanya ditimpa bila tanggal bacanya lebih baru. Ke server per 100 baris (bukan satu per komik).
+export async function importBulk(libRows, histRows) {
+  const base = Date.now(), addLib = [], addHist = [];
+  libRows.forEach((m, i) => {
+    const k = keyOf(m.source, m.comic_id); if (state.lib.has(k)) return;
+    const row = { source: m.source, comic_id: m.comic_id, title: String(m.title || "").slice(0, 300), cover: String(m.cover || "").slice(0, 1000), notify: false,
+      added_at: new Date(base - i * 1000).toISOString(), shelf: cleanShelf(m.shelf) || null };
+    state.lib.set(k, { ...row, ...(m.type ? { type: m.type } : {}) }); addLib.push(row);
+  });
+  for (const h of histRows) {
+    const k = keyOf(h.source, h.comic_id), cur = state.hist.get(k);
+    if (cur && (cur.read_at || "") >= (h.read_at || "")) continue;
+    state.hist.set(k, { ...cur, ...h }); addHist.push(state.hist.get(k));
+  }
+  if (!addLib.length && !addHist.length) return;
+  saveLocal(); emit();
+  if (!loggedIn()) return;
+  for (let i = 0; i < addLib.length; i += 100)
+    await api.rest("library?on_conflict=user_id,source,comic_id", { method: "POST", body: addLib.slice(i, i + 100), prefer: "resolution=ignore-duplicates,return=minimal" });
+  for (let i = 0; i < addHist.length; i += 100)
+    await api.rest("history?on_conflict=user_id,source,comic_id", { method: "POST", body: addHist.slice(i, i + 100).map(histRow), prefer: "resolution=merge-duplicates,return=minimal" });
+  if (addLib.length) refreshExp();
+}
+// posisi baca tanpa id chapter (dari impor / sinkron perangkat lain): id-nya dilengkapi saat daftar chapter termuat,
+// tanpa mengubah urutan riwayat
+export function fillHistChapter(src, id, chId) {
+  const h = state.hist.get(keyOf(src, id)); if (!h || h.chapter_id || !chId) return;
+  h.chapter_id = chId; saveLocal(); emit();
+}
+/* ---------- rak (kategori koleksi buatan pengguna) ----------
+   Satu komik di satu rak (atau tanpa rak). Nama rak = kolom library.shelf (ikut sinkron); rak yang masih kosong
+   disimpan di setelan HP (settings.shelves) supaya tidak hilang sebelum diisi. */
+const SHELF_MAX = 30;
+export const cleanShelf = (v) => String(v || "").replace(/\s+/g, " ").trim().slice(0, SHELF_MAX);
+export function shelves() {
+  const own = Array.isArray(state.settings.shelves) ? state.settings.shelves.map(cleanShelf).filter(Boolean) : [];
+  const used = [...state.lib.values()].map((m) => cleanShelf(m.shelf)).filter(Boolean);
+  const seen = new Set(), out = [];
+  for (const n of [...own, ...used.sort((a, b) => a.localeCompare(b, "id"))]) { const k = n.toLowerCase(); if (!seen.has(k)) { seen.add(k); out.push(n); } }
+  return out;
+}
+const saveShelfList = (list) => setSetting("shelves", list.slice(0, 40));
+export function addShelf(name) {
+  name = cleanShelf(name); if (!name) return "";
+  const cur = shelves(); const hit = cur.find((x) => x.toLowerCase() === name.toLowerCase());
+  if (hit) return hit;
+  saveShelfList([...cur, name]); return name;
+}
+const patchShelf = (filter, shelf) => loggedIn()
+  ? api.rest(`library?${filter}`, { method: "PATCH", body: { shelf }, prefer: "return=minimal" }).catch((e) => {
+    // database belum punya kolom shelf: rak tetap tersimpan di HP ini
+    if (!/shelf/i.test(e?.message || "")) throw e;
+  }) : Promise.resolve();
+export async function setShelf(src, id, name) {
+  const row = state.lib.get(keyOf(src, id)); if (!row) return;
+  const old = row.shelf || null, v = cleanShelf(name) || null;
+  if (v) addShelf(v);
+  row.shelf = v; saveLocal(); emit();
+  await patchShelf(`source=eq.${enc(src)}&comic_id=eq.${enc(id)}`, v).catch((e) => { row.shelf = old; saveLocal(); emit(); throw e; });
+}
+export async function renameShelf(from, to) {
+  to = cleanShelf(to); if (!to || to === from) return;
+  saveShelfList(shelves().map((x) => (x === from ? to : x)));
+  for (const m of state.lib.values()) if (m.shelf === from) m.shelf = to;
+  saveLocal(); emit();
+  await patchShelf(`shelf=eq.${enc(from)}`, to);
+}
+export async function deleteShelf(name) {
+  saveShelfList(shelves().filter((x) => x !== name));
+  for (const m of state.lib.values()) if (m.shelf === name) m.shelf = null;
+  saveLocal(); emit();
+  await patchShelf(`shelf=eq.${enc(name)}`, null);
+}
 // lonceng: butuh login karena notifikasi dikirim server ke HP
 export async function setNotify(m, on) {
   const k = keyOf(m.source, m.comic_id);
@@ -90,7 +173,33 @@ export async function clearHistory() {
   state.hist = new Map(); saveLocal(); emit();
   if (loggedIn()) await api.rest("history?source=neq.__", { method: "DELETE" }).catch((e) => { state.hist = old; saveLocal(); emit(); throw e; });
 }
+// hapus satu komik dari riwayat (HP + akun). Gagal di server → dikembalikan.
+export async function removeHistory(src, id) {
+  const k = keyOf(src, id), row = state.hist.get(k); if (!row) return;
+  state.hist.delete(k); histDirty.delete(k); saveLocal(); emit();
+  if (loggedIn()) await api.rest(`history?source=eq.${encodeURIComponent(src)}&comic_id=eq.${encodeURIComponent(id)}`, { method: "DELETE" })
+    .catch((e) => { state.hist.set(k, row); saveLocal(); emit(); throw e; });
+}
 export const histItem = (src, id) => state.hist.get(keyOf(src, id));
+// Chapter yang pernah dibuka, per komik (disimpan di HP). Dipakai untuk tanda "sudah dibaca" di daftar chapter:
+// hanya chapter yang benar-benar dibuka yang bertanda, bukan semua chapter di bawah chapter terakhir dibaca.
+const READ_KEY = "readChs";
+let readMap = (() => { const m = api.lsGet(READ_KEY, {}); return m && typeof m === "object" && !Array.isArray(m) ? m : {}; })();
+export const chReadSet = (src, id) => new Set(readMap[keyOf(src, id)] || []);
+export const readChsAll = () => readMap;
+export function markChRead(src, id, chId) {
+  if (!chId) return;
+  const k = keyOf(src, id), a = readMap[k] || [];
+  if (a.includes(chId)) return;
+  delete readMap[k]; readMap[k] = [...a, String(chId)].slice(-3000);          // komik terbaru di akhir (yang lama dibuang dulu)
+  const ks = Object.keys(readMap); while (ks.length > 500) delete readMap[ks.shift()];
+  api.lsSet(READ_KEY, readMap);
+}
+export function mergeReadChs(src, id, ids) {
+  const k = keyOf(src, id), a = new Set(readMap[k] || []);
+  for (const x of ids) if (typeof x === "string" && x && x.length <= 300) a.add(x);
+  readMap[k] = [...a].slice(-3000); api.lsSet(READ_KEY, readMap);
+}
 export const history = () => [...state.hist.values()].sort((a, b) => (b.read_at || "").localeCompare(a.read_at || ""));
 let histTimer = null;
 const histDirty = new Set();
@@ -159,7 +268,7 @@ export async function setName(name) {
 export async function syncAfterLogin() {
   await loadProfile();
   // kirim data tamu yang belum ada di server, lalu ambil versi server
-  const libRows = [...state.lib.values()].map(({ source, comic_id, title, cover, notify, added_at }) => ({ source, comic_id, title, cover, notify: !!notify, added_at }));
+  const libRows = [...state.lib.values()].map(({ source, comic_id, title, cover, notify, added_at, shelf }) => ({ source, comic_id, title, cover, notify: !!notify, added_at, shelf: shelf || null }));
   if (libRows.length) await api.rest("library?on_conflict=user_id,source,comic_id", { method: "POST", body: libRows, prefer: "resolution=ignore-duplicates,return=minimal" }).catch(() => {});
   const histRows = [...state.hist.values()].map(histRow);
   if (histRows.length) await api.rest("history?on_conflict=user_id,source,comic_id", { method: "POST", body: histRows, prefer: "resolution=merge-duplicates,return=minimal" }).catch(() => {});
@@ -167,8 +276,10 @@ export async function syncAfterLogin() {
 }
 export async function pull() {
   if (!loggedIn()) return;
+  const libQ = (cols) => api.rest(`library?select=${cols}&order=added_at.desc&limit=2000`);
   const [lib, hist] = await Promise.all([
-    api.rest("library?select=source,comic_id,title,cover,notify,added_at&order=added_at.desc&limit=2000"),
+    // kolom shelf (rak) belum ada di database lama: ambil tanpa rak, rak di HP dipertahankan
+    libQ("source,comic_id,title,cover,notify,added_at,shelf").catch((e) => (/shelf/i.test(e?.message || "") ? libQ("source,comic_id,title,cover,notify,added_at") : Promise.reject(e))),
     api.rest("history?select=source,comic_id,title,cover,chapter,page,read_at&order=read_at.desc&limit=300"),
   ]);
   const oldLib = state.lib;

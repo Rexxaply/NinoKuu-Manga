@@ -412,6 +412,9 @@ const shngJson = async (path: string) =>
 const shngCover = (o: any) => String(o?.cover_portrait_url || o?.cover_image_url || "");
 const SHNG_STATUS: Record<number, string> = { 1: "ongoing", 2: "completed", 3: "hiatus" };
 const shngId = (id: string) => { if (!/^[\w-]{6,64}$/.test(id)) throw webErr("ID Shinigami tidak valid", 400); return id; };
+// judul alternatif dari API (nama kolomnya berbeda-beda), untuk menyaring hasil pencarian di aplikasi
+const altOf = (m: any) => [m?.alternative_title, m?.alternative_titles, m?.alternative_name, m?.alternative, m?.alt_title, m?.native_title, m?.title_alt]
+  .flat().filter((x) => typeof x === "string" && x.trim()).join(" · ").slice(0, 400);
 async function shngBrowse(page: number, q: string, o: Opt) {
   const p = new URLSearchParams({ limit: String(o.limit), offset: String((page - 1) * o.limit), sort: o.sort === "popular" ? "popularity" : o.sort === "rating" ? "rating" : "latest", sort_order: "desc" });
   if (q) p.set("q", q);
@@ -420,7 +423,7 @@ async function shngBrowse(page: number, q: string, o: Opt) {
   if (o.status) p.set("status", o.status);
   const j = await shngJson(`/v1/manga/list?${p}`);
   const items = await Promise.all((j?.data || []).filter((m: any) => m?.manga_id).map(async (m: any) => ({
-    id: String(m.manga_id), title: String(m.title || ""), cover: await coverUrl(shngCover(m), SHNGM_SITE + "/"), type: o.type || "", score: pickScore(m, m.stats),
+    id: String(m.manga_id), title: String(m.title || ""), cover: await coverUrl(shngCover(m), SHNGM_SITE + "/"), type: o.type || "", score: pickScore(m, m.stats), alt: altOf(m),
   })));
   const more = j?.meta?.has_next;
   return { items, hasNext: typeof more === "boolean" ? more : items.length >= o.limit };
@@ -488,7 +491,8 @@ async function komikuPage(srcPage: number, q: string, o: Opt) {
     const tp = (stripTags(b.match(/class=["'][^"']*\btpe1_inf\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i)?.[1] || "").match(/\b(manga|manhwa|manhua)\b/i)?.[1] || o.type || "").toLowerCase();
     items.push({ id: abs(a[1], KOMIKU_SITE), title, cover: await coverUrl(img, KOMIKU_SITE + "/"), type: tp });
   }
-  return { items, hasNext: /<span[^>]*\shx-get=/i.test(html) || items.length >= 10 };
+  // penanda "muat berikutnya" (hx-get) ikut tampil walau hasilnya sedikit; halaman yang tidak penuh = halaman terakhir
+  return { items, hasNext: items.length >= 10 };
 }
 function komikuDate(s: string) {
   const t = s.trim(), m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
@@ -723,7 +727,8 @@ async function bkPage(srcPage: number, q: string, o: Opt) {
     const sc = [...after.matchAll(/>\s*(\d{1,2}(?:[.,]\d{1,2})?)\s*</g)].pop()?.[1];
     items.push({ id, title, cover: await coverUrl(img, BK_SITE + "/"), type: tp, score: toScore(sc || "") });
   }
-  return { items, hasNext: /class=["'][^"']*\bnext\b[^"']*page-numbers|page-numbers[^"']*\bnext\b/i.test(html) };
+  // tautan halaman berikutnya bisa ikut tampil walau hasilnya sedikit; halaman yang tidak penuh = halaman terakhir
+  return { items, hasNext: items.length >= 10 && /class=["'][^"']*\bnext\b[^"']*page-numbers|page-numbers[^"']*\bnext\b/i.test(html) };
 }
 function bkChapters(html: string, base: string): Chapter[] {
   const list = block(html, /<(?:ul|div)\b[^>]*id=["']chapter_list["'][^>]*>/i);
@@ -833,7 +838,7 @@ async function westBrowse(page: number, q: string, o: Opt) {
   o.genres.forEach((g) => p.append("genre[]", g));
   const j = await westApi(`/api/contents?${p}`);
   const items = await Promise.all((j?.data || []).filter((m: any) => m?.slug).map(async (m: any) => ({
-    id: String(m.slug), title: String(m.title || m.slug), cover: await coverUrl(westAbs(m.cover), westBase + "/"), type: WEST_TYPE[String(m.country_id || "")] || o.type || "", score: pickScore(m, m.stats),
+    id: String(m.slug), title: String(m.title || m.slug), cover: await coverUrl(westAbs(m.cover), westBase + "/"), type: WEST_TYPE[String(m.country_id || "")] || o.type || "", score: pickScore(m, m.stats), alt: altOf(m),
   })));
   const pg = j?.paginator || {};
   const last = pg.last_page != null ? Number(pg.last_page) : null;
@@ -1238,7 +1243,7 @@ async function reportChapters(uid: string, body: any, trusted = false): Promise<
     ? await admin.from("library").select("title, cover").eq("source", src).eq("comic_id", id).eq("notify", true).limit(1).maybeSingle()
     : await admin.from("library").select("title, cover").eq("user_id", uid).eq("source", src).eq("comic_id", id).maybeSingle();
   if (!lib) return json({ error: "Komik ini tidak ada di koleksimu" }, 404);
-  const { data: mine } = await admin.from("chapter_reports").select("created_at").eq("source", src).eq("comic_id", id).eq("user_id", uid).maybeSingle();
+  const { data: mine } = await admin.from("chapter_reports").select("created_at, num").eq("source", src).eq("comic_id", id).eq("user_id", uid).maybeSingle();
   if (mine?.created_at && Date.now() - Date.parse(mine.created_at) < 5 * 60e3) return json({ ok: true, skipped: true });
   const list = cleanChapters(body.chapters);
   if (!list.length) return json({ ok: true, found: 0 });
@@ -1246,6 +1251,9 @@ async function reportChapters(uid: string, body: any, trusted = false): Promise<
   if (!top || n == null) return json({ ok: true, found: list.length, newest: null });
   const { error: upErr } = await admin.from("chapter_reports").upsert({ source: src, comic_id: id, user_id: uid, num: n, chapter: clip(top.ch, 40), created_at: new Date().toISOString() }, { onConflict: "source,comic_id,user_id" });
   if (upErr) return json({ error: "chapter_reports: " + upErr.message + " — jalankan ulang ninokuu-schema.sql versi terbaru." }, 500);
+  // Hemat kuota database: chapter terbaru sama dengan laporan pelapor ini sebelumnya → tidak ada yang baru, berhenti di
+  // sini (dulu tiap laporan menjalankan 3 kueri lagi + klaim chapter; pengecek Termux melapor semua komik tiap 5 menit)
+  if (trusted && mine && Number(mine.num) === n) return json({ ok: true, found: list.length, newest: top.ch, same: true });
   const { count } = await admin.from("library").select("user_id", { count: "exact", head: true }).eq("source", src).eq("comic_id", id).eq("notify", true);
   const need = trusted ? 1 : Math.min(2, Math.max(1, count || 1));
   const since = new Date(Date.now() - 24 * 3600e3).toISOString();
@@ -1450,6 +1458,44 @@ Deno.serve(async (req) => {
     // Laporan satu orang bisa salah/dipalsukan, jadi chapter baru baru diumumkan ke banyak orang setelah DUA pelapor berbeda
     // (atau satu, bila hanya satu orang yang memantau komik itu: dampaknya hanya ke dirinya) melaporkan nomor setinggi itu.
     if (action === "report_chapters") return await reportChapters(user.id, body);
+
+    // Balasan pesan/komentar → notifikasi (+ push) ke penulis pesan yang dibalas. Dipanggil aplikasi pengirim setelah
+    // pesannya tersimpan. Semua diperiksa ulang di sini: pesan milik pemanggil, baru (< 10 mnt), membalas pesan di ruang
+    // yang sama milik orang lain; satu pesan = satu notifikasi (indeks unik user_id+msg_id). Teks spoiler disensor.
+    if (action === "notify_reply") {
+      const mid = Number(body.message_id);
+      if (!Number.isSafeInteger(mid) || mid <= 0) return json({ ok: false, error: "message_id tidak valid" }, 400);
+      const { data: m } = await admin.from("chat_messages").select("id,user_id,body,image_path,room,reply_to,hidden,created_at").eq("id", mid).maybeSingle();
+      if (!m || m.user_id !== user.id || !m.reply_to || m.hidden || Date.now() - Date.parse(m.created_at) > 10 * 60e3) return json({ ok: true, skipped: true });
+      const { data: par } = await admin.from("chat_messages").select("id,user_id,room").eq("id", m.reply_to).maybeSingle();
+      if (!par || par.user_id === user.id || par.room !== m.room) return json({ ok: true, skipped: true });
+      // tautan halaman: chat publik, komentar komik (#/k/sumber/id) atau komentar chapter (#/kc/sumber/id/chapter);
+      // tautan dari aplikasi hanya dipakai bila benar-benar menunjuk ruang pesan itu
+      let link = "#/chat";
+      if (m.room !== "public") {
+        const lk = /^#\/(k|kc)\/([a-z0-9]+)\/([^/]+)(?:\/([^/]+))?$/.exec(String(body.link || ""));
+        let room = "";
+        try { if (lk) room = lk[1] === "k" && !lk[4] ? `c:${lk[2]}:${decodeURIComponent(lk[3])}` : lk[1] === "kc" && lk[4] ? `ch:${lk[2]}:${decodeURIComponent(lk[3])}:${decodeURIComponent(lk[4])}` : ""; } catch { room = ""; }
+        if (!lk || room !== m.room) return json({ ok: false, error: "Tautan ruang tidak cocok" }, 400);
+        link = String(body.link);
+      }
+      const { data: me } = await admin.from("profiles").select("name").eq("id", user.id).maybeSingle();
+      const who = clip(me?.name || "Seseorang", 40);
+      const pub = m.room === "public", where = clip(String(body.where || "").replace(/\s+/g, " ").trim(), 80);
+      const text = String(m.body || "").replace(/\|\|[\s\S]+?\|\|/g, "[spoiler]").replace(/\s+/g, " ").trim();
+      const title = pub ? `${who} membalas pesanmu di chat publik` : `${who} membalas komentarmu${where ? ` di ${where}` : ""}`;
+      const msg = clip(text || (m.image_path ? "Mengirim gambar" : "Membalas"), 200);
+      const { data: ins, error: insErr } = await admin.from("notifications")
+        .upsert({ user_id: par.user_id, title: clip(title, 200), body: msg, link, msg_id: mid }, { onConflict: "user_id,msg_id", ignoreDuplicates: true }).select("id");
+      if (insErr) return json({ ok: false, error: insErr.message }, 500);
+      if (!ins?.length) return json({ ok: true, skipped: "sudah" });
+      let push = { sent: 0, errors: [] as string[] };
+      if (Deno.env.get("FCM_SERVICE_ACCOUNT")) {
+        const tokens = await tokensOf([par.user_id]);
+        if (tokens.length) { try { push = await pushTokens(tokens, { title: clip(title, 120), body: msg, url: "ninokuu://go/" + encodeURIComponent(link), tag: `reply:${par.id}` }); } catch (e: any) { push.errors.push(String(e?.message || e)); } }
+      }
+      return json({ ok: true, sent: push.sent });
+    }
 
     // Tes notifikasi ke HP sendiri (Lainnya → Kirim tes / Panel developer)
     if (action === "test_push") {

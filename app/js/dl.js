@@ -179,6 +179,71 @@ async function pageBytes(im, ref) {
   if (!r.ok) throw new Error(`Gambar gagal diunduh (HTTP ${r.status})`);
   return { u8: new Uint8Array(await r.arrayBuffer()), type: r.headers.get("content-type") || "image/jpeg" };
 }
+// Bagikan satu halaman chapter (tekan lama gambar di pembaca). APK: simpan di cache lalu lembar bagikan Android;
+// web: Web Share API (file) atau unduh.
+// Berkas halaman untuk dibagikan diingat sebentar (maks 6), dan mulai diunduh begitu lembar bagikan / layar pilih
+// bagian dibuka (prefetchPage) — saat tombol Bagikan ditekan biasanya sudah siap, tidak menunggu unduhan lagi.
+const bytesMem = new Map();
+const bytesOf = (im, ref) => {
+  const k = im.u; if (bytesMem.has(k)) return bytesMem.get(k);
+  const pr = (im.local ? (async () => { const r = await fetch(im.u); return { u8: new Uint8Array(await r.arrayBuffer()), type: r.headers.get("content-type") || "image/jpeg" }; })()
+    : retry(() => pageBytes(im, ref), 2));
+  pr.catch(() => bytesMem.delete(k));
+  bytesMem.set(k, pr); if (bytesMem.size > 6) bytesMem.delete(bytesMem.keys().next().value);
+  return pr;
+};
+export const prefetchPage = (im, ref) => { bytesOf(im, ref).catch(() => {}); };
+export async function sharePage(im, ref, name, text) {
+  const { u8, type } = await bytesOf(im, ref);
+  return shareBytes(u8, type, name, text);
+}
+// Bagikan bagian pilihan dari beberapa halaman yang bersambung (panel bisa terbelah di batas 2 gambar).
+// ims: halaman berurutan; crop: pecahan { x, y, w, h } dari tumpukan halaman itu (semua dilebarkan sama, seperti di
+// pembaca). Dipotong dari berkas aslinya (bukan dari <img> di layar yang "tercemar" lintas situs) → JPEG.
+export async function sharePages(ims, ref, name, text, crop, sizes) {
+  const bms = [];
+  try {
+    // ukuran tiap halaman dari gambar di layar → hanya halaman yang benar-benar kena pilihan yang diunduh, bersamaan
+    const W = Math.max(...sizes.map((z) => z[0])), hs = sizes.map((z) => (z[1] * W) / z[0]), H = hs.reduce((a, b) => a + b, 0);
+    let acc = 0; const need = hs.map((h) => { const a = acc; acc += h; return a + h > crop.y * H && a < (crop.y + crop.h) * H; });
+    (await Promise.all(ims.map(async (im, i) => (need[i] ? createImageBitmap(new Blob([(await bytesOf(im, ref)).u8])) : null)))).forEach((b) => bms.push(b));
+    let sx = crop.x * W, sy = crop.y * H, sw = crop.w * W, sh = crop.h * H;
+    const k = Math.min(1, 12000 / sh, 1600 / sw);                                  // batas ukuran (cukup untuk dibagikan, lebih cepat)
+    const cv = document.createElement("canvas"); cv.width = Math.max(1, Math.round(sw * k)); cv.height = Math.max(1, Math.round(sh * k));
+    const g = cv.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, cv.width, cv.height); g.imageSmoothingQuality = "high";
+    let top = 0;
+    bms.forEach((bm, i) => {
+      const h = hs[i], y0 = Math.max(sy, top), y1 = Math.min(sy + sh, top + h);
+      if (bm && y1 > y0) {
+        const f = bm.width / W;                                                     // skala tumpukan → gambar asli
+        g.drawImage(bm, sx * f, (y0 - top) * f, sw * f, (y1 - y0) * f, 0, Math.round((y0 - sy) * k), cv.width, Math.round((y1 - y0) * k) + 1);
+      }
+      top += h;
+    });
+    const bl = await new Promise((r) => cv.toBlob(r, "image/jpeg", 0.9));
+    if (!bl) throw new Error("Gagal memotong gambar");
+    return shareBytes(new Uint8Array(await bl.arrayBuffer()), "image/jpeg", name, text);
+  } finally { bms.forEach((b) => b?.close?.()); }
+}
+// APK: simpan di cache lalu lembar bagikan Android; web: Web Share API (file) atau unduh.
+async function shareBytes(u8, type, name, text) {
+  const ext = /png/i.test(type) ? "png" : /webp/i.test(type) ? "webp" : /gif/i.test(type) ? "gif" : "jpg";
+  const file = `${name}.${ext}`;
+  const C = N.isApp ? window.Capacitor : null;
+  if (C?.isPluginAvailable?.("Filesystem") && C.isPluginAvailable("Share")) {
+    const f = fs() || C.Plugins?.Filesystem || C.registerPlugin?.("Filesystem"), SH = C.Plugins?.Share || C.registerPlugin?.("Share");
+    const { uri } = await f.writeFile({ path: "share/" + file, data: await b64(u8), directory: "CACHE", recursive: true });
+    dispatchEvent(new Event("nk:sharing"));                                          // layar tunggu boleh ditutup
+    try { await SH.share({ title: text, text, files: [uri], dialogTitle: "Bagikan halaman" }); }
+    catch (e) { if (!/cancel/i.test(e?.message || "")) throw e; }
+    return;
+  }
+  dispatchEvent(new Event("nk:sharing"));
+  const blob = new Blob([u8], { type }), fl = new File([blob], file, { type });
+  if (navigator.canShare?.({ files: [fl] })) { try { await navigator.share({ files: [fl], text }); } catch (e) { if (e?.name !== "AbortError") throw e; } return; }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = file; document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000); toast("Gambar disimpan ke Unduhan");
+}
 const retry = async (fn, n = 3) => { let e; for (let i = 0; i < n; i++) { try { return await fn(); } catch (x) { e = x; await new Promise((r) => setTimeout(r, 600 * (i + 1))); } } throw e; };
 
 /* ---------- antrean ---------- */

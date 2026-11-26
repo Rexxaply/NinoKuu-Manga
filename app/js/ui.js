@@ -193,7 +193,10 @@ const SEG_SEL = ".seg, .fseg, .chips";
 const SEG_ON = '[aria-selected="true"], [aria-checked="true"], [aria-pressed="true"]';
 const segLast = new Map();
 const segReduce = matchMedia("(prefers-reduced-motion: reduce)");
-const segKey = (el) => { const b = el.querySelector(":scope > button[data-act], :scope > button[data-f]"); return b ? `${b.dataset.act || b.dataset.f}|${el.querySelectorAll(":scope > button").length}` : ""; };
+// kunci ingatan posisi jempol: aksi + jumlah pilihan + wadah ber-id terdekat. Wadah ikut dihitung karena satu layar
+// bisa punya 2 pilihan kembar (Favorit: tab di judul & tab di bilah menempel) yang posisinya beda beberapa px;
+// dulu keduanya berbagi ingatan, jadi jempol tab judul mulai dari posisi tab bilah → tampak "terlempar" ke tujuan.
+const segKey = (el) => { const b = el.querySelector(":scope > button[data-act], :scope > button[data-f]"); return b ? `${b.dataset.act || b.dataset.f}|${el.querySelectorAll(":scope > button").length}|${el.parentElement?.closest("[id]")?.id || ""}` : ""; };
 const segRo = "ResizeObserver" in window ? new ResizeObserver((es) => es.forEach((e) => placeSeg(e.target, false))) : null;
 function placeSeg(el, anim) {
   const on = el.querySelector(`:scope > button:is(${SEG_ON})`);
