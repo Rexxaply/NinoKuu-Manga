@@ -1459,6 +1459,44 @@ Deno.serve(async (req) => {
     // (atau satu, bila hanya satu orang yang memantau komik itu: dampaknya hanya ke dirinya) melaporkan nomor setinggi itu.
     if (action === "report_chapters") return await reportChapters(user.id, body);
 
+    // Balasan pesan/komentar → notifikasi (+ push) ke penulis pesan yang dibalas. Dipanggil aplikasi pengirim setelah
+    // pesannya tersimpan. Semua diperiksa ulang di sini: pesan milik pemanggil, baru (< 10 mnt), membalas pesan di ruang
+    // yang sama milik orang lain; satu pesan = satu notifikasi (indeks unik user_id+msg_id). Teks spoiler disensor.
+    if (action === "notify_reply") {
+      const mid = Number(body.message_id);
+      if (!Number.isSafeInteger(mid) || mid <= 0) return json({ ok: false, error: "message_id tidak valid" }, 400);
+      const { data: m } = await admin.from("chat_messages").select("id,user_id,body,image_path,room,reply_to,hidden,created_at").eq("id", mid).maybeSingle();
+      if (!m || m.user_id !== user.id || !m.reply_to || m.hidden || Date.now() - Date.parse(m.created_at) > 10 * 60e3) return json({ ok: true, skipped: true });
+      const { data: par } = await admin.from("chat_messages").select("id,user_id,room").eq("id", m.reply_to).maybeSingle();
+      if (!par || par.user_id === user.id || par.room !== m.room) return json({ ok: true, skipped: true });
+      // tautan halaman: chat publik, komentar komik (#/k/sumber/id) atau komentar chapter (#/kc/sumber/id/chapter);
+      // tautan dari aplikasi hanya dipakai bila benar-benar menunjuk ruang pesan itu
+      let link = "#/chat";
+      if (m.room !== "public") {
+        const lk = /^#\/(k|kc)\/([a-z0-9]+)\/([^/]+)(?:\/([^/]+))?$/.exec(String(body.link || ""));
+        let room = "";
+        try { if (lk) room = lk[1] === "k" && !lk[4] ? `c:${lk[2]}:${decodeURIComponent(lk[3])}` : lk[1] === "kc" && lk[4] ? `ch:${lk[2]}:${decodeURIComponent(lk[3])}:${decodeURIComponent(lk[4])}` : ""; } catch { room = ""; }
+        if (!lk || room !== m.room) return json({ ok: false, error: "Tautan ruang tidak cocok" }, 400);
+        link = String(body.link);
+      }
+      const { data: me } = await admin.from("profiles").select("name").eq("id", user.id).maybeSingle();
+      const who = clip(me?.name || "Seseorang", 40);
+      const pub = m.room === "public", where = clip(String(body.where || "").replace(/\s+/g, " ").trim(), 80);
+      const text = String(m.body || "").replace(/\|\|[\s\S]+?\|\|/g, "[spoiler]").replace(/\s+/g, " ").trim();
+      const title = pub ? `${who} membalas pesanmu di chat publik` : `${who} membalas komentarmu${where ? ` di ${where}` : ""}`;
+      const msg = clip(text || (m.image_path ? "Mengirim gambar" : "Membalas"), 200);
+      const { data: ins, error: insErr } = await admin.from("notifications")
+        .upsert({ user_id: par.user_id, title: clip(title, 200), body: msg, link, msg_id: mid }, { onConflict: "user_id,msg_id", ignoreDuplicates: true }).select("id");
+      if (insErr) return json({ ok: false, error: insErr.message }, 500);
+      if (!ins?.length) return json({ ok: true, skipped: "sudah" });
+      let push = { sent: 0, errors: [] as string[] };
+      if (Deno.env.get("FCM_SERVICE_ACCOUNT")) {
+        const tokens = await tokensOf([par.user_id]);
+        if (tokens.length) { try { push = await pushTokens(tokens, { title: clip(title, 120), body: msg, url: "ninokuu://go/" + encodeURIComponent(link), tag: `reply:${par.id}` }); } catch (e: any) { push.errors.push(String(e?.message || e)); } }
+      }
+      return json({ ok: true, sent: push.sent });
+    }
+
     // Tes notifikasi ke HP sendiri (Lainnya → Kirim tes / Panel developer)
     if (action === "test_push") {
       // tiap tes memanggil FCM sekali per perangkat: maks. 1 tes per 30 detik per akun

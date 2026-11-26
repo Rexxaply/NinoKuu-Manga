@@ -297,7 +297,7 @@ const readSet = new Set(api.lsGet("notifRead", []));
 const saveRead = () => api.lsSet("notifRead", [...readSet].slice(-200));
 async function loadNotifs() {
   if (!S.loggedIn()) { notifs = []; return; }
-  const got = await api.rest("notifications?select=id,title,body,source,comic_id,chapter,cover,created_at&order=created_at.desc&limit=30").catch(() => null);
+  const got = await api.rest("notifications?select=id,title,body,source,comic_id,chapter,cover,created_at,link&order=created_at.desc&limit=30").catch(() => null);
   if (got) { notifs = got; applyNotifLatest(got); }
 }
 // notifikasi chapter baru langsung memperbarui "chapter terbaru" komik di Koleksi, jadi label NEW UPDATE muncul tanpa
@@ -343,7 +343,7 @@ async function openNotif() {
     <div class="pop-h"><span class="cap m0">Notifikasi</span>${unread ? `<button class="link-red sm" data-n="readall">Tandai dibaca</button>` : ""}</div>
     <div class="pop-list">${!S.loggedIn() ? `<p class="pop-empty">Masuk untuk menerima notifikasi chapter baru dari komik yang loncengnya kamu nyalakan.<br><a class="gold b" href="#/more">Masuk</a></p>`
       : notifs.length ? notifs.map((x) => `<button class="pop-i ${readSet.has(x.id) ? "" : "unread"}" data-n="open" data-id="${x.id}">
-          <span class="pop-cv">${x.cover ? `<img ${N.imgAttrs(x.cover)} alt="" loading="lazy" referrerpolicy="no-referrer" data-rm>` : icon(x.comic_id ? "book" : "mega", 15)}</span>
+          <span class="pop-cv">${x.cover ? `<img ${N.imgAttrs(x.cover)} alt="" loading="lazy" referrerpolicy="no-referrer" data-rm>` : icon(x.link ? "reply" : x.comic_id ? "book" : "mega", 15)}</span>
           <span class="rc-mid g1"><span class="t1 pop-t">${esc(x.title)}</span><span class="t1 mu xs">${esc(x.body || "")} · ${esc(ago(x.created_at))}</span></span>
           ${readSet.has(x.id) ? "" : `<span class="dot" aria-label="Belum dibaca"></span>`}</button>`).join("")
       : `<p class="pop-empty">Belum ada notifikasi. Nyalakan lonceng di info komik.</p>`}</div>
@@ -362,7 +362,7 @@ async function openNotif() {
     if (a === "readall") { notifs.forEach((x) => readSet.add(x.id)); saveRead(); draw(); refreshBell(); }
     if (a === "open") {
       const x = notifs.find((y) => String(y.id) === b.dataset.id); readSet.add(x.id); saveRead(); closeNotif(); refreshBell();
-      go(x.source && x.comic_id ? comicHref(x.source, x.comic_id) : "#/chat");
+      go(x.link && /^#\/(chat|k|kc)(\/|$)/.test(x.link) ? x.link : x.source && x.comic_id ? comicHref(x.source, x.comic_id) : "#/chat");
     }
     if (a === "clear") {
       if (!(await ask("Hapus semua notifikasi? Lonceng di tiap komik tetap menyala.", { ok: "Hapus", danger: true }))) return;

@@ -1639,3 +1639,11 @@ alter default privileges in schema public grant all on sequences to service_role
 alter default privileges in schema public grant execute on functions to service_role;
 
 commit;
+
+-- Notifikasi balasan pesan/komentar (Edge Function action notify_reply): link = halaman tujuan (#/chat, #/k/…, #/kc/…),
+-- msg_id = pesan balasan; satu pesan hanya menghasilkan satu notifikasi per penerima.
+alter table public.notifications add column if not exists link text;
+alter table public.notifications add column if not exists msg_id bigint;
+alter table public.notifications drop constraint if exists notifications_link_len;
+alter table public.notifications add constraint notifications_link_len check (link is null or (char_length(link) <= 600 and link ~ '^#/'));
+create unique index if not exists notifications_user_msg_uq on public.notifications (user_id, msg_id);

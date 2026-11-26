@@ -278,8 +278,15 @@ export async function vChat(view, ctx, opt = {}) {
         await api.upload("chat-images", image_path, new File([c.blob], "x." + c.ext, { type: c.blob.type || att.file.type }));
       }
       const body = { body: text, image_path, image_spoiler: !!att?.sp, room, ...(replyTo ? { reply_to: replyTo.id } : {}) };
-      try { await api.rest("chat_messages", { method: "POST", body, prefer: "return=minimal" }); }
+      let saved;
+      try { saved = await api.rest("chat_messages?select=id", { method: "POST", body, prefer: "return=representation" }); }
       catch (e) { if (image_path) api.removeFiles("chat-images", [image_path]).catch(() => {}); throw e; }   // pesan gagal terkirim: gambarnya tidak dibiarkan tertinggal di server
+      // balasan → server memberi tahu penulis pesan yang dibalas (notifikasi + push); gagal pun pesan tetap terkirim
+      const newId = Array.isArray(saved) ? saved[0]?.id : saved?.id;
+      if (replyTo && newId && replyTo.user_id !== me) {
+        const link = /^#\/(k|kc)\//.test(location.hash) ? location.hash : "#/chat";
+        api.call("notify_reply", { message_id: newId, link, where: opt.sub || "" }).catch(() => {});
+      }
       if (replyTo && !pub) openThr.add(threadRoot(replyTo));
       lastSent = Date.now(); inp.value = ""; att = null; replyTo = null;
       await load(false); drawComposer(); draw(); toBottom(); toast("Terkirim", 1200);

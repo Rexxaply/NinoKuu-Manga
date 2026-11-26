@@ -423,6 +423,8 @@ function openLink(u, go) {
   const m = u.match(/^ninokuu:\/\/comic\/([a-z0-9]+)\/(.+)$/i);
   if (m) go(`#/c/${m[1]}/${m[2]}`);
   else if (/^ninokuu:\/\/chat/i.test(u)) go("#/chat");
+  // ninokuu://go/<#/halaman> (balasan komentar/chat): hanya halaman chat & komentar
+  else if (/^ninokuu:\/\/go\//i.test(u)) { let h = ""; try { h = decodeURIComponent(u.slice(13)); } catch {} go(/^#\/(chat|k|kc)(\/|$)/.test(h) ? h : "#/home"); }
   else if (/^ninokuu:\/\/verified/i.test(u)) go("#/more", "verified");
   else if (/^ninokuu:\/\/reset/i.test(u)) go("#/more", "reset");          // ninokuu.site/resetpassword setelah password diganti
   else if (/^ninokuu:\/\/more/i.test(u)) go("#/more");
