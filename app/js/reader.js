@@ -267,7 +267,7 @@ export async function vReader(src, id, chId) {
       return `<button role="radio" aria-selected="${on}" aria-checked="${on}" data-act="rmode" data-v="${k}" ${off ? "disabled" : ""}>${icon(ic, 16)}${n}</button>`; }).join("")}</div>
     ${longStrip ? `<span class="mu xs rm-note">Slide tak tersedia untuk manhwa/manhua.</span>` : ""}
     ${slide ? `<div class="rq-row"><span>Arah geser</span><div class="seg s2">${[["rtl", "Ka → Ki"], ["ltr", "Ki → Ka"]].map(([k, n]) => `<button role="tab" aria-selected="${(rtl ? "rtl" : "ltr") === k}" data-act="rdir" data-v="${k}" aria-label="${k === "rtl" ? "Kanan ke kiri" : "Kiri ke kanan"}">${n}</button>`).join("")}</div></div>` : ""}
-    <div class="rq-acts"><button class="rq-act" data-act="chlist"><span class="gold">${icon("list", 18)}</span>Chapter <span class="mu">${esc(ch.ch)}</span></button><button class="rq-act" data-act="rreport"><span class="redt">${icon("bug", 18)}</span>Laporkan</button></div>
+    <div class="rq-acts"><button class="rq-act rq-wide" data-act="rshare"><span class="redt">${icon("share", 18)}</span>Bagikan halaman ini</button><button class="rq-act" data-act="chlist"><span class="gold">${icon("list", 18)}</span>Chapter <span class="mu">${esc(ch.ch)}</span></button><button class="rq-act" data-act="rreport"><span class="redt">${icon("bug", 18)}</span>Laporkan</button></div>
     <span class="cap mt4">Bacaan</span><div class="r-togs rq">${readPrefsCompact()}</div>
   </div>
   <div class="r-bottom">
@@ -731,6 +731,8 @@ export async function vReader(src, id, chId) {
     menu: () => menu($(".r-menu").hidden), closeMenu: () => menu(false),
     rmode: (el) => { S.setSetting("readMode", el.dataset.v); vReader(src, id, chId); },
     chlist: () => { menu(false); openChList(); },
+    // bagikan halaman yang sedang terlihat (pengganti tekan lama, yang bawaannya mati)
+    rshare: () => { menu(false); pageSheet(curPage); },
     rreport: () => { menu(false); openReport({ source: src, comic_id: id, title: d.manga.title, chapter_id: chId, chapter: ch.ch }); },
     rdir: (el) => { S.setSetting("readDir", el.dataset.v); vReader(src, id, chId); },
     rtog: (el) => {

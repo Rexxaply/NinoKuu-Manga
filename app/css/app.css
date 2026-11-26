@@ -1184,6 +1184,7 @@ button, [role="button"], .seg, .chips, #nav { -webkit-user-select: none; user-se
 .rm-note { padding: 0 4px; margin-top: -2px; line-height: 1.4; }
 .rq-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .rq-act { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 42px; padding: 0 10px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, .1); font-size: 13px; font-weight: 700; white-space: nowrap; }
+.rq-act.rq-wide { grid-column: 1 / -1; }
 .rq-act:active { background-color: rgba(255, 255, 255, .06); }
 .r-togs.rq .rq-tog { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 46px; padding: 0 12px; }
 .r-togs.rq .rq-tog b { font-size: 13px; text-align: left; }
