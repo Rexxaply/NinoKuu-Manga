@@ -12,6 +12,15 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ---
 
+## Berikutnya (belum dirilis)
+
+### Ringkasan
+- Baru: domain dan alamat API sumber komik bisa diganti dari Panel developer tanpa update aplikasi
+
+### Detail
+- Domain sumber: tabel `app_config` (baris `sources`: per sumber `site` / `api` / `mode`), dibaca semua orang, diubah hanya lewat RPC `set_source_config` (khusus developer; hanya `https://nama.domain` tanpa jalur, bukan IP/localhost, huruf kecil, beberapa domain dipisah koma untuk WestManga; kosong = hapus = bawaan). APK (`native.js`): Shinigami `API()/SITE()`, WestManga `SITES()`, Komiku `SITE()/API()` + host Komiku dari config ikut dikenali; salinan di HP (`ninokuu:srccfg`), dimuat saat aplikasi dibuka & kembali dari latar belakang bila > 6 jam, atau > 10 menit bila pengambilan lewat HP gagal (`nk:srcfail`). Mode per sumber: otomatis (bawaan) / lewat HP / lewat server (`DIRECT` jadi Proxy mengikuti mode; Komiku "server" mematikan cadangan HP). Server (`applySourceConfig`, tiap 5 menit): Domain sumber → secret → bawaan untuk Shinigami, Komiku, Kiryuu (+ host yang dikenali), BacaKomik (host config dikenali), WestManga. Panel developer → kartu "Domain sumber" (simpan / kembali ke bawaan; berlaku langsung di HP developer); panduan diperbarui
+- Server: notifikasi "Ninokuu X tersedia" saat rilis global baru (lihat catatan di 1.11.0)
+
 ## 1.11.0 — 26 Nov 2026
 
 ### Ringkasan

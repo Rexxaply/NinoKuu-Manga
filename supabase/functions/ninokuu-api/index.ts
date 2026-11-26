@@ -405,8 +405,8 @@ const pickPublisher = (o: any): string => {
 };
 
 /* ---------- Shinigami (API JSON) ---------- */
-const SHNGM_API = Deno.env.get("SHNGM_API") || "https://api.shinigami.io";
-const SHNGM_SITE = Deno.env.get("SHNGM_SITE") || "https://s1.shinigami.mx";
+let SHNGM_API = Deno.env.get("SHNGM_API") || "https://api.shinigami.io";
+let SHNGM_SITE = Deno.env.get("SHNGM_SITE") || "https://s1.shinigami.mx";
 const shngJson = async (path: string) =>
   (await webFetch(SHNGM_API + path, { json: true, referer: SHNGM_SITE + "/", headers: { Origin: SHNGM_SITE, DNT: "1", "Sec-GPC": "1" } })).json();
 const shngCover = (o: any) => String(o?.cover_portrait_url || o?.cover_image_url || "");
@@ -465,11 +465,13 @@ async function shngPages(id: string) {
 }
 
 /* ---------- Komiku (HTML) ---------- */
-const KOMIKU_SITE = Deno.env.get("KOMIKU_SITE") || "https://komiku.org";
-const KOMIKU_API = Deno.env.get("KOMIKU_API") || "https://api.komiku.org";
+let KOMIKU_SITE = Deno.env.get("KOMIKU_SITE") || "https://komiku.org";
+let KOMIKU_API = Deno.env.get("KOMIKU_API") || "https://api.komiku.org";
+// domain Komiku yang dikenal + domain dari Domain sumber
+const komikuHostOk = (h: string) => /(^|\.)komiku\.(org|to|id)$/.test(h) || h === new URL(KOMIKU_SITE).hostname;
 const komikuUrl = (id: string) => {
   const u = safeUrl(id);
-  if (!/(^|\.)komiku\.(org|to|id)$/.test(u.hostname)) throw webErr("Link bukan dari Komiku", 400);
+  if (!komikuHostOk(u.hostname)) throw webErr("Link bukan dari Komiku", 400);
   return u.href;
 };
 async function komikuPage(srcPage: number, q: string, o: Opt) {
@@ -585,13 +587,13 @@ async function komikuMoreChapters(id: string, offset: number) {
 }
 async function komikuPages(id: string) {
   const page = await webFetch(komikuUrl(id), { referer: KOMIKU_SITE + "/" });
-  if (!/(^|\.)komiku\.(org|to|id)$/.test(new URL(page.url).hostname)) throw webErr("Link bukan dari Komiku", 400);
+  if (!komikuHostOk(new URL(page.url).hostname)) throw webErr("Link bukan dari Komiku", 400);
   const box = block(page.text, /<(?:div|section)[^>]*id=["']Baca_Komik["'][^>]*>/i);
   return { ref: page.url, images: [...box.matchAll(/<img\b[^>]*>/gi)].map((m) => imgSrc(m[0], page.url)).filter((u) => u && !/komiku-promosi/i.test(u)) };
 }
 
 /* ---------- Kiryuu (WordPress NatsuId) ---------- */
-const KIRYUU_SITE = (Deno.env.get("KIRYUU_SITE") || "https://v7.kiryuu.to").replace(/\/+$/, "");
+let KIRYUU_SITE = (Deno.env.get("KIRYUU_SITE") || "https://v7.kiryuu.to").replace(/\/+$/, "");
 const kiryuuJson = async (path: string) => (await webFetch(KIRYUU_SITE + path, { json: true, referer: KIRYUU_SITE + "/", headers: { "X-Requested-With": "XMLHttpRequest" } })).json();
 const kiryuuTerms = (m: any, tax: string): string[] => ((m?._embedded?.["wp:term"] || []) as any[][]).find((g) => g?.[0]?.taxonomy === tax)?.map((t: any) => decodeEnt(String(t?.name || ""))) || [];
 // Sampul Kiryuu: WordPress menyimpan beberapa ukuran. Diukur 18-11-2026 (Mercenary Enrollment): asli 480 px 56 KB,
@@ -672,7 +674,7 @@ async function kiryuuDetail(id: string): Promise<Detail> {
 // Hanya domain Kiryuu yang dikenal: domain dari KIRYUU_SITE (bagian "kiryuu.xxx" ke kanan) + secret KIRYUU_HOSTS
 // (dipisah koma, mis. "kiryuu.id,kiryuu.co") bila situs pindah domain. Tanpa daftar ini siapa pun yang mendaftarkan
 // "kiryuu.apa-saja" bisa membuat server menandatangani gambar dari halaman buatannya.
-const KIRYUU_HOSTS = (() => {
+const kiryuuHosts = () => {
   const out: string[] = [];
   try {
     const labels = new URL(KIRYUU_SITE).hostname.toLowerCase().split(".");
@@ -681,7 +683,8 @@ const KIRYUU_HOSTS = (() => {
   } catch { /* KIRYUU_SITE tidak valid: hanya KIRYUU_HOSTS */ }
   (Deno.env.get("KIRYUU_HOSTS") || "").split(",").map((x) => x.trim().toLowerCase().replace(/^\.+/, "")).filter(Boolean).forEach((x) => out.push(x));
   return out;
-})();
+};
+let KIRYUU_HOSTS = kiryuuHosts();
 const kiryuuHostOk = (h: string) => KIRYUU_HOSTS.some((d) => h === d || h.endsWith("." + d));
 async function kiryuuPages(id: string) {
   const u = safeUrl(id);
@@ -696,13 +699,14 @@ async function kiryuuPages(id: string) {
 /* ---------- BacaKomik (WordPress, HTML; dari ekstensi Keiyoushi "BacaKomik") ---------- */
 // ID komik = slug di /komik/<slug>/, ID chapter = slug halaman chapter (/<slug>/). Alamat situs bisa diganti lewat
 // secret BACAKOMIK_SITE bila pindah domain; data lama tetap berlaku karena yang disimpan hanya slug.
-const BK_SITE = (Deno.env.get("BACAKOMIK_SITE") || "https://bacakomik.my").replace(/\/+$/, "");
+let BK_SITE = (Deno.env.get("BACAKOMIK_SITE") || "https://bacakomik.my").replace(/\/+$/, "");
 const bkSlug = (id: string) => { const v = String(id || "").replace(/^https?:\/\/[^/]+/i, "").replace(/^\/+|\/+$/g, "").replace(/^komik\//, ""); if (!/^[\w%.-]{1,200}$/.test(v)) throw webErr("ID BacaKomik tidak valid", 400); return v; };
 const bkSlugOf = (href: string, comic: boolean) => { try { const p = new URL(href, BK_SITE).pathname.replace(/^\/+|\/+$/g, ""); return comic ? (p.match(/^komik\/([^/]+)$/)?.[1] || "") : (/^[^/]+$/.test(p) ? p : ""); } catch { return ""; } };
 async function bkFetch(path: string) {
   const page = await webFetch(BK_SITE + path, { referer: BK_SITE + "/" });
   // pengalihan ke domain lain tidak boleh lolos (gambar yang ditandatangani harus dari halaman BacaKomik sungguhan)
-  if (!/(^|\.)bacakomik\.[a-z.]+$/i.test(new URL(page.url).hostname)) throw webErr("Halaman bukan dari BacaKomik", 502);
+  const h = new URL(page.url).hostname;
+  if (!/(^|\.)bacakomik\.[a-z.]+$/i.test(h) && h !== new URL(BK_SITE).hostname) throw webErr("Halaman bukan dari BacaKomik", 502);
   return page;
 }
 const BK_SORT: Record<string, string> = { update: "update", popular: "popular", az: "title", za: "titlereverse" };
@@ -798,7 +802,7 @@ async function bkFilters(): Promise<Filters> {
 }
 
 /* ---------- WestManga (API JSON + visit token) ---------- */
-const WEST_SITES = (Deno.env.get("WEST_SITE") || "https://v1.westmanga.my,https://v1.westmanga.top").split(",").map((x) => x.trim().replace(/\/+$/, "")).filter(Boolean);
+let WEST_SITES = (Deno.env.get("WEST_SITE") || "https://v1.westmanga.my,https://v1.westmanga.top").split(",").map((x) => x.trim().replace(/\/+$/, "")).filter(Boolean);
 let westBase = WEST_SITES[0];
 let westVisit: { token: string; exp: number } | null = null;
 const WEST_TYPE: Record<string, string> = { JP: "manga", KR: "manhwa", CN: "manhua" };
@@ -1269,6 +1273,31 @@ function cleanChapters(x: unknown): Chapter[] {
   }));
 }
 
+/* ---------- Domain sumber (tabel app_config "sources", diatur di Panel developer) ----------
+   Urutan: Domain sumber → secret Supabase → bawaan. Dibaca ulang paling sering tiap 5 menit. Hanya https://nama.domain. */
+const ENV_SITES = { SHNGM_API, SHNGM_SITE, KOMIKU_SITE, KOMIKU_API, KIRYUU_SITE, BK_SITE, WEST_SITES: [...WEST_SITES] };
+let cfgAt = 0, cfgKey = "";
+const cfgOrigin = (u: unknown) => { try { const x = new URL(String(u || "").trim()); return x.protocol === "https:" && x.hostname.includes(".") && !/^[\d.]+$/.test(x.hostname) && !x.username && (!x.port || x.port === "443") ? x.origin : ""; } catch { return ""; } };
+async function applySourceConfig() {
+  if (Date.now() - cfgAt < 5 * 60e3) return;
+  cfgAt = Date.now();
+  const { data, error } = await admin.from("app_config").select("value").eq("key", "sources").maybeSingle();
+  if (error) return;   // tabel belum ada (skema lama) → tetap pakai secret/bawaan
+  const v: any = data?.value || {};
+  const key = JSON.stringify(v);
+  if (key === cfgKey) return;
+  cfgKey = key;
+  const site = (s: string) => cfgOrigin(String(v?.[s]?.site || "").split(",")[0]), api = (s: string) => cfgOrigin(v?.[s]?.api);
+  SHNGM_API = api("shinigami") || ENV_SITES.SHNGM_API; SHNGM_SITE = site("shinigami") || ENV_SITES.SHNGM_SITE;
+  KOMIKU_API = api("komiku") || ENV_SITES.KOMIKU_API; KOMIKU_SITE = site("komiku") || ENV_SITES.KOMIKU_SITE;
+  KIRYUU_SITE = site("kiryuu") || ENV_SITES.KIRYUU_SITE; KIRYUU_HOSTS = kiryuuHosts(); kiryuuNonce = null;
+  BK_SITE = site("bacakomik") || ENV_SITES.BK_SITE;
+  const ws = String(v?.westmanga?.site || "").split(",").map(cfgOrigin).filter(Boolean);
+  WEST_SITES = ws.length ? ws : ENV_SITES.WEST_SITES;
+  if (!WEST_SITES.includes(westBase)) { westBase = WEST_SITES[0]; westVisit = null; }
+  srcPerPage.komiku = 0; srcPerPage.kiryuu = 0; srcPerPage.bacakomik = 0; filterCache.clear();
+}
+
 /* ---------- router ---------- */
 const testPushAt = new Map<string, number>();
 const isSource = (s: unknown): s is Source => (SOURCES as readonly string[]).includes(String(s));
@@ -1340,6 +1369,7 @@ Deno.serve(async (req) => {
       return json({ ok: true, name: FN_NAME, dev: IS_DEV(), version: VERSION, sources: SOURCES, serverKey: !!SERVICE_KEY, fcm: !!Deno.env.get("FCM_SERVICE_ACCOUNT"), fcmProject });
     }
     if (!SERVICE_KEY) return json({ error: "Edge Function tidak menemukan kunci server Supabase (SUPABASE_SERVICE_ROLE_KEY)." }, 500);
+    await applySourceConfig().catch(() => {});
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || "");
 

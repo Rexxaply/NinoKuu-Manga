@@ -141,10 +141,29 @@ export async function imageViaNative(url, referer) {
   return u;
 }
 
+/* ---------- domain / API / mode sumber dari database (app_config "sources") ----------
+   Diatur developer di Panel developer → Domain sumber, tanpa update APK. Disimpan di HP (dipakai sejak aplikasi dibuka),
+   diperbarui di latar belakang paling sering tiap 6 jam (main.js). Kosong / tidak valid → nilai bawaan di kode.
+   Hanya https dengan nama domain biasa (bukan IP / localhost); yang dipakai hanya origin-nya (tanpa jalur). */
+const CFGK = "ninokuu:srccfg";
+let SRC = {};
+try { SRC = JSON.parse(localStorage.getItem(CFGK) || "null")?.v || {}; } catch { SRC = {}; }
+const okOrigin = (u) => { try { const x = new URL(String(u).trim()); const h = x.hostname.toLowerCase(); return x.protocol === "https:" && h.includes(".") && !/^[\d.]+$/.test(h) && !/(^|\.)(localhost|local|internal|arpa)$/.test(h) && !x.username && !x.password && (!x.port || x.port === "443") ? x.origin : ""; } catch { return ""; } };
+export const srcSite = (s, def) => okOrigin(String(SRC[s]?.site || "").split(",")[0]) || def;
+export const srcSites = (s, def) => { const l = String(SRC[s]?.site || "").split(",").map(okOrigin).filter(Boolean); return l.length ? l : def; };
+export const srcApi = (s, def) => okOrigin(SRC[s]?.api) || def;
+export const srcMode = (s) => (["app", "server"].includes(SRC[s]?.mode) ? SRC[s].mode : "auto");
+export const sourceConfig = () => SRC;
+export const sourceConfigAge = () => { try { return Date.now() - (JSON.parse(localStorage.getItem(CFGK) || "null")?.t || 0); } catch { return Infinity; } };
+export function setSourceConfig(v) {
+  SRC = v && typeof v === "object" && !Array.isArray(v) ? v : {};
+  try { localStorage.setItem(CFGK, JSON.stringify({ t: Date.now(), v: SRC })); } catch {}
+}
+
 /* ---------- Shinigami (API JSON) ---------- */
 const SHNG = (() => {
-  const API = "https://api.shinigami.io", SITE = "https://s1.shinigami.mx";
-  const get = (path) => nget(API + path, { headers: { Origin: SITE, Referer: SITE + "/" } });
+  const API = () => srcApi("shinigami", "https://api.shinigami.io"), SITE = () => srcSite("shinigami", "https://s1.shinigami.mx");
+  const get = (path) => nget(API() + path, { headers: { Origin: SITE(), Referer: SITE() + "/" } });
   const coverOf = (o) => String(o?.cover_portrait_url || o?.cover_image_url || "");
   const STATUS = { 1: "ongoing", 2: "completed", 3: "hiatus" };
   async function chapters(id) {
@@ -158,11 +177,11 @@ const SHNG = (() => {
     }
     return all.filter((c) => c?.chapter_id).map((c) => ({
       id: String(c.chapter_id), ch: c.chapter_number != null ? String(c.chapter_number).replace(/\.0+$/, "") : null,
-      title: String(c.chapter_title || "").trim(), at: c.release_date ? new Date(c.release_date).toISOString() : null, url: `${SITE}/chapter/${c.chapter_id}`,
+      title: String(c.chapter_title || "").trim(), at: c.release_date ? new Date(c.release_date).toISOString() : null, url: `${SITE()}/chapter/${c.chapter_id}`,
     }));
   }
   return {
-    referer: SITE + "/",
+    get referer() { return SITE() + "/"; },
     chapters,
     async browse(b) {
       const page = Math.max(1, Number(b.page) || 1), limit = Math.min(30, Number(b.limit) || 20);
@@ -183,7 +202,7 @@ const SHNG = (() => {
       const tax = d.taxonomy || {};
       return { ok: true, manga: { id, title: String(d.title || ""), cover: coverOf(d), desc: String(d.description || "").trim(), status: STATUS[Number(d.status)] || normStatus(d.status_name || d.status_label || d.status),
         tags: [...(tax.Genre || []), ...(tax.Format || [])].map((x) => x?.name).filter(Boolean).slice(0, 8),
-        author: (tax.Author || []).map((x) => x?.name).filter(Boolean).join(", "), url: `${SITE}/series/${id}`,
+        author: (tax.Author || []).map((x) => x?.name).filter(Boolean).join(", "), url: `${SITE()}/series/${id}`,
         views: pickViews(d, d.stats, d.statistic), score: pickScore(d, d.stats, d.statistic), publisher: pickPublisher(tax) || pickPublisher(d) }, chapters: chs };
     },
     async pages(b) {
@@ -191,16 +210,16 @@ const SHNG = (() => {
       const base = String(d?.base_url || ""), path = String(d?.chapter?.path || "");
       const images = (d?.chapter?.data || []).map((f) => ({ u: /^https?:/i.test(f) ? f : base + path + f, direct: true }));
       if (!images.length) throw new Error("Chapter ini tidak berisi gambar.");
-      return { ok: true, ref: SITE + "/", images };
+      return { ok: true, ref: SITE() + "/", images };
     },
   };
 })();
 
 /* ---------- WestManga (API JSON + token kunjungan) ---------- */
 const WEST = (() => {
-  const SITES = ["https://v1.westmanga.my", "https://v1.westmanga.top"];
+  const SITES = () => srcSites("westmanga", ["https://v1.westmanga.my", "https://v1.westmanga.top"]);
   const TYPE = { JP: "manga", KR: "manhwa", CN: "manhua" }, COUNTRY = { manga: "JP", manhwa: "KR", manhua: "CN" };
-  let base = SITES[0], tok = null, exp = 0;
+  let base = SITES()[0], tok = null, exp = 0;
   const abs = (u) => (!u ? "" : /^https?:/i.test(u) ? u : base + (u.startsWith("/") ? "" : "/") + u);
   async function token(force) {
     if (!force && tok && Date.now() < exp - 5 * 60e3) return tok;
@@ -210,7 +229,8 @@ const WEST = (() => {
   // token kunjungan wajib (header X-WM-Visit); 403/404 = token kedaluwarsa → ambil baru sekali; coba domain cermin bila gagal
   async function get(path) {
     let last = null;
-    for (const b of [base, ...SITES.filter((x) => x !== base)]) {
+    if (!SITES().includes(base)) { base = SITES()[0]; tok = null; }   // domain diganti lewat config
+    for (const b of [base, ...SITES().filter((x) => x !== base)]) {
       base = b;
       for (const force of [false, true]) {
         try { const t = await token(force); return await nget(b + path, t ? { headers: { "X-WM-Visit": t } } : {}); }
@@ -270,9 +290,9 @@ const WEST = (() => {
 // Komiku biasanya lewat server. Bila server ditolak Cloudflare (blocked), APK mengambil halamannya sendiri lewat
 // jaringan HP selama 30 menit, lalu mencoba server lagi.
 const KOMI = (() => {
-  const SITE = "https://komiku.org", API = "https://api.komiku.org";
-  const okHost = (u) => /(^|\.)komiku\.(org|to|id)$/.test(hostOf(u));
-  const html = async (u) => new DOMParser().parseFromString(await nget(u, { type: "text", headers: { Accept: "text/html,application/xhtml+xml,*/*;q=0.8", Referer: SITE + "/", "Sec-Fetch-Dest": "document", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Site": "same-origin" } }), "text/html");
+  const SITE = () => srcSite("komiku", "https://komiku.org"), API = () => srcApi("komiku", "https://api.komiku.org");
+  const okHost = (u) => /(^|\.)komiku\.(org|to|id)$/.test(hostOf(u)) || hostOf(u) === hostOf(SITE());   // + domain dari config
+  const html = async (u) => new DOMParser().parseFromString(await nget(u, { type: "text", headers: { Accept: "text/html,application/xhtml+xml,*/*;q=0.8", Referer: SITE() + "/", "Sec-Fetch-Dest": "document", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Site": "same-origin" } }), "text/html");
   const txt = (el) => (el?.textContent || "").replace(/\s+/g, " ").trim();
   const absU = (v, base) => { try { return new URL(v, base).href; } catch { return ""; } };
   const imgOf = (im, base) => { if (!im) return ""; for (const a of ["data-lazy-src", "data-src", "data-cfsrc", "data-original", "src"]) { const v = im.getAttribute(a); if (v && !/^data:/i.test(v) && !/\.(svg|gif)(\?|$)/i.test(v)) return absU(v, base); } return ""; };
@@ -288,7 +308,7 @@ const KOMI = (() => {
     const p = Date.parse(t); return isNaN(p) ? null : new Date(p).toISOString();
   };
   async function srcPage(sp, b) {
-    const u = new URL(API + "/manga/" + (sp > 1 ? `page/${sp}/` : ""));
+    const u = new URL(API() + "/manga/" + (sp > 1 ? `page/${sp}/` : ""));
     if (b.q) u.searchParams.set("s", b.q);
     u.searchParams.set("orderby", b.sort === "popular" ? "meta_value_num" : "modified");
     if (b.type) u.searchParams.set("tipe", b.type);
@@ -301,7 +321,7 @@ const KOMI = (() => {
       const title = txt(el.querySelector("h3")), a = [...el.querySelectorAll("a[href]")].find((x) => x.querySelector("h3"));
       if (!a || !title) continue;
       const tp = (txt(el.querySelector(".tpe1_inf")).match(/\b(manga|manhwa|manhua)\b/i)?.[1] || b.type || "").toLowerCase();
-      items.push({ id: absU(a.getAttribute("href"), SITE), title, cover: cover(imgOf(el.querySelector("img"), SITE).replace(/\?.*$/, ""), 300), type: tp });
+      items.push({ id: absU(a.getAttribute("href"), SITE()), title, cover: cover(imgOf(el.querySelector("img"), SITE()).replace(/\?.*$/, ""), 300), type: tp });
     }
     // penanda "muat berikutnya" ikut tampil walau hasilnya sedikit; halaman yang tidak penuh = halaman terakhir
     return { items, hasNext: items.length >= 10 };
@@ -356,17 +376,25 @@ const KOMI = (() => {
   };
 })();
 let komikuViaApp = 0;   // sampai kapan Komiku diambil lewat jaringan HP (server sedang ditolak Cloudflare)
-export const canDirectFallback = (src) => src === "komiku" && isApp && !!plugin("CapacitorHttp");
+export const canDirectFallback = (src) => src === "komiku" && isApp && !!plugin("CapacitorHttp") && srcMode("komiku") !== "server";
 export function serverBlocked(src) { if (src === "komiku") { komikuViaApp = Date.now() + 30 * 60e3; logDev("api", "Komiku menolak server; 30 menit ke depan diambil lewat jaringan HP"); } }
 
-export const DIRECT = isApp && plugin("CapacitorHttp") ? { shinigami: SHNG, westmanga: WEST } : {};
+const DIRECT_ALL = isApp && plugin("CapacitorHttp") ? { shinigami: SHNG, westmanga: WEST, komiku: KOMI } : {};
+// mode per sumber (config): "auto" = bawaan (Shinigami & WestManga lewat HP, Komiku lewat server dengan cadangan HP),
+// "app" = selalu lewat HP, "server" = selalu lewat server (cadangan HP dimatikan)
+const viaApp = (src) => { const m = srcMode(src); return m === "app" || (m === "auto" && (src === "shinigami" || src === "westmanga")); };
+export const DIRECT = new Proxy({}, { get: (_, src) => (typeof src === "string" && DIRECT_ALL[src] && viaApp(src) ? DIRECT_ALL[src] : undefined) });
 const NAMES = { shinigami: "Shinigami", westmanga: "WestManga", komiku: "Komiku" };
 // dipanggil api.call(): kembalikan null bila sumber/aksi ini tetap lewat server
 export async function direct(action, body) {
-  const s = DIRECT[body?.source] || (body?.source === "komiku" && Date.now() < komikuViaApp && canDirectFallback("komiku") ? KOMI : null);
+  const s = DIRECT[body?.source] || (body?.source === "komiku" && Date.now() < komikuViaApp && canDirectFallback("komiku") ? KOMI : null);   // DIRECT mengikuti mode config
   if (!s || typeof s[action] !== "function") return null;
   try { return await s[action](body); }
-  catch (e) { throw new Error(`${NAMES[body.source] || body.source} tidak bisa dijangkau dari HP: ${e.message}`); }
+  catch (e) {
+    // gagal lewat HP → mungkin domain sumber pindah: main.js memuat ulang Domain sumber (paling sering tiap 10 menit)
+    try { dispatchEvent(new CustomEvent("nk:srcfail", { detail: body.source })); } catch {}
+    throw new Error(`${NAMES[body.source] || body.source} tidak bisa dijangkau dari HP: ${e.message}`);
+  }
 }
 
 /* ---------- Notifikasi (Firebase Cloud Messaging) ---------- */
