@@ -1184,6 +1184,7 @@ button, [role="button"], .seg, .chips, #nav { -webkit-user-select: none; user-se
 .rm-note { padding: 0 4px; margin-top: -2px; line-height: 1.4; }
 .rq-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .rq-act { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 42px; padding: 0 10px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, .1); font-size: 13px; font-weight: 700; white-space: nowrap; }
+.rq-act.rq-wide { grid-column: 1 / -1; }
 .rq-act:active { background-color: rgba(255, 255, 255, .06); }
 .r-togs.rq .rq-tog { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 46px; padding: 0 12px; }
 .r-togs.rq .rq-tog b { font-size: 13px; text-align: left; }
@@ -1304,7 +1305,7 @@ button.fa-new:active, .hl-go:active { scale: .92; }
   border: 1px solid rgba(255, 255, 255, .14); box-shadow: 0 24px 60px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .08); }
 .r-menu .seg { background: rgba(255, 255, 255, .08); border-color: rgba(255, 255, 255, .08); }
 .r-menu .r-togs { background: rgba(255, 255, 255, .08); }
-.r-menu .r-togs.rq .rq-row { border-top-color: rgba(255, 255, 255, .08); }
+.r-menu .r-togs.rq .rq-row, .r-menu .r-togs.rq .rq-tog { border-top-color: rgba(255, 255, 255, .08); }
 .r-menu .rq-act { background: rgba(255, 255, 255, .06); border-color: rgba(255, 255, 255, .12); }
 .r-menu .cap, .r-menu .rm-note { color: rgba(235, 240, 250, .62); }
 .r-menu-bg { background: rgba(0, 0, 0, .18); }
@@ -1743,3 +1744,10 @@ body[data-screen="reader"] .dl-pop { display: none; }
 .srccfg > summary::-webkit-details-marker { display: none; }
 .srccfg > summary .t1 { flex: 1; min-width: 0; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .srccfg input { font-size: 13px; }
+
+/* tombol jeda gulir otomatis: pojok kanan bawah, tetap tampil walau menu hilang; naik di atas bilah bawah saat menu tampil */
+.r-as { position: absolute; right: 14px; bottom: calc(18px + env(safe-area-inset-bottom)); z-index: 7; transition: bottom .4s cubic-bezier(.32, .72, 0, 1), transform .15s; }
+.reader.ui .r-as { bottom: calc(14px + var(--rbh, 124px) + 12px + env(safe-area-inset-bottom)); }
+.r-as[hidden] { display: none; }
+.r-as:active { transform: scale(.92); }
+.r-as.paused { color: #fff; background: var(--red, #e5242b); box-shadow: 0 6px 18px rgba(229, 36, 43, .35); }

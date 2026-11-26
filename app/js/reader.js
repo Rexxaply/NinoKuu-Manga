@@ -267,7 +267,7 @@ export async function vReader(src, id, chId) {
       return `<button role="radio" aria-selected="${on}" aria-checked="${on}" data-act="rmode" data-v="${k}" ${off ? "disabled" : ""}>${icon(ic, 16)}${n}</button>`; }).join("")}</div>
     ${longStrip ? `<span class="mu xs rm-note">Slide tak tersedia untuk manhwa/manhua.</span>` : ""}
     ${slide ? `<div class="rq-row"><span>Arah geser</span><div class="seg s2">${[["rtl", "Ka → Ki"], ["ltr", "Ki → Ka"]].map(([k, n]) => `<button role="tab" aria-selected="${(rtl ? "rtl" : "ltr") === k}" data-act="rdir" data-v="${k}" aria-label="${k === "rtl" ? "Kanan ke kiri" : "Kiri ke kanan"}">${n}</button>`).join("")}</div></div>` : ""}
-    <div class="rq-acts"><button class="rq-act" data-act="chlist"><span class="gold">${icon("list", 18)}</span>Chapter <span class="mu">${esc(ch.ch)}</span></button><button class="rq-act" data-act="rreport"><span class="redt">${icon("bug", 18)}</span>Laporkan</button></div>
+    <div class="rq-acts"><button class="rq-act rq-wide" data-act="rshare"><span class="redt">${icon("share", 18)}</span>Bagikan halaman ini</button><button class="rq-act" data-act="chlist"><span class="gold">${icon("list", 18)}</span>Chapter <span class="mu">${esc(ch.ch)}</span></button><button class="rq-act" data-act="rreport"><span class="redt">${icon("bug", 18)}</span>Laporkan</button></div>
     <span class="cap mt4">Bacaan</span><div class="r-togs rq">${readPrefsCompact()}</div>
   </div>
   <div class="r-bottom">
@@ -278,7 +278,7 @@ export async function vReader(src, id, chId) {
       ${next ? `<button class="r-main" data-act="main">${icon("play", 16, 2.2)}Lanjut ke Chapter ${esc(next.ch)}</button>`
         : `<button class="r-main last" disabled aria-label="Ini chapter terakhir">${icon("flag", 18, 2)}Chapter Terakhir</button>`}
       <button class="r-sq glass" data-act="next" aria-label="${next ? "Chapter berikutnya" : "Kembali ke info komik"}">${next ? icon("chev", 22, 2.2) : icon("home", 21, 2)}</button>
-    </div></div></div>`;
+    </div></div>${slide ? "" : `<button class="r-round glass r-as" id="ras" data-act="asToggle" aria-label="Jeda gulir otomatis" hidden>${icon("pause", 22, 2.4)}</button>`}</div>`;
   const rd = $("#rd"), box = $("#rbox"), pages = $("#rpages");
   if (ghost) {
     rd.prepend(ghost); const [st, sl] = ghost._pos; ghost.firstChild.scrollTop = st; ghost.firstChild.scrollLeft = sl;
@@ -498,7 +498,8 @@ export async function vReader(src, id, chId) {
   };
   const lpCancel = () => { if (lp) { clearTimeout(lp.t); lp = null; } };
   box.addEventListener("pointerdown", (e) => {
-    const im = e.target.closest?.(".r-img"); if (!im || e.button > 0 || !e.isPrimary) { lpCancel(); return; }
+    // tekan lama untuk bagikan: bawaan mati, dinyalakan di Pengaturan → Bacaan
+    const im = e.target.closest?.(".r-img"); if (!im || e.button > 0 || !e.isPrimary || !S.state.settings.holdShare) { lpCancel(); return; }
     lpCancel();
     lp = { x: e.clientX, y: e.clientY, t: setTimeout(() => { lp = null; if (zoom > 1.05 || seeking) return; lpFired = Date.now(); navigator.vibrate?.(12); pageSheet(Number(im.dataset.i)); }, 550) };
   });
@@ -700,14 +701,27 @@ export async function vReader(src, id, chId) {
     }
     asRaf = requestAnimationFrame(asTick);
   };
-  const asStart = () => { if (!asSpeed() || asRun) return; asRun = true; asLast = 0; asY = box.scrollTop; if (!asRaf) asRaf = requestAnimationFrame(asTick); };
-  function asPause() { asRun = false; cancelAnimationFrame(asRaf); asRaf = 0; }
+  // Tombol jeda di pojok kanan bawah (tetap tampil walau menu hilang) selama gulir otomatis menyala.
+  // asUser = dijeda lewat tombol: menyentuh layar tidak melanjutkannya sampai tombol ditekan lagi.
+  let asUser = false;
+  const asBtn = () => {
+    const b = $("#ras", rd); if (!b) return;
+    b.hidden = !asSpeed();
+    rd.style.setProperty("--rbh", ($(".r-bottom", rd)?.offsetHeight || 124) + "px");
+    const play = !asRun;
+    b.classList.toggle("paused", play);
+    b.setAttribute("aria-label", play ? "Lanjutkan gulir otomatis" : "Jeda gulir otomatis");
+    b.innerHTML = icon(play ? "play" : "pause", 22, 2.4);
+  };
+  const asStart = () => { if (!asSpeed() || asRun || asUser) return; asRun = true; asLast = 0; asY = box.scrollTop; if (!asRaf) asRaf = requestAnimationFrame(asTick); asBtn(); };
+  function asPause() { asRun = false; cancelAnimationFrame(asRaf); asRaf = 0; asBtn(); }
   box.addEventListener("touchstart", () => { asHold = true; clearTimeout(asHoldT); }, { passive: true });
   // jari dilepas: lanjut lagi (gulir manual yang masih meluncur dibiarkan selesai dulu ±0,35 dtk)
-  const asUnhold = (e) => { if (e.touches?.length) return; clearTimeout(asHoldT); asHoldT = setTimeout(() => { asHold = false; asY = box.scrollTop; if (asSpeed() && !asRun && !atEnd) asStart(); }, 350); };
+  const asUnhold = (e) => { if (e.touches?.length) return; clearTimeout(asHoldT); asHoldT = setTimeout(() => { asHold = false; asY = box.scrollTop; if (asSpeed() && !asRun && !atEnd && !asUser) asStart(); }, 350); };
   box.addEventListener("touchend", asUnhold, { passive: true }); box.addEventListener("touchcancel", asUnhold, { passive: true });
   // mulai sendiri saat chapter terbuka (pengaturan aktif), setelah pembaca sempat melihat posisinya
   if (asSpeed()) setTimeout(() => { if (rd.isConnected && !atEnd) asStart(); }, 1200);
+  asBtn();
   // geser slider halaman
   const track = $("#rtrack");
   const seekAt = (clientX) => { const r = track.getBoundingClientRect(); const f = Math.min(1, Math.max(0, (clientX - r.left) / r.width)); goPage(Math.round(f * (total - 1)) + 1); };
@@ -730,6 +744,8 @@ export async function vReader(src, id, chId) {
     menu: () => menu($(".r-menu").hidden), closeMenu: () => menu(false),
     rmode: (el) => { S.setSetting("readMode", el.dataset.v); vReader(src, id, chId); },
     chlist: () => { menu(false); openChList(); },
+    // bagikan halaman yang sedang terlihat (pengganti tekan lama, yang bawaannya mati)
+    rshare: () => { menu(false); pageSheet(curPage); },
     rreport: () => { menu(false); openReport({ source: src, comic_id: id, title: d.manga.title, chapter_id: chId, chapter: ch.ch }); },
     rdir: (el) => { S.setSetting("readDir", el.dataset.v); vReader(src, id, chId); },
     rtog: (el) => {
@@ -745,10 +761,17 @@ export async function vReader(src, id, chId) {
       if (k === "screenMode") syncFs();
       if (k === "nextDelay") { autoNextStop(); if (v !== "off" && atEnd) autoNextStart(); }
       if (k === "autoScroll") {
+        asUser = false;
         if (v === "off") asPause();
         else if (slide) toast("Gulir otomatis hanya untuk mode Scroll");
         else { menu(false); asStart(); }
+        asBtn();
       }
+    },
+    // tombol jeda/lanjut gulir otomatis
+    asToggle: () => {
+      if (asRun) { asUser = true; asPause(); }
+      else { asUser = false; asHold = false; if (atEnd) toast("Sudah di akhir chapter"); else asStart(); }
     },
     cancelNext: () => { autoNextStop(true); toast("Lanjut otomatis dibatalkan untuk chapter ini"); },
     reimg: (el) => { const im = $(`.r-img[data-i="${el.dataset.i}"]`, box); if (im) reloadImg(im); },

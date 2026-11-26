@@ -7,6 +7,24 @@ import { esc, icon } from "./ui.js";
 
 // Isi per versi. Slide: img = nama file di img/new/ (tanpa .webp).
 export const WHATS_NEW = {
+  "1.12.0": {
+    title: "Yang baru di Ninokuu 1.12",
+    intro: "Tombol jeda gulir otomatis, tombol Bagikan di menu bacaan, dan menu Lainnya yang lebih ringkas.",
+    features: [
+      ["Jeda gulir otomatis", "Saat gulir otomatis menyala, tombol di pojok kanan bawah tetap tampil walau menu tersembunyi. Tekan untuk menjeda, tekan lagi untuk lanjut."],
+      ["Bagikan halaman dari menu", "Menu ⋯ saat membaca punya tombol Bagikan halaman ini, untuk membagikan halaman yang sedang terlihat."],
+      ["Tekan lama bisa dimatikan", "Tekan lama gambar untuk bagikan kini mati dari awal supaya tidak mengganggu saat membaca. Nyalakan di menu ⋯ atau Pengaturan → Bacaan."],
+      ["Menu Lainnya lebih ringkas", "Notifikasi HP pindah ke Dukungan, dan cek pembaruan ada di Tentang aplikasi."],
+    ],
+    fixes: [
+      "Garis pemisah di menu bacaan kini seragam.",
+    ],
+    tour: [
+      { img: "jeda", title: "Jeda gulir otomatis", text: "Tekan tombol di pojok kanan bawah untuk menjeda; layar bebas disentuh. Tekan lagi untuk lanjut." },
+      { img: "bagikan", title: "Bagikan dari menu ⋯", text: "Buka menu ⋯ saat membaca, lalu tekan Bagikan halaman ini. Sakelar tekan lama juga ada di sini." },
+      { img: "tentang", title: "Cek pembaruan", text: "Lainnya → Tentang aplikasi → Cek pembaruan." },
+    ],
+  },
   "1.11.0": {
     title: "Yang baru di Ninokuu 1.11",
     intro: "Balas pesan dan komentar, impor koleksi dari aplikasi lain, rak di Koleksi, pindah sumber, dan Top 10 bergaya carousel.",
@@ -18,7 +36,7 @@ export const WHATS_NEW = {
       ["Pindah sumber", "Pindahkan komik ke sumber lain beserta posisi baca, lonceng, dan raknya."],
       ["Riwayat bisa dicari", "Kolom cari, bagian Terakhir dibuka, dan tombol ⋯ untuk menghapus satu komik dari riwayat."],
       ["Top 10 & Mirip ini", "Top 10 di Beranda kini carousel dengan kartu tengah menyala; halaman komik punya bagian Mirip ini."],
-      ["Bagikan potongan halaman", "Tekan lama gambar saat membaca, pilih bagian panel yang mau dibagikan."],
+      ["Bagikan potongan halaman", "Nyalakan di Pengaturan → Bacaan, lalu tekan lama gambar saat membaca dan pilih bagian panel yang mau dibagikan."],
     ],
     fixes: [
       "Zoom saat membaca bisa digeser ke samping, dengan efek kenyal saat mentok.",
