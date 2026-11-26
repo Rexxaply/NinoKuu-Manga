@@ -545,14 +545,14 @@ ${user ? group("Akun", mrow("user", "Akun", "Foto profil · nama tampilan · ema
 ${["developer", "moderator"].includes(p?.role) ? group("Developer", mrow("dev", "Panel developer", p.role === "developer" ? "Moderasi, pengumuman, statistik" : "Moderasi chat", "dev")) : ""}
 ${group("Bacaanmu", mrow("star", "Level &amp; Rank", user ? `${lv.rank} · Lv ${lv.lv}${X.cachedStatus() ? ` · 🔥 ${X.cachedStatus().streak} hari` : ""}` : "Masuk untuk mulai naik level", "level") + (user ? mrow("share", "Rekap bacaan", "7 & 30 hari · bagikan sebagai gambar", "recap") : "") + mrow("down", "Unduhan", DL.supported() ? `<span id="dlsub">${DL.savedCount()} file tersimpan${DL.progressLine() ? " · " + esc(DL.progressLine()) : ""}</span>${dlBar(DL.active())}` : "Baca offline di aplikasi APK", "dlrow") + mrow("clock", "Riwayat baca", `${S.history().length} judul`, "goHist") + mrow("sliders", "Pengaturan", "Mode baca · gulir otomatis · tampilan layar · efek avatar", "settings"))}
 ${N.DEV ? group("Ninokuu Dev", mrow("bug", "Log error", `${N.devLog().length} catatan · salin & kirim ke developer`, "devlog") + mrow("info", "Build uji", `v${esc(VERSION)} · build ${esc(N.BUILD)} · function ${esc(api.FN.split("/").pop())}`, "")) : ""}
-${N.isApp ? group("Aplikasi", `<span id="updrow"></span>` + (N.pushSupported() || !N.DEV ? mrow("bell", "Notifikasi HP", `<span id="pushst">Memeriksa…</span>`, "pushset") : mrow("bell", "Notifikasi HP", "Belum aktif di Ninokuu Dev (paket .dev belum didaftarkan di Firebase)", "")) + mrow("info", "Versi aplikasi", `v${esc(VERSION)}${N.DEV ? " Dev" : ""} · ketuk untuk cek pembaruan`, "checkupd"))
+${N.isApp ? ""
   : group("Aplikasi Android", mrow("down", "Pasang aplikasi Android (APK)", "Baca Shinigami &amp; WestManga, notifikasi chapter baru di HP", "getapk"))}
 ${group("Data &amp; penyimpanan", mrow("cloud", "Backup data offline", "Simpan koleksi, riwayat, dan pengaturan ke file", "backup") + mrow("restore", "Pulihkan data", "Dari file backup", "restore") + mrow("swap", "Impor dari aplikasi lain", "Koleksi & riwayat dari backup BacaKomik", "import") + mrow("trash", "Bersihkan cache", `<span id="cachesub">Menghitung cache di HP…</span>`, "cache"))}
 <section class="sec s20"><button class="tk-card" data-act="trakteer" aria-label="Dukung Ninokuu di Trakteer">
   <span class="tk-ic">${icon("gift", 26, 2)}</span>
   <span class="tk-t"><b>Traktir Ninokuu</b><span>Gratis &amp; tanpa iklan berkat dukunganmu. Kirim hadiah kecil lewat Trakteer.</span></span>
   <span class="tk-go">${icon("chev", 18, 2.4)}</span></button></section>
-${group("Dukungan", mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord Ninokuu", "discord") + mrow("star", "Yang baru di versi ini", `Fitur baru &amp; panduan bergambar v${esc(VERSION)}`, "whatsnew") + mrow("info", "Tentang aplikasi", "Versi " + esc(VERSION), "about") + mrow("shield", "Kebijakan privasi", "", "privacy") + mrow("doc", "Ketentuan pengguna", "", "terms") + (user ? mrow("out", "Keluar", "", "logout", { danger: true }) : ""))}
+${group("Dukungan", (N.isApp ? `<span id="updrow"></span>` + (N.pushSupported() || !N.DEV ? mrow("bell", "Notifikasi HP", `<span id="pushst">Memeriksa…</span>`, "pushset") : mrow("bell", "Notifikasi HP", "Belum aktif di Ninokuu Dev (paket .dev belum didaftarkan di Firebase)", "")) : "") + mrow("chat", "Lapor bug &amp; saran", "Lewat server Discord Ninokuu", "discord") + mrow("star", "Yang baru di versi ini", `Fitur baru &amp; panduan bergambar v${esc(VERSION)}`, "whatsnew") + mrow("info", "Tentang aplikasi", `Versi ${esc(VERSION)}${N.DEV ? " Dev" : ""}${N.isApp ? " · cek pembaruan" : ""}`, "about") + mrow("shield", "Kebijakan privasi", "", "privacy") + mrow("doc", "Ketentuan pengguna", "", "terms") + (user ? mrow("out", "Keluar", "", "logout", { danger: true }) : ""))}
 <p class="mu xs center mt18">Ninokuu versi ${esc(VERSION)}</p><div class="pad-nav"></div>`;
   if (N.isApp) {
     refreshPushStatus();
@@ -920,9 +920,13 @@ async function vPage(name) {
       rmode: (el) => { S.setSetting("readMode", el.dataset.v); draw(); }, dir: (el) => { S.setSetting("readDir", el.dataset.v); draw(); }, rtog: (el) => { const on = !S.state.settings[el.dataset.k]; S.setSetting(el.dataset.k, on); flipToggle(el, on); }, rch: (el) => { S.setSetting(el.dataset.k, el.dataset.v); flipChoice(el); } });
     return;
   } else if (name === "about") {
+    acts2.checkupd = () => checkUpdate(true);
+    // ada versi baru → baris cek pembaruan berubah jadi "Versi baru tersedia"
+    if (N.isApp) N.latestBuild().then((r) => { const el = $("#aboutUpd"); if (el && r?.newer) el.innerHTML = mrow("refresh", `<span class="gold">Versi baru tersedia</span>`, `v${esc(r.version || "")} · ${KIND_NAME[r.kind] || "Pembaruan"} · ketuk untuk melihat`, "checkupd"); }).catch(() => {});
     html = topbar("Tentang aplikasi") + `<div class="px col g14 mt10"><div class="card col center g10 big-card"><img src="icons/logo.png" alt="Ninokuu" class="about-logo">
-    <span class="mu sm lh">Baca manga, manhwa, dan manhua dari banyak sumber dalam satu aplikasi.</span><span class="row g8 jc"><span class="pill">Versi ${esc(VERSION)}</span><span class="pill">Web</span></span></div>
-  <div class="group">${mrow("layers", "Sumber yang didukung", "Komiku, Kiryuu, Shinigami, WestManga")}${mrow("cloud", "Sinkronisasi", "Supabase · koleksi, riwayat, pengaturan")}</div>
+    <span class="mu sm lh">Baca manga, manhwa, dan manhua dari banyak sumber dalam satu aplikasi.</span><span class="row g8 jc"><span class="pill">Versi ${esc(VERSION)}${N.DEV ? " Dev" : ""}</span><span class="pill">${N.isApp ? "Android" : "Web"}</span></span></div>
+  ${N.isApp ? `<div class="group" id="aboutUpd">${mrow("refresh", "Cek pembaruan", `Kamu memakai v${esc(VERSION)} · ketuk untuk memeriksa`, "checkupd")}</div>` : ""}
+  <div class="group">${mrow("layers", "Sumber yang didukung", "Komiku, Kiryuu, Shinigami, WestManga, BacaKomik")}${mrow("cloud", "Sinkronisasi", "Supabase · koleksi, riwayat, pengaturan")}</div>
   <div class="card lh sm soft"><b class="b14 block mb6">Penting diketahui</b>Ninokuu tidak menyimpan atau mengunggah komik. Aplikasi hanya menampilkan konten dari situs sumber pihak ketiga. Hak cipta tiap karya milik penulis dan penerbitnya. Dukung karya favoritmu lewat rilis resminya bila tersedia.</div>
   <p class="mu xs center lh">Dibuat dengan ♥ oleh Rexxaply<br>© 2026 Ninokuu</p></div>`;
   } else if (DOCS[name]) {

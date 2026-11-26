@@ -17,9 +17,11 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 ### Ringkasan
 - Tekan lama gambar untuk membagikan halaman kini bisa dinyalakan/dimatikan di Pengaturan → Bacaan (bawaan: mati)
 - Tombol "Bagikan halaman ini" di menu ⋯ saat membaca, untuk membagikan halaman tanpa tekan lama
+- Menu Lainnya lebih ringkas: Notifikasi HP pindah ke Dukungan, dan cek pembaruan kini ada di Tentang aplikasi
 
 ### Detail
 - Pengaturan `holdShare` (READ_OPTS + label singkat di menu cepat pembaca); `pointerdown` di pembaca hanya memulai tekan lama bila menyala. Bawaan mati (pengguna lama ikut mati). Teks slide "Bagikan potongan halaman" menyebut cara menyalakannya. Menu ⋯ pembaca: tombol lebar `rshare` (`.rq-wide`) membuka lembar bagikan untuk halaman yang sedang terlihat (`pageSheet(curPage)`)
+- Lainnya (APK): grup "Aplikasi" dihapus; baris "Versi baru tersedia" (bila ada) + Notifikasi HP di awal grup Dukungan; "Versi aplikasi" digabung ke "Tentang aplikasi" (subjudul "· cek pembaruan"). Halaman Tentang: baris Cek pembaruan (berubah jadi "Versi baru tersedia" bila ada), label Android/Web sesuai perangkat, daftar sumber + BacaKomik
 
 ## 1.11.1 — 26 Nov 2026
 
