@@ -237,12 +237,12 @@ export async function vDetail(src, id) {
   // kembali ke halaman ini: "Mirip ini" & komentar langsung digambar dari ingatan (tidak muncul kerangka lalu meloncat);
   // komentar tetap diperbarui di belakang, digambar ulang hanya bila berubah
   const cmKey = src + "|" + id, cmOld = cmMem.get(cmKey);
-  let cmList = cmOld ? cmOld.l : null, cmN = cmOld ? cmOld.n : 0, lk = null, lkBusy = false, sim = simMem.has(cmKey) ? simMem.get(cmKey) : null;
+  let cmList = cmOld ? cmOld.l : null, cmN = cmOld ? cmOld.n : 0, lk = null, lkBusy = false, sim = simMem.has(cmKey) ? simMem.get(cmKey) : null; const simEager = sim !== null;   // sudah pernah dimuat: sampul langsung (bukan lazy) agar tidak sempat tampil huruf awal
   // "Mirip ini": dimuat saat bagiannya hampir terlihat (hemat permintaan untuk yang tidak menggulir sejauh itu)
   function simHtml() {
     if (sim && !sim.length) return "";
     return `<div class="sec-h mt24"><h2>Mirip ini</h2><span class="mu sm">${esc(srcName(src))} · genre sama</span></div>
-  <div class="hs sim-row">${sim === null ? loading(3, "sk-top") : sim.map((it) => `<a class="top10" href="${comicHref(src, it.id)}"><span class="t10-cv">${cover(it.cover, it.title, "top")}${scoreTag(it, src)}</span><span class="t10-t"><b class="t2">${esc(it.title)}</b></span></a>`).join("")}</div>`;
+  <div class="hs sim-row">${sim === null ? loading(3, "sk-top") : (simEager ? (h) => h.replace(/loading="lazy"/g, 'loading="eager"') : (h) => h)(sim.map((it) => `<a class="top10" href="${comicHref(src, it.id)}"><span class="t10-cv">${cover(it.cover, it.title, "top")}${scoreTag(it, src)}</span><span class="t10-t"><b class="t2">${esc(it.title)}</b></span></a>`).join(""))}</div>`;
   }
   const paintSim = () => { const el = $("#simsec"); if (el) el.innerHTML = simHtml(); };
   let simIo = null;
