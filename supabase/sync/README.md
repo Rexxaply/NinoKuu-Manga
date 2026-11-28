@@ -52,3 +52,12 @@ CLOUD_SECRET_KEY='sb_secret_...'           # Cloud → Settings → API Keys (un
 
 Pindah server (Mini PC): cukup pindahkan seluruh isi lokal (backup/restore volume) + `~/.sync/`, `~/.sync-cloud.env`,
 `~/sync.sh`; cursor ikut, tidak perlu mengulang langkah 2–4.
+
+## Skrip hari-H (`cutover.sh`)
+
+Mengurus sisi server saat semua pengguna dipindah ke server lokal. Salin ke WSL: `cp cutover.sh ~/ && chmod +x ~/cutover.sh`.
+
+- `~/cutover.sh --cek` — hanya memeriksa (server sehat, `sync.errors` kosong, urutan ID, crontab). Tidak mengubah apa pun; aman dijalankan kapan saja, termasuk sekarang.
+- `~/cutover.sh` — periksa → sinkron terakhir dua kali (harus `error 0`) → meminta kamu mematikan Cloud Cron → memasang cron lokal `ninokuu-cron.sh` (tiap 15 menit) → mencetak langkah manual yang tersisa.
+
+Skrip tidak menyentuh GitHub, APK, atau bot.
