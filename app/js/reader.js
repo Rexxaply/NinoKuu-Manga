@@ -443,14 +443,15 @@ export async function vReader(src, id, chId) {
   // Ketukan pertama langsung menampilkan/menyembunyikan menu (tanpa menunggu 320 ms). Bila ternyata ketukan
   // kedua datang cepat (ketuk 2×), menu dikembalikan ke keadaan semula lalu halaman diperbesar.
   const setUi = (on) => (on ? showUi() : rd.classList.remove("ui"));
-  // Mode fullscreen: tarikan ke bawah dari ±40px teratas layar hanya memunculkan bilah status (tanpa menu bacaan),
-  // supaya panel notifikasi bisa ditarik. Bilah disembunyikan lagi setelah 4 detik bila menu tetap tertutup.
+  // Mode fullscreen: tarikan ke bawah yang dimulai di area bilah status (±28px teratas) memunculkan bilah status saja,
+  // meniru tampilan "sementara" bawaan Android: pita gelap transparan, lalu hilang sendiri setelah 3 detik.
+  // Area sengaja sempit agar menggulir ke atas dari bagian atas halaman tidak ikut memicunya.
   let edgeY = null, edgeT = 0;
-  rd.addEventListener("touchstart", (e) => { edgeY = e.touches.length === 1 && choiceVal("screenMode") === "fullscreen" && !rd.classList.contains("ui") && e.touches[0].clientY < 40 ? e.touches[0].clientY : null; }, { passive: true });
+  rd.addEventListener("touchstart", (e) => { edgeY = e.touches.length === 1 && choiceVal("screenMode") === "fullscreen" && !rd.classList.contains("ui") && e.touches[0].clientY < 28 ? e.touches[0].clientY : null; }, { passive: true });
   rd.addEventListener("touchmove", (e) => {
     if (edgeY === null || e.touches[0].clientY - edgeY < 30) return;
     edgeY = null; N.setFullscreen(false, true); document.body.classList.add("nk-sb");
-    clearTimeout(edgeT); edgeT = setTimeout(() => { document.body.classList.remove("nk-sb"); if (rd.isConnected && parse().name === "reader") syncFs(); }, 4000);
+    clearTimeout(edgeT); edgeT = setTimeout(() => { document.body.classList.remove("nk-sb"); if (rd.isConnected && parse().name === "reader") syncFs(); }, 3000);
   }, { passive: true });
   rd.addEventListener("touchend", () => { edgeY = null; }, { passive: true });
   // Tekan lama satu gambar (±0,55 dtk, jari tidak bergeser) → lembar "Bagikan gambar ini" lewat menu bagikan HP
@@ -867,7 +868,8 @@ export async function vReader(src, id, chId) {
   addEventListener("online", onOnline);
   // Mode fullscreen: bilah status HP mengikuti menu bacaan. Menu tampil → bilah tampil; menu hilang
   // (diketuk atau digulir) → bilah disembunyikan. Mode standar: bilah selalu tampil.
-  const syncFs = () => { if (leaving) return; document.body.classList.remove("nk-sb"); const fs = choiceVal("screenMode") === "fullscreen"; N.setFullscreen(fs && !rd.classList.contains("ui"), fs); };
+  let fsUi = null;
+  const syncFs = () => { if (leaving) return; const ui = rd.classList.contains("ui"); if (document.body.classList.contains("nk-sb") && ui === fsUi) return; fsUi = ui; document.body.classList.remove("nk-sb"); clearTimeout(edgeT); const fs = choiceVal("screenMode") === "fullscreen"; N.setFullscreen(fs && !rd.classList.contains("ui"), fs); };
   const fsObs = new MutationObserver(syncFs);
   fsObs.observe(rd, { attributes: true, attributeFilter: ["class"] });
   syncFs();   // langsung saat pembaca dibuka (juga pindah chapter: overlay tetap, halaman tidak melompat)
