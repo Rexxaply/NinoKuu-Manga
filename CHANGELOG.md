@@ -14,6 +14,66 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ## Berikutnya (belum dirilis)
 
+## 1.12.7 — 29 Nov 2026
+
+### Ringkasan
+- Membuka komik untuk melanjutkan bacaan kini lebih mulus, tanpa layar hitam sekejap
+- Perbaikan pada halaman info komik: bagian "Mirip ini" dan komentar tidak lagi berkedip saat kembali dari pembaca
+
+### Detail
+- Pembaca (`hold`): masuk dari info komik dengan posisi lanjut > 1, pembaca dipasang tersembunyi (`.reader.holding`) di atas halaman lama; ditukar setelah gambar halaman tujuan termuat (maks 0,3 dtk), lalu animasi bar masuk & toast "Lanjut dari halaman" berjalan seperti biasa
+- Info komik: "Mirip ini" diambil dari `simMem` (sampul `loading="eager"`), pratinjau komentar dari `cmMem`; komentar tetap diperbarui di belakang dan hanya digambar ulang bila berubah
+
+## 1.12.6 — 29 Nov 2026
+
+### Ringkasan
+- Tampilan pembaca di mode fullscreen dikembalikan seperti semula
+
+### Detail
+- `reader.js`, `native.js`, `app.css` dan plugin NinokuuCache dikembalikan ke kondisi sebelum 1.12.1 (gestur tarik bilah status buatan, kunci `--sat`, latar `nk-sb`, animasi `leaving` dihapus). Area tarik bilah status kembali bawaan Android
+
+## 1.12.5 — 29 Nov 2026
+
+### Ringkasan
+- Perbaikan tampilan pembaca di mode fullscreen: menu tidak lagi bergeser saat bilah status ditarik, latar di belakang jam lebih jelas, dan kembali ke info komik tanpa kedipan
+
+### Detail
+- Plugin NinokuuCache `insets()`: tinggi bilah status (abaikan visibilitas); selama overlay fullscreen `--sat` dikunci ke nilai itu (inline di body), dilepas saat overlay mati
+- Latar `body.nk-sb::before` lebih tebal (`--sat + 16px`, .72 → .5)
+- Kembali dari pembaca (kelas `leaving`): di `body.nk-fs`, bar atas & gradasi memudar di tempat (tidak meluncur melewati bilah status)
+
+## 1.12.4 — 28 Nov 2026
+
+### Ringkasan
+- Perbaikan pada pembaca: di mode fullscreen, bilah status (jam, baterai) kini lebih mudah ditarik dari atas layar tanpa membuka menu bacaan
+
+### Detail
+- Plugin NinokuuCache: `OnTouchListener` pada WebView (aktif hanya saat bilah disembunyikan lewat `bars`) membaca tarikan ke bawah ≥30dp yang dimulai di 40dp teratas; bila bilah belum tampil, `show(statusBars)` lalu `hide` lagi setelah 3 detik; event `sbPull`/`sbPullEnd` ke halaman untuk latar gelap tipis (`body.nk-sb::before`). Gestur buatan di `reader.js` (1.12.1–1.12.3) dihapus karena bentrok dengan gestur sistem
+
+## 1.12.3 — 28 Nov 2026
+
+### Ringkasan
+- Perbaikan pada pembaca: bilah status yang ditarik di mode fullscreen kini punya latar gelap lagi, jadi jam dan baterai tetap terbaca
+
+### Detail
+- Kelas `body.nk-sb` saat bilah status ditarik tanpa menu: gradasi `.reader::before` turun sebagian (`--sat + 36px`). Dilepas setelah 4 detik, di `syncFs()`, dan saat pembaca ditutup
+
+## 1.12.2 — 28 Nov 2026
+
+### Ringkasan
+- Perbaikan pada pembaca: di mode fullscreen, tarikan dari atas layar kini hanya memunculkan bilah status, tanpa membuka menu bacaan
+
+### Detail
+- Tarikan dari atas (mode fullscreen, menu tertutup): area awal 80px → 40px, jarak tarik 18px → 30px; hanya bilah status yang ditampilkan (`N.setFullscreen(false, true)`), lalu `syncFs()` menyembunyikannya lagi setelah 4 detik. Timer dibersihkan saat pembaca ditutup
+
+## 1.12.1 — 28 Nov 2026
+
+### Ringkasan
+- Perbaikan pada pembaca: di mode fullscreen, panel notifikasi kini mudah ditarik dari atas layar
+
+### Detail
+- Pembaca (mode fullscreen, menu tersembunyi): tarikan ke bawah ≥18px yang dimulai di 80px teratas layar menampilkan menu bacaan (`setUi(true)`), sehingga bilah status ikut tampil tetap dan panel notifikasi bisa ditarik. Sebelumnya hanya tepi paling atas yang ditangkap sistem (perilaku sementara). Mode standar tidak berubah
+
 ## 1.12.0 — 26 Nov 2026
 
 ### Ringkasan

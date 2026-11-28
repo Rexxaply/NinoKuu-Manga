@@ -35,22 +35,26 @@ const json = (d: unknown, status = 200) =>
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const SUPABASE_URL = (Deno.env.get("SUPABASE_URL") || "").replace(/\/+$/, "");
+// alamat yang dilihat aplikasi (self-hosted: SUPABASE_URL di dalam container hanya alamat internal, mis. http://api-gw:8000)
+const PUBLIC_URL = (Deno.env.get("SUPABASE_PUBLIC_URL") || SUPABASE_URL).replace(/\/+$/, "");
 function serviceKey() {
-  const direct = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SECRET_KEY");
-  if (direct) return direct;
+  // Kunci baru (sb_secret_...) diutamakan: PostgREST self-hosted menolak SERVICE_ROLE_KEY lama (HS256).
+  const list: string[] = [];
+  const one = Deno.env.get("SUPABASE_SECRET_KEY"); if (one) list.push(one);
   const many = Deno.env.get("SUPABASE_SECRET_KEYS");
   if (many) {
-    try { const j = JSON.parse(many); const v = typeof j === "string" ? j : Object.values(j).find((x) => typeof x === "string"); if (v) return v as string; }
-    catch { return many.split(",")[0].trim(); }
+    try { const j = JSON.parse(many); if (typeof j === "string") list.push(j); else Object.values(j).forEach((x) => { if (typeof x === "string") list.push(x); }); }
+    catch { many.split(",").forEach((x) => { if (x.trim()) list.push(x.trim()); }); }
   }
-  return "";
+  const legacy = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"); if (legacy) list.push(legacy);
+  return list.find((x) => x.startsWith("sb_secret_")) || list[0] || "";
 }
 const SERVICE_KEY = serviceKey();
 const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 // Nama function diambil dari alamat permintaan: kode yang sama dipasang sebagai ninokuu-api (global)
 // dan ninokuu-api-dev (Ninokuu Dev). Alamat proxy gambar menunjuk ke function yang sedang dipakai.
 let FN_NAME = NAME;
-let SELF = `${SUPABASE_URL}/functions/v1/${FN_NAME}`;
+let SELF = `${PUBLIC_URL}/functions/v1/${FN_NAME}`;
 const IS_DEV = () => FN_NAME.endsWith("-dev");
 
 /* ---------- fetch aman ---------- */
@@ -1359,7 +1363,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   const url = new URL(req.url);
   const seg = url.pathname.split("/").filter(Boolean).find((x) => /^ninokuu-api(-dev)?$/.test(x));
-  if (seg && seg !== FN_NAME) { FN_NAME = seg; SELF = `${SUPABASE_URL}/functions/v1/${FN_NAME}`; }
+  if (seg && seg !== FN_NAME) { FN_NAME = seg; SELF = `${PUBLIC_URL}/functions/v1/${FN_NAME}`; }
   try {
     if (req.method === "GET") {
       const img = url.searchParams.get("img");

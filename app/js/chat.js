@@ -161,12 +161,12 @@ export async function vChat(view, ctx, opt = {}) {
   // rep: balasan di dalam utas komentar (lebih kecil, menjorok). Kutipan pesan yang dibalas: chat publik selalu
   // (gaya WhatsApp, ketuk = lompat ke pesan asli); komentar hanya bila membalas balasan lain (bukan komentar induknya).
   const byId = (id) => msgs.find((x) => x.id === id) || extra.get(id) || null;
-  const snip = (m) => (plain(m.body).replace(/\s+/g, " ").slice(0, 90) || "") + (m.image_path ? (m.body ? " · " : "") + "Gambar" : "");
+  const snip = (m) => (plain(m.body).replace(/\s+/g, " ").slice(0, 160) || "") + (m.image_path ? (m.body ? " · " : "") + "Gambar" : "");
   const quote = (m, small) => {
     const p = byId(m.reply_to);
     if (!m.reply_to) return "";
     if (!p) return `<span class="m-q gone${small ? " sm" : ""}">${icon("reply", 12, 2.2)}<span class="mu">Pesan yang dibalas sudah dihapus</span></span>`;
-    return `<button class="m-q${small ? " sm" : ""}${p.user_id === me ? " me" : ""}" data-c="jump" data-id="${p.id}"><b>${esc(p.user_id === me ? "Kamu" : p.name)}</b><span>${p.image_path ? icon("img", 12) : ""}${esc(snip(p) || "Pesan")}</span></button>`;
+    return `<button class="m-q${small ? " sm" : ""}${p.user_id === me ? " me" : ""}" data-c="jump" data-id="${p.id}"><b>${esc(p.user_id === me ? "Kamu" : p.name)}</b><span class="q-t">${p.image_path ? icon("img", 11) : ""}${esc(snip(p) || "Pesan")}</span></button>`;
   };
   let prev = null;
   const one = (m, o = {}) => {
@@ -430,10 +430,10 @@ function storageHtml(s) {
   if (!s) return "";
   if (s.error) return `<section class="col g10"><h2 class="cap m0">Penyimpanan server</h2><div class="note">${icon("info", 18)}<span>Kontrol penyimpanan belum aktif. Jalankan ulang <b>ninokuu-schema.sql</b> di SQL Editor Supabase. <span class="mu">(${esc(s.error)})</span></span></div></section>`;
   const tables = (s.tables || []).slice(0, 14);
-  return `<section class="col g10"><h2 class="cap m0">Penyimpanan server</h2>
+  return `<section class="col g10"><h2 class="cap m0">Penyimpanan server <span class="mu xs">· ${api.onBackup() ? "server cadangan (Cloud)" : "server utama"}</span></h2>
   <div class="card col g14">${bar("Database", s.db_bytes, s.db_quota)}${bar("Gambar chat (Storage)", s.img_bytes, s.img_quota, `${Number(s.img_count).toLocaleString("id-ID")} file`)}
     <details class="tbls"><summary class="sm b">Rincian tabel</summary>${tables.map((t) => `<span class="row sb xs"><span>${esc(t.name)}</span><span class="mu">${Number(t.rows).toLocaleString("id-ID")} baris · ${fmtB(t.bytes)}</span></span>`).join("")}</details>
-    <span class="mu xs">Kuota paket Free Supabase. Bila database penuh, Supabase membuatnya hanya-baca sampai dibersihkan.</span></div>
+    <span class="mu xs">Batas bawaan = paket Free Supabase; di server sendiri atur lewat app_config (db_quota_bytes, img_quota_bytes). Bila database Cloud penuh, Supabase membuatnya hanya-baca sampai dibersihkan.</span></div>
   <div class="group">${CLEAN.map(([k, title, days, sub]) => `<div class="mrow clean"><span class="rc-mid"><b>${title}</b><span class="mu sm">${sub(s)}</span></span>
     ${days ? `<select data-k="${k}" aria-label="Umur data">${days.map((d) => `<option value="${d}">&gt; ${d} hari</option>`).join("")}</select>` : ""}
     <button class="btn ghost sm" data-d="clean" data-k="${k}">Bersihkan</button></div>`).join("")}</div></section>`;
@@ -454,7 +454,8 @@ function annCard(a) {
 /* ---------- Panel developer ---------- */
 // Panduan (khusus developer): semua API/domain yang bisa diganti manual, cara mendapatkannya, sampai jadi APK lagi.
 const gh = (path, label) => `<a href="https://github.com/Rexxaply/NinoKuu-Manga/${path}" target="_blank" rel="noopener">${label}</a>`;
-const SB = (path, label) => `<a href="https://supabase.com/dashboard/project/ocersqyrztzegwzjvvoh/${path}" target="_blank" rel="noopener">${label}</a>`;
+// tautan dashboard mengikuti server yang sedang dipakai: Cloud → supabase.com, server sendiri → Studio di alamat server itu
+const SB = (path, label) => { const cloud = /\.supabase\.co$/.test(new URL(api.SB_URL).hostname); return `<a href="${cloud ? "https://supabase.com/dashboard/project/ocersqyrztzegwzjvvoh/" : api.SB_URL + "/project/default/"}${path}" target="_blank" rel="noopener">${label}</a>`; };
 const step = (n, t, hint = "") => `<li><span class="gs-n">${n}</span><span class="gs-t"><b>${t}</b>${hint ? `<span class="mu xs">${hint}</span>` : ""}</span></li>`;
 const card = (title, sub, inner, foot = "") => `<details class="card guide"><summary><b>${title}</b><span class="mu xs">${sub}</span></summary>${inner}${foot ? `<p class="mu xs gs-foot">${foot}</p>` : ""}</details>`;
 const row = (k, where, what) => `<li class="gmap-r"><code>${k}</code><span class="mu xs">${what}</span><span class="gmap-w ${where === "Kode" ? "apk" : "sb"}">${where === "Supabase" ? "Supabase · tanpa APK" : where === "Panel" ? "Panel · tanpa APK" : "Kode · APK baru"}</span></li>`;

@@ -28,6 +28,8 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          FALLBACK_URL: ${{ secrets.FALLBACK_SUPABASE_URL }}
+          FALLBACK_KEY: ${{ secrets.FALLBACK_SUPABASE_ANON_KEY }}
         run: |
           if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
             echo "::error::Secret SUPABASE_URL / SUPABASE_ANON_KEY belum diisi (Langkah 8 panduan)."
@@ -40,8 +42,12 @@ jobs:
           import json, os, re
           url = os.environ["SUPABASE_URL"].strip().rstrip("/")
           key = os.environ["SUPABASE_ANON_KEY"].strip()
-          if not re.match(r"^https://[a-z0-9-]+\.supabase\.(co|in)$", url):
-              raise SystemExit("::error::SUPABASE_URL harus berbentuk https://xxxx.supabase.co")
+          if not re.match(r"^https://[a-z0-9.-]+$", url):
+              raise SystemExit("::error::SUPABASE_URL harus berbentuk https://xxxx.supabase.co atau https://panel.contoh.com")
+          fb_url = os.environ.get("FALLBACK_URL", "").strip().rstrip("/"); fb_key = os.environ.get("FALLBACK_KEY", "").strip()
+          if bool(fb_url) != bool(fb_key): raise SystemExit("::error::FALLBACK_SUPABASE_URL dan FALLBACK_SUPABASE_ANON_KEY harus diisi keduanya (atau dua-duanya kosong).")
+          if fb_url and not re.match(r"^https://[a-z0-9.-]+$", fb_url): raise SystemExit("::error::FALLBACK_SUPABASE_URL tidak valid.")
+          if fb_key.startswith("sb_secret_"): raise SystemExit("::error::FALLBACK_SUPABASE_ANON_KEY berisi kunci RAHASIA.")
           # kunci JWT lama: tolak bila perannya service_role
           if key.startswith("eyJ"):
               import base64
@@ -50,7 +56,7 @@ jobs:
                   raise SystemExit("::error::SUPABASE_ANON_KEY bukan kunci anon.")
           ver = open("VERSION").read().strip()
           if not re.match(r"^\d+\.\d+\.\d+$", ver): raise SystemExit("::error::Isi berkas VERSION harus mayor.minor.patch, mis. 1.2.3")
-          open("app/config.js", "w").write("window.NINOKUU_CONFIG = " + json.dumps({"SUPABASE_URL": url, "SUPABASE_ANON_KEY": key, "VERSION": ver, "REPO": os.environ["GITHUB_REPOSITORY"]}) + ";\n")
+          open("app/config.js", "w").write("window.NINOKUU_CONFIG = " + json.dumps({"SUPABASE_URL": url, "SUPABASE_ANON_KEY": key, "FALLBACK_URL": fb_url, "FALLBACK_KEY": fb_key, "VERSION": ver, "REPO": os.environ["GITHUB_REPOSITORY"]}) + ";\n")
           PY
           echo "config.js siap (versi $(grep -o '"VERSION": "[^"]*"' app/config.js))"
 
