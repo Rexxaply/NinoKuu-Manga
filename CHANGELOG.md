@@ -14,6 +14,16 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ## Berikutnya (belum dirilis)
 
+## 1.12.5 — 29 Nov 2026
+
+### Ringkasan
+- Perbaikan tampilan pembaca di mode fullscreen: menu tidak lagi bergeser saat bilah status ditarik, latar di belakang jam lebih jelas, dan kembali ke info komik tanpa kedipan
+
+### Detail
+- Plugin NinokuuCache `insets()`: tinggi bilah status (abaikan visibilitas); selama overlay fullscreen `--sat` dikunci ke nilai itu (inline di body), dilepas saat overlay mati
+- Latar `body.nk-sb::before` lebih tebal (`--sat + 16px`, .72 → .5)
+- Kembali dari pembaca (kelas `leaving`): di `body.nk-fs`, bar atas & gradasi memudar di tempat (tidak meluncur melewati bilah status)
+
 ## 1.12.4 — 28 Nov 2026
 
 ### Ringkasan
