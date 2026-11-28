@@ -142,6 +142,7 @@ async function migrateComic(src, id, to) {
 }
 // ---------- mirip ini: komik populer dengan genre yang sama dari sumber yang sama ----------
 const simMem = new Map();
+const cmMem = new Map();   // pratinjau komentar terakhir per komik (src|id → { l, n })
 async function similarOf(src, id, tags) {
   const k = src + "|" + id; if (simMem.has(k)) return simMem.get(k);
   const f = await loadFilters(src).catch(() => null);
@@ -233,7 +234,10 @@ export async function vDetail(src, id) {
     fitDetail();
     watchSim();
   };
-  let cmList = null, cmN = 0, lk = null, lkBusy = false, sim = null;
+  // kembali ke halaman ini: "Mirip ini" & komentar langsung digambar dari ingatan (tidak muncul kerangka lalu meloncat);
+  // komentar tetap diperbarui di belakang, digambar ulang hanya bila berubah
+  const cmKey = src + "|" + id, cmOld = cmMem.get(cmKey);
+  let cmList = cmOld ? cmOld.l : null, cmN = cmOld ? cmOld.n : 0, lk = null, lkBusy = false, sim = simMem.has(cmKey) ? simMem.get(cmKey) : null;
   // "Mirip ini": dimuat saat bagiannya hampir terlihat (hemat permintaan untuk yang tidak menggulir sejauh itu)
   function simHtml() {
     if (sim && !sim.length) return "";
@@ -279,8 +283,8 @@ export async function vDetail(src, id) {
   window.addEventListener("nk:chapters", onMore);
   setCleanup(() => { window.removeEventListener("scroll", onBarScroll); window.removeEventListener("nk:chapters", onMore); simIo?.disconnect(); });
   const room = roomFor(src, id);
-  Promise.all([roomPreview(room, 3), roomCount(room).catch(() => 0), new Promise((r) => setTimeout(r, 450)).then(framesReady)]).then(([l, n]) => { cmList = l; cmN = n; if (parse().name === "detail") paintComments(); })
-    .catch(() => { cmList = []; if (parse().name === "detail") paintComments(); });
+  Promise.all([roomPreview(room, 3), roomCount(room).catch(() => 0), new Promise((r) => setTimeout(r, 450)).then(framesReady)]).then(([l, n]) => { const same = cmOld && cmOld.n === n && JSON.stringify(cmOld.l) === JSON.stringify(l); cmMem.set(cmKey, { l, n }); if (cmMem.size > 30) cmMem.delete(cmMem.keys().next().value); if (same) return; cmList = l; cmN = n; if (parse().name === "detail") paintComments(); })
+    .catch(() => { if (cmOld) return; cmList = []; if (parse().name === "detail") paintComments(); });
   setActs({
     back: () => back(),
     retry: () => vDetail(src, id),
