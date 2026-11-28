@@ -197,6 +197,10 @@ if [ -f "$O" ] && ! cmp -s "$O" "$NEW"; then cp "$O" "$O.bak.$(date +%Y%m%d%H%M%
 cp "$NEW" "$O"; rm -f "$NEW"
 
 cd "$D"
+# .env dengan COMPOSE_FILE=... membuat Compose mengabaikan override: tambahkan bila perlu
+if grep -q '^COMPOSE_FILE=' .env 2>/dev/null && ! grep '^COMPOSE_FILE=' .env | grep -q 'docker-compose.override.yml'; then
+  sed -i 's#^COMPOSE_FILE=\(.*\)$#COMPOSE_FILE=\1:docker-compose.override.yml#' .env && echo ".env: override ditambahkan ke COMPOSE_FILE"
+fi
 docker compose config -q && echo "compose valid"
 docker compose up -d templates-server auth
 sleep 5
