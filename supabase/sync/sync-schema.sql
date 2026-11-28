@@ -96,13 +96,14 @@ begin
 end $$;
 revoke all on function sync.apply(jsonb) from public, anon, authenticated;
 
--- Pasang pencatat di semua tabel public + auth.users/identities (tabel baru: jalankan ulang file ini).
+-- Pasang pencatat di semua tabel public (kecuali fallback_log) + auth.users/identities (tabel baru: jalankan ulang file ini).
 do $$
 declare r record;
 begin
   for r in
     select n.nspname, c.relname from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid = c.relnamespace
     where c.relkind = 'r' and (n.nspname = 'public' or (n.nspname = 'auth' and c.relname in ('users', 'identities')))
+      and c.relname <> 'fallback_log'   -- catatan pemakaian server cadangan: khusus Cloud, tidak disinkron
   loop
     execute format('drop trigger if exists zz_sync_capture on %I.%I', r.nspname, r.relname);
     execute format('create trigger zz_sync_capture after insert or update or delete on %I.%I for each row execute function sync.capture()', r.nspname, r.relname);
