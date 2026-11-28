@@ -24,9 +24,10 @@ jobs:
     steps:
       - name: Ping database Supabase
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_URL: ${{ secrets.FALLBACK_SUPABASE_URL || secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.FALLBACK_SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
         run: |
+          # bila server cadangan (Cloud) diisi, itu yang dijaga agar tidak dijeda; server utama di rumah tidak perlu dipancing
           if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
             echo "::warning::Secret SUPABASE_URL / SUPABASE_ANON_KEY belum diisi. Ping dilewati."
             echo "⚠️ Secret SUPABASE_URL / SUPABASE_ANON_KEY belum diisi — ping dilewati. Lihat README." >> "$GITHUB_STEP_SUMMARY"

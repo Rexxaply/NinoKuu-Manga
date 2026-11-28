@@ -119,6 +119,8 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          FALLBACK_URL: ${{ secrets.FALLBACK_SUPABASE_URL }}
+          FALLBACK_KEY: ${{ secrets.FALLBACK_SUPABASE_ANON_KEY }}
           BUILD: ${{ github.run_number }}
           REPO: ${{ github.repository }}
         run: |
@@ -128,7 +130,11 @@ jobs:
           import json, os, re, base64
           url = os.environ["SUPABASE_URL"].strip().rstrip("/")
           key = os.environ["SUPABASE_ANON_KEY"].strip()
-          if not re.match(r"^https://[a-z0-9-]+\.supabase\.(co|in)$", url): raise SystemExit("::error::SUPABASE_URL harus https://xxxx.supabase.co")
+          if not re.match(r"^https://[a-z0-9.-]+$", url): raise SystemExit("::error::SUPABASE_URL harus https://xxxx.supabase.co atau https://panel.contoh.com")
+          fb_url = os.environ.get("FALLBACK_URL", "").strip().rstrip("/"); fb_key = os.environ.get("FALLBACK_KEY", "").strip()
+          if bool(fb_url) != bool(fb_key): raise SystemExit("::error::FALLBACK_SUPABASE_URL dan FALLBACK_SUPABASE_ANON_KEY harus diisi keduanya (atau dua-duanya kosong).")
+          if fb_url and not re.match(r"^https://[a-z0-9.-]+$", fb_url): raise SystemExit("::error::FALLBACK_SUPABASE_URL tidak valid.")
+          if fb_key.startswith("sb_secret_"): raise SystemExit("::error::FALLBACK_SUPABASE_ANON_KEY berisi kunci RAHASIA.")
           if key.startswith("sb_secret_"): raise SystemExit("::error::SUPABASE_ANON_KEY berisi kunci RAHASIA.")
           if key.startswith("eyJ"):
               part = key.split(".")[1]; part += "=" * (-len(part) % 4)
@@ -136,12 +142,12 @@ jobs:
           ver = open("../VERSION").read().strip()
           if not re.match(r"^\d+\.\d+\.\d+$", ver): raise SystemExit("::error::Isi berkas VERSION harus mayor.minor.patch, mis. 1.2.3")
           owner, name = os.environ["REPO"].split("/")
-          cfg = {"SUPABASE_URL": url, "SUPABASE_ANON_KEY": key, "VERSION": ver, "BUILD": int(os.environ["BUILD"]), "REPO": os.environ["REPO"],
+          cfg = {"SUPABASE_URL": url, "SUPABASE_ANON_KEY": key, "FALLBACK_URL": fb_url, "FALLBACK_KEY": fb_key, "VERSION": ver, "BUILD": int(os.environ["BUILD"]), "REPO": os.environ["REPO"],
                  "WEB_URL": f"https://{owner.lower()}.github.io/{name}/"}
           if os.environ["CHANNEL"] == "dev":
               cfg.update({"DEV": True, "FN": "ninokuu-api-dev", "RELEASE_TAG": "apk-dev", "PUSH": os.environ.get("FCM") == "1"})
           open("www/config.js", "w").write("window.NINOKUU_CONFIG = " + json.dumps(cfg) + ";\n")
-          print("config.js:", {k: v for k, v in cfg.items() if k != "SUPABASE_ANON_KEY"})
+          print("config.js:", {k: v for k, v in cfg.items() if k not in ("SUPABASE_ANON_KEY", "FALLBACK_KEY")})
           PY
 
       - name: Pasang Capacitor

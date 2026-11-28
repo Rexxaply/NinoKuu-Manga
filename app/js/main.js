@@ -1054,7 +1054,14 @@ if (!N.isApp && "serviceWorker" in navigator && location.protocol === "https:") 
   render();
   if (N.isApp) startApp();
   // pembaca aktif realtime (Presence); kunci = akun, tersambung ulang saat masuk/keluar akun
-  O.start({ url: api.SB_URL, apikey: api.SB_KEY, userKey: () => api.userId() });
+  O.start({ get url() { return api.SB_URL; }, get apikey() { return api.SB_KEY; }, userKey: () => api.userId() });
+  // server utama mati → pindah otomatis ke server cadangan (dan kembali bila pulih); sesi login terpisah per server
+  window.addEventListener("ninokuu:backend", (ev) => {
+    O.restart();
+    if (ev.detail?.backup) toast(api.currentUser() ? "Server utama sedang gangguan, memakai server cadangan." : "Server utama sedang gangguan, memakai server cadangan. Masuk lagi bila diminta.", 5000);
+    else toast("Server utama pulih.", 3000);
+    render();
+  });
   // jumlah pembaca aktif di samping ikon chat publik Beranda ("● 3"); hilang bila belum tersambung
   O.onCount((n) => {
     const b = document.getElementById("chatBtn"); if (!b) return;
