@@ -443,11 +443,15 @@ export async function vReader(src, id, chId) {
   // Ketukan pertama langsung menampilkan/menyembunyikan menu (tanpa menunggu 320 ms). Bila ternyata ketukan
   // kedua datang cepat (ketuk 2×), menu dikembalikan ke keadaan semula lalu halaman diperbesar.
   const setUi = (on) => (on ? showUi() : rd.classList.remove("ui"));
-  // Mode fullscreen: bilah status tersembunyi, dan sistem hanya menangkap tarikan dari tepi paling atas (sempit).
-  // Tarikan ke bawah dari ±80px teratas layar juga memunculkan menu + bilah status, sehingga panel notifikasi bisa ditarik.
-  let edgeY = null;
-  rd.addEventListener("touchstart", (e) => { edgeY = e.touches.length === 1 && choiceVal("screenMode") === "fullscreen" && !rd.classList.contains("ui") && e.touches[0].clientY < 80 ? e.touches[0].clientY : null; }, { passive: true });
-  rd.addEventListener("touchmove", (e) => { if (edgeY !== null && e.touches[0].clientY - edgeY > 18) { edgeY = null; setUi(true); } }, { passive: true });
+  // Mode fullscreen: tarikan ke bawah dari ±40px teratas layar hanya memunculkan bilah status (tanpa menu bacaan),
+  // supaya panel notifikasi bisa ditarik. Bilah disembunyikan lagi setelah 4 detik bila menu tetap tertutup.
+  let edgeY = null, edgeT = 0;
+  rd.addEventListener("touchstart", (e) => { edgeY = e.touches.length === 1 && choiceVal("screenMode") === "fullscreen" && !rd.classList.contains("ui") && e.touches[0].clientY < 40 ? e.touches[0].clientY : null; }, { passive: true });
+  rd.addEventListener("touchmove", (e) => {
+    if (edgeY === null || e.touches[0].clientY - edgeY < 30) return;
+    edgeY = null; N.setFullscreen(false, true);
+    clearTimeout(edgeT); edgeT = setTimeout(() => { if (rd.isConnected && parse().name === "reader") syncFs(); }, 4000);
+  }, { passive: true });
   rd.addEventListener("touchend", () => { edgeY = null; }, { passive: true });
   // Tekan lama satu gambar (±0,55 dtk, jari tidak bergeser) → lembar "Bagikan gambar ini" lewat menu bagikan HP
   let lp = null, lpFired = 0;
@@ -907,7 +911,7 @@ export async function vReader(src, id, chId) {
     if (!slide) $$(".r-img", box).slice(0, resumeAt).forEach((im) => im.addEventListener("load", jump, { once: true }));   // semua halaman di atas tujuan: tingginya berubah saat termuat
     toast(`Lanjut dari halaman ${resumeAt}`, 1800);
   }
-  setCleanup(() => { lazyIo.disconnect(); clearInterval(stuckT); fsObs.disconnect(); clearTimeout(tapT); clearTimeout(nextT); cancelAnimationFrame(rafPos); endIo?.disconnect(); removeEventListener("online", onOnline); (parse().name === "reader" ? 0 : N.setFullscreen(false, false)); S.flushHistory(); });   // ke halaman lain: bilah status dikembalikan SEBELUM halaman baru digambar (tidak melompat setelahnya); pindah chapter: status layar tidak disentuh sama sekali sampai chapter baru tampil (dulu dilepas setelah 0,3 dtk → seluruh layar bergeser naik-turun saat chapter lambat dimuat)
+  setCleanup(() => { lazyIo.disconnect(); clearInterval(stuckT); fsObs.disconnect(); clearTimeout(tapT); clearTimeout(edgeT); clearTimeout(nextT); cancelAnimationFrame(rafPos); endIo?.disconnect(); removeEventListener("online", onOnline); (parse().name === "reader" ? 0 : N.setFullscreen(false, false)); S.flushHistory(); });   // ke halaman lain: bilah status dikembalikan SEBELUM halaman baru digambar (tidak melompat setelahnya); pindah chapter: status layar tidak disentuh sama sekali sampai chapter baru tampil (dulu dilepas setelah 0,3 dtk → seluruh layar bergeser naik-turun saat chapter lambat dimuat)
   // jenis belum diketahui dari tag: periksa bentuk beberapa gambar pertama. Kebanyakan sangat tinggi
   // (tinggi > 1,8× lebar) → strip panjang manhwa/manhua: diingat, dan mode slide dialihkan ke scroll.
   if (!kind && !longStrip) {
