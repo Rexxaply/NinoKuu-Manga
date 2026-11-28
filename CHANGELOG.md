@@ -14,6 +14,14 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ## Berikutnya (belum dirilis)
 
+## 1.12.4 — 28 Nov 2026
+
+### Ringkasan
+- Perbaikan pada pembaca: di mode fullscreen, bilah status (jam, baterai) kini lebih mudah ditarik dari atas layar tanpa membuka menu bacaan
+
+### Detail
+- Plugin NinokuuCache: `OnTouchListener` pada WebView (aktif hanya saat bilah disembunyikan lewat `bars`) membaca tarikan ke bawah ≥30dp yang dimulai di 40dp teratas; bila bilah belum tampil, `show(statusBars)` lalu `hide` lagi setelah 3 detik; event `sbPull`/`sbPullEnd` ke halaman untuk latar gelap tipis (`body.nk-sb::before`). Gestur buatan di `reader.js` (1.12.1–1.12.3) dihapus karena bentrok dengan gestur sistem
+
 ## 1.12.3 — 28 Nov 2026
 
 ### Ringkasan
