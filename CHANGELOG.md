@@ -14,6 +14,14 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ## Berikutnya (belum dirilis)
 
+## 1.12.3 — 28 Nov 2026
+
+### Ringkasan
+- Perbaikan pada pembaca: bilah status yang ditarik di mode fullscreen kini punya latar gelap lagi, jadi jam dan baterai tetap terbaca
+
+### Detail
+- Kelas `body.nk-sb` saat bilah status ditarik tanpa menu: gradasi `.reader::before` turun sebagian (`--sat + 36px`). Dilepas setelah 4 detik, di `syncFs()`, dan saat pembaca ditutup
+
 ## 1.12.2 — 28 Nov 2026
 
 ### Ringkasan
