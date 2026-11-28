@@ -603,16 +603,6 @@ try { plugin("StatusBar")?.setOverlaysWebView?.({ overlay: false })?.catch?.(() 
 /* ---------- layar penuh saat membaca ---------- */
 // APK: bilah status Android disembunyikan (plugin StatusBar). Web: Fullscreen API (butuh ketukan pengguna).
 let fsOn = false, ovOn = false, fsSeq = 0;
-// Bilah status ditarik di mode fullscreen (ditangani plugin Java): latar gelap tipis di belakang bilah selama tampil
-let sbScrimOn = false;
-function sbScrimInit(nc) {
-  if (sbScrimOn || !nc?.addListener) return;
-  sbScrimOn = true;
-  try {
-    nc.addListener("sbPull", () => document.body.classList.add("nk-sb"));
-    nc.addListener("sbPullEnd", () => document.body.classList.remove("nk-sb"));
-  } catch {}
-}
 // on = bilah status disembunyikan; overlay = halaman digambar di bawah bilah status sampai ujung atas (termasuk
 // area lubang kamera). Di pembaca mode layar penuh overlay tetap menyala selama di pembaca, walau menu bacaan
 // (dan bilah status) muncul: kalau ikut dimatikan setiap ketukan, seluruh halaman melompat setinggi bilah status.
@@ -629,15 +619,10 @@ export async function setFullscreen(on, overlay = on) {
   if (sb) {
     try {
       if (overlay && !wasOv) await sb.setOverlaysWebView?.({ overlay: true });
-      // jarak aman atas dikunci setinggi bilah status selama fullscreen: tidak bergeser saat bilah muncul/hilang
-      if (overlay && !wasOv) { try { const r = await cachePlugin()?.insets?.(); if (r?.top > 0 && ovOn) document.body.style.setProperty("--sat", r.top + "px"); } catch {} }
-      if (!overlay && wasOv) document.body.style.removeProperty("--sat");
       // bilah status: lewat plugin Ninokuu (perilaku "sementara": ditarik → muncul transparan lalu hilang sendiri);
       // APK lama tanpa method ini memakai StatusBar bawaan
       if (on !== wasOn) {
         const nc = cachePlugin();
-        sbScrimInit(nc);
-        document.body.classList.remove("nk-sb");
         let done = false;
         if (nc?.bars) { try { await nc.bars({ hide: on }); done = true; } catch {} }
         if (!done) await (on ? sb.hide() : sb.show());
