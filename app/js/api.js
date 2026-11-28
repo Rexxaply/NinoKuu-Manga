@@ -170,7 +170,7 @@ export async function sessionFromUrl() {
 export async function signOut() {
   const t = session?.access_token;
   setSession(null);
-  if (t) authCall("/logout", null, { token: t }).catch(() => {});
+  if (t) authCall("/logout?scope=local", null, { token: t }).catch(() => {});
 }
 export async function updateUser(attrs) {
   const t = await accessToken();
