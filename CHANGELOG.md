@@ -14,6 +14,14 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ## Berikutnya (belum dirilis)
 
+## 1.12.6 — 29 Nov 2026
+
+### Ringkasan
+- Tampilan pembaca di mode fullscreen dikembalikan seperti semula
+
+### Detail
+- `reader.js`, `native.js`, `app.css` dan plugin NinokuuCache dikembalikan ke kondisi sebelum 1.12.1 (gestur tarik bilah status buatan, kunci `--sat`, latar `nk-sb`, animasi `leaving` dihapus). Area tarik bilah status kembali bawaan Android
+
 ## 1.12.5 — 29 Nov 2026
 
 ### Ringkasan
