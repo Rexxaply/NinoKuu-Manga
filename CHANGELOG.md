@@ -14,6 +14,16 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ## Berikutnya (belum dirilis)
 
+## 1.12.7 — 29 Nov 2026
+
+### Ringkasan
+- Membuka komik untuk melanjutkan bacaan kini lebih mulus, tanpa layar hitam sekejap
+- Perbaikan pada halaman info komik: bagian "Mirip ini" dan komentar tidak lagi berkedip saat kembali dari pembaca
+
+### Detail
+- Pembaca (`hold`): masuk dari info komik dengan posisi lanjut > 1, pembaca dipasang tersembunyi (`.reader.holding`) di atas halaman lama; ditukar setelah gambar halaman tujuan termuat (maks 0,3 dtk), lalu animasi bar masuk & toast "Lanjut dari halaman" berjalan seperti biasa
+- Info komik: "Mirip ini" diambil dari `simMem` (sampul `loading="eager"`), pratinjau komentar dari `cmMem`; komentar tetap diperbarui di belakang dan hanya digambar ulang bila berubah
+
 ## 1.12.6 — 29 Nov 2026
 
 ### Ringkasan
