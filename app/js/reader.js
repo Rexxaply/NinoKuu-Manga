@@ -443,6 +443,12 @@ export async function vReader(src, id, chId) {
   // Ketukan pertama langsung menampilkan/menyembunyikan menu (tanpa menunggu 320 ms). Bila ternyata ketukan
   // kedua datang cepat (ketuk 2×), menu dikembalikan ke keadaan semula lalu halaman diperbesar.
   const setUi = (on) => (on ? showUi() : rd.classList.remove("ui"));
+  // Mode fullscreen: bilah status tersembunyi, dan sistem hanya menangkap tarikan dari tepi paling atas (sempit).
+  // Tarikan ke bawah dari ±80px teratas layar juga memunculkan menu + bilah status, sehingga panel notifikasi bisa ditarik.
+  let edgeY = null;
+  rd.addEventListener("touchstart", (e) => { edgeY = e.touches.length === 1 && choiceVal("screenMode") === "fullscreen" && !rd.classList.contains("ui") && e.touches[0].clientY < 80 ? e.touches[0].clientY : null; }, { passive: true });
+  rd.addEventListener("touchmove", (e) => { if (edgeY !== null && e.touches[0].clientY - edgeY > 18) { edgeY = null; setUi(true); } }, { passive: true });
+  rd.addEventListener("touchend", () => { edgeY = null; }, { passive: true });
   // Tekan lama satu gambar (±0,55 dtk, jari tidak bergeser) → lembar "Bagikan gambar ini" lewat menu bagikan HP
   let lp = null, lpFired = 0;
   const pageSheet = (i) => {
