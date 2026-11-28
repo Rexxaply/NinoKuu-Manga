@@ -941,7 +941,8 @@ create policy "chat-images dihapus developer" on storage.objects for delete to a
 
 -- =====================================================================
 -- 11. Kontrol penyimpanan (Panel developer): ukuran database & gambar, lalu pembersih.
---     Paket Free Supabase: database 500 MB, Storage 1 GB.
+--     Batas bawaan = paket Free Supabase (database 500 MB, Storage 1 GB). Server sendiri: ubah lewat app_config
+--     (key 'db_quota_bytes' dan 'img_quota_bytes', nilai = angka byte), mis. insert ... values ('db_quota_bytes', '107374182400').
 -- =====================================================================
 create or replace function public.dev_storage()
 returns json
@@ -965,13 +966,13 @@ begin
   ) x;
   return json_build_object(
     'db_bytes', pg_catalog.pg_database_size(pg_catalog.current_database()),
-    'db_quota', 500 * 1024 * 1024,
+    'db_quota', coalesce((select (c.value #>> '{}')::bigint from public.app_config c where c.key = 'db_quota_bytes' and jsonb_typeof(c.value) = 'number'), 500 * 1024 * 1024),
     'tables', coalesce(tables, '[]'::json),
     'img_bytes', (select coalesce(sum((o.metadata->>'size')::bigint), 0) from storage.objects o where o.bucket_id = 'chat-images'),
     'img_count', (select count(*) from storage.objects o where o.bucket_id = 'chat-images'),
     'img_orphans', (select count(*) from storage.objects o where o.bucket_id = 'chat-images'
                       and not exists (select 1 from public.chat_messages m where m.image_path = o.name)),
-    'img_quota', 1024 * 1024 * 1024,
+    'img_quota', coalesce((select (c.value #>> '{}')::bigint from public.app_config c where c.key = 'img_quota_bytes' and jsonb_typeof(c.value) = 'number'), 1024 * 1024 * 1024),
     'avatar_bytes', (select coalesce(sum((o.metadata->>'size')::bigint), 0) from storage.objects o where o.bucket_id = 'avatars'),
     'avatar_count', (select count(*) from storage.objects o where o.bucket_id = 'avatars'),
     'avatar_orphans', (select count(*) from storage.objects o where o.bucket_id = 'avatars'
