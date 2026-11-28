@@ -1414,6 +1414,8 @@ body.is-app.nk-fs { --sat: env(safe-area-inset-top, 0px); }
 }
 /* lanjut dari halaman terakhir: isi disembunyikan sesaat sampai posisi gulirnya pasti (tanpa lompatan dari halaman 1) */
 .reader.resuming .r-pages, .reader.resuming .r-slide { visibility: hidden; }
+/* masuk dari info komik & lanjut di tengah chapter: pembaca disiapkan tersembunyi di atas halaman lama (lihat "hold" di reader.js) */
+.reader.holding { visibility: hidden; }
 /* Bar pembaca: tombol-tombolnya (kembali, ⋯, Lanjut ke Chapter, dll.) ikut meluncur .4 dtk bersama barnya.
    Aturan umum efek tekan di atas memberi transform 100 ms dan membuat tombol "melompat" ke tempatnya;
    di sini efek tekan memakai properti scale (terpisah dari transform) supaya keduanya tidak saling mengganggu. */

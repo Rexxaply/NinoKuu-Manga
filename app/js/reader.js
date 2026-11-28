@@ -249,7 +249,11 @@ export async function vReader(src, id, chId) {
     }
   }
   drawnNew = true;
-  view.innerHTML = `<div class="reader ui ${animIn ? "enter" : ""} ${slide ? "slide" : ""} ${ghost ? (rdBack ? "swap-b" : "swap-f") : ""}" id="rd">
+  // Masuk dari info komik & lanjut di tengah chapter: pembaca dipasang di atas halaman lama dalam keadaan tersembunyi.
+  // Halaman lama tetap terlihat sampai gambar halaman tujuan siap & posisinya pas (maks 0,3 dtk), baru ditukar.
+  // (sebelumnya: layar hitam sekejap dengan tulisan "Lanjut dari halaman …")
+  const hold = animIn && at0 > 1, holdOld = hold ? [...view.children] : [];
+  const rdHtml = `<div class="reader ui ${animIn ? "enter" : ""} ${slide ? "slide" : ""} ${ghost ? (rdBack ? "swap-b" : "swap-f") : ""}" id="rd">
   ${slide ? `<div class="r-slides" id="rbox" dir="${rtl ? "rtl" : "ltr"}">${imgs.map((im) => `<div class="r-slide">${im}</div>`).join("")}<div class="r-slide r-endslide"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span>${next ? `<button class="r-next-hint" id="rnext" data-act="cancelNext" hidden><span class="r-nbar"></span><span class="r-ntx"></span></button>` : ""}${isLocal ? "" : `${chLike(null)}<a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini</a>`}</div></div>`
     : `<div class="r-scroll" id="rbox"><div class="r-pages" id="rpages">${imgs.join("")}<div class="r-endtxt"><span class="mu sm">Akhir chapter ${esc(ch.ch)}</span>${next ? `<button class="r-next-hint" id="rnext" data-act="cancelNext" hidden><span class="r-nbar"></span><span class="r-ntx"></span></button>` : ""}${isLocal ? "" : `${chLike(null)}<a class="btn ghost" href="${commentsHref(src, id, chId)}">${icon("msg", 18)}Komentar chapter ini<span class="cm-n" id="rcmn"></span></a>`}</div></div></div>`}
   <div class="r-top">
@@ -279,6 +283,7 @@ export async function vReader(src, id, chId) {
         : `<button class="r-main last" disabled aria-label="Ini chapter terakhir">${icon("flag", 18, 2)}Chapter Terakhir</button>`}
       <button class="r-sq glass" data-act="next" aria-label="${next ? "Chapter berikutnya" : "Kembali ke info komik"}">${next ? icon("chev", 22, 2.2) : icon("home", 21, 2)}</button>
     </div></div>${slide ? "" : `<button class="r-round glass r-as" id="ras" data-act="asToggle" aria-label="Jeda gulir otomatis" hidden>${icon("pause", 22, 2.4)}</button>`}</div>`;
+  if (hold) view.insertAdjacentHTML("beforeend", rdHtml.replace('class="reader ui', 'class="reader holding ui')); else view.innerHTML = rdHtml;
   const rd = $("#rd"), box = $("#rbox"), pages = $("#rpages");
   if (ghost) {
     rd.prepend(ghost); const [st, sl] = ghost._pos; ghost.firstChild.scrollTop = st; ghost.firstChild.scrollLeft = sl;
@@ -287,11 +292,20 @@ export async function vReader(src, id, chId) {
   }
   // masuk pembaca dari info komik: halaman tampil dulu, bar atas & bawah baru meluncur masuk setelah gambar
   // halaman tujuan selesai dimuat & digambar (maks 2,5 dtk), supaya animasi tidak berjalan bersamaan dengan pemuatan
+  let holdDone = Promise.resolve();
+  if (hold) {
+    const tgt = $$(".r-img", box)[at0 - 1];
+    const ok = tgt && !(tgt.complete && tgt.naturalWidth) ? new Promise((r) => tgt.addEventListener("load", r, { once: true })) : Promise.resolve();
+    holdDone = Promise.race([ok, new Promise((r) => setTimeout(r, 300))]).then(() => new Promise((r) => requestAnimationFrame(() => {
+      if (myR === readerSeq && parse().name === "reader") { goPage(at0); holdOld.forEach((n) => n.remove()); rd.classList.remove("holding"); }
+      r();
+    })));
+  }
   if (animIn) {
     const tgt = $$(".r-img", box)[at0 - 1] || $(".r-img", box);
     // gambar yang ditolak situs dicoba ulang lewat jalur lain (ui.js), jadi tunggu "load" yang berhasil, bukan "error"
     const ready = tgt && !(tgt.complete && tgt.naturalWidth) ? new Promise((r) => tgt.addEventListener("load", r, { once: true })) : Promise.resolve();
-    Promise.race([ready, new Promise((r) => setTimeout(r, 2500))]).then(() =>
+    Promise.all([holdDone, Promise.race([ready, new Promise((r) => setTimeout(r, 2500))])]).then(() =>
       requestAnimationFrame(() => requestAnimationFrame(() => { if (myR === readerSeq) rd.classList.remove("enter"); })));
   }
   // halaman dimuat langsung dari situs aslinya (tidak memakai kuota Supabase); bila ditolak,
@@ -899,7 +913,7 @@ export async function vReader(src, id, chId) {
     rd.classList.add("resuming"); jump();
     requestAnimationFrame(() => { jump(); requestAnimationFrame(() => rd.classList.remove("resuming")); });
     if (!slide) $$(".r-img", box).slice(0, resumeAt).forEach((im) => im.addEventListener("load", jump, { once: true }));   // semua halaman di atas tujuan: tingginya berubah saat termuat
-    toast(`Lanjut dari halaman ${resumeAt}`, 1800);
+    holdDone.then(() => { if (myR === readerSeq) toast(`Lanjut dari halaman ${resumeAt}`, 1800); });
   }
   setCleanup(() => { lazyIo.disconnect(); clearInterval(stuckT); fsObs.disconnect(); clearTimeout(tapT); clearTimeout(nextT); cancelAnimationFrame(rafPos); endIo?.disconnect(); removeEventListener("online", onOnline); (parse().name === "reader" ? 0 : N.setFullscreen(false, false)); S.flushHistory(); });   // ke halaman lain: bilah status dikembalikan SEBELUM halaman baru digambar (tidak melompat setelahnya); pindah chapter: status layar tidak disentuh sama sekali sampai chapter baru tampil (dulu dilepas setelah 0,3 dtk → seluruh layar bergeser naik-turun saat chapter lambat dimuat)
   // jenis belum diketahui dari tag: periksa bentuk beberapa gambar pertama. Kebanyakan sangat tinggi
