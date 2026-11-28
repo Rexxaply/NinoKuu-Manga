@@ -270,6 +270,9 @@ body.nk-sb::before { content: ""; position: fixed; left: 0; right: 0; top: 0; he
   background: linear-gradient(180deg, rgba(0, 0, 0, .78), rgba(0, 0, 0, .45) 45%, rgba(0, 0, 0, .12) 80%, transparent);
   transition: transform .4s cubic-bezier(.32, .72, 0, 1); }
 .reader:not(.ui)::before { transform: translateY(-100%); }
+/* mode fullscreen, kembali dari pembaca: bar atas & gradasi memudar di tempat, tidak meluncur melewati bilah status */
+body.nk-fs .reader.leaving::before { transform: none; opacity: 0; transition: opacity .16s; }
+body.nk-fs .reader.leaving .r-top > * { transform: none; opacity: 0; transition: opacity .16s; }
 /* baru masuk pembaca: bar & gradasi mulai dari luar layar, lalu meluncur masuk (kelas "enter" dilepas 2 frame kemudian) */
 .reader.enter .r-top > * { transform: translateY(calc(-100% - 20px - var(--sat))); transition: none; }
 .reader.enter .r-seek, .reader.enter .r-btns > * { transform: translateY(calc(140px + env(safe-area-inset-bottom))); transition: none; }

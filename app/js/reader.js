@@ -174,7 +174,7 @@ export async function vReader(src, id, chId) {
   // tombol kembali: bar atas & bawah meluncur keluar dulu (±0,18 dtk), lalu pindah ke info komik yang meluncur masuk
   // (bilah status HP tidak ikut disembunyikan sesaat saat bar meluncur keluar: lihat "leaving" di syncFs)
   let leaving = false;
-  const leave = () => { const r = $("#rd"); if (r && r.classList.contains("ui") && !r.dataset.shell && !matchMedia("(prefers-reduced-motion: reduce)").matches) { leaving = true; r.classList.remove("ui"); setTimeout(toComic, 180); } else toComic(); };
+  const leave = () => { const r = $("#rd"); if (r && r.classList.contains("ui") && !r.dataset.shell && !matchMedia("(prefers-reduced-motion: reduce)").matches) { leaving = true; r.classList.add("leaving"); r.classList.remove("ui"); setTimeout(toComic, 180); } else toComic(); };
   setActs({ back: leave, retry: () => vReader(src, id, chId) });
   let d = isLocal ? DL.offlineDetail(src, id) : cachedDetail(src, id);
   try { if (!d) d = await getDetail(src, id); }
