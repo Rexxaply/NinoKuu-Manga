@@ -14,6 +14,14 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ## Berikutnya (belum dirilis)
 
+## 1.12.2 — 28 Nov 2026
+
+### Ringkasan
+- Perbaikan pada pembaca: di mode fullscreen, tarikan dari atas layar kini hanya memunculkan bilah status, tanpa membuka menu bacaan
+
+### Detail
+- Tarikan dari atas (mode fullscreen, menu tertutup): area awal 80px → 40px, jarak tarik 18px → 30px; hanya bilah status yang ditampilkan (`N.setFullscreen(false, true)`), lalu `syncFs()` menyembunyikannya lagi setelah 4 detik. Timer dibersihkan saat pembaca ditutup
+
 ## 1.12.1 — 28 Nov 2026
 
 ### Ringkasan
