@@ -14,6 +14,14 @@ Isi pop-up "Yang baru" di aplikasi ada di `app/js/tour.js` (`WHATS_NEW`), gambar
 
 ## Berikutnya (belum dirilis)
 
+## 1.12.1 — 28 Nov 2026
+
+### Ringkasan
+- Perbaikan pada pembaca: di mode fullscreen, panel notifikasi kini mudah ditarik dari atas layar
+
+### Detail
+- Pembaca (mode fullscreen, menu tersembunyi): tarikan ke bawah ≥18px yang dimulai di 80px teratas layar menampilkan menu bacaan (`setUi(true)`), sehingga bilah status ikut tampil tetap dan panel notifikasi bisa ditarik. Sebelumnya hanya tepi paling atas yang ditangkap sistem (perilaku sementara). Mode standar tidak berubah
+
 ## 1.12.0 — 26 Nov 2026
 
 ### Ringkasan
