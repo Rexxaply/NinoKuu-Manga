@@ -263,6 +263,9 @@ body[data-screen="reader"] { background: #0A0A0A; overflow: hidden; }
 .r-top > *, .r-bottom > *, .r-btns > * { transition: transform .4s cubic-bezier(.32, .72, 0, 1), opacity 0s linear 0s; }
 /* gradasi hitam di belakang bilah status & bar atas (ikon jam/baterai tetap terbaca di atas halaman terang);
    ikut meluncur ke atas bersama bar saat menu bacaan disembunyikan */
+/* mode fullscreen: bilah status ditarik (plugin Java) → latar gelap tipis di belakang jam & baterai */
+body.nk-sb::before { content: ""; position: fixed; left: 0; right: 0; top: 0; height: calc(var(--sat) + 14px); z-index: 60; pointer-events: none; background: linear-gradient(180deg, rgba(0, 0, 0, .62), rgba(0, 0, 0, .3) 70%, transparent); animation: sbfade .2s ease-out; }
+@keyframes sbfade { from { opacity: 0; } }
 .reader::before { content: ""; position: absolute; left: 0; right: 0; top: 0; z-index: 5; height: calc(var(--sat) + 120px); pointer-events: none;
   background: linear-gradient(180deg, rgba(0, 0, 0, .78), rgba(0, 0, 0, .45) 45%, rgba(0, 0, 0, .12) 80%, transparent);
   transition: transform .4s cubic-bezier(.32, .72, 0, 1); }

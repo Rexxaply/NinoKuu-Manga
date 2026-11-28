@@ -7,7 +7,11 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.MotionEvent;
 import android.view.Window;
+import android.webkit.WebView;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
@@ -22,6 +26,57 @@ import java.util.concurrent.TimeUnit;
 
 @CapacitorPlugin(name = "NinokuuCache")
 public class NinokuuCachePlugin extends Plugin {
+    // Mode fullscreen: sistem Android hanya menangkap tarikan dari tepi paling atas (sempit). Tarikan ke bawah dari
+    // ±40dp teratas layar (≥30dp) juga memunculkan bilah status, lalu disembunyikan lagi setelah 3 detik. Bila sistem
+    // sudah memunculkannya sendiri (tarikan tepat di tepi), tidak ada yang diubah. Halaman diberi tahu lewat event
+    // "sbPull"/"sbPullEnd" untuk menampilkan latar gelap tipis di belakang bilah.
+    private boolean fsHidden = false, tracking = false;
+    private float startY = 0;
+    private final Handler ui = new Handler(Looper.getMainLooper());
+    private final Runnable rehide = () -> {
+        if (fsHidden) setBars(true);
+        notifyListeners("sbPullEnd", new JSObject());
+    };
+
+    private void setBars(boolean hide) {
+        Window w = getActivity().getWindow();
+        WindowInsetsControllerCompat c = WindowCompat.getInsetsController(w, w.getDecorView());
+        c.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+        if (hide) c.hide(WindowInsetsCompat.Type.statusBars());
+        else c.show(WindowInsetsCompat.Type.statusBars());
+    }
+
+    @Override
+    public void load() {
+        try {
+            WebView wv = getBridge().getWebView();
+            final float dp = getContext().getResources().getDisplayMetrics().density;
+            wv.setOnTouchListener((v, e) -> {
+                if (!fsHidden) return false;
+                switch (e.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        tracking = e.getRawY() < 40 * dp;
+                        startY = e.getRawY();
+                        break;
+                    case MotionEvent.ACTION_MOVE:
+                        if (tracking && e.getRawY() - startY > 30 * dp) {
+                            tracking = false;
+                            WindowInsetsCompat ri = androidx.core.view.ViewCompat.getRootWindowInsets(getActivity().getWindow().getDecorView());
+                            if (ri != null && ri.isVisible(WindowInsetsCompat.Type.statusBars())) break;   // sistem sudah memunculkannya
+                            setBars(false);
+                            notifyListeners("sbPull", new JSObject());
+                            ui.removeCallbacks(rehide);
+                            ui.postDelayed(rehide, 3000);
+                        }
+                        break;
+                    default:
+                        tracking = false;
+                }
+                return false;
+            });
+        } catch (Exception ignored) { }
+    }
+
     private static long sizeOf(File f) {
         if (f == null || !f.exists()) return 0;
         if (f.isFile()) return f.length();
@@ -80,11 +135,9 @@ public class NinokuuCachePlugin extends Plugin {
         boolean hide = Boolean.TRUE.equals(call.getBoolean("hide", false));
         getActivity().runOnUiThread(() -> {
             try {
-                Window w = getActivity().getWindow();
-                WindowInsetsControllerCompat c = WindowCompat.getInsetsController(w, w.getDecorView());
-                c.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
-                if (hide) c.hide(WindowInsetsCompat.Type.statusBars());
-                else c.show(WindowInsetsCompat.Type.statusBars());
+                fsHidden = hide;
+                ui.removeCallbacks(rehide);
+                setBars(hide);
                 call.resolve();
             } catch (Exception e) {
                 call.reject(e.getMessage());
