@@ -161,12 +161,12 @@ export async function vChat(view, ctx, opt = {}) {
   // rep: balasan di dalam utas komentar (lebih kecil, menjorok). Kutipan pesan yang dibalas: chat publik selalu
   // (gaya WhatsApp, ketuk = lompat ke pesan asli); komentar hanya bila membalas balasan lain (bukan komentar induknya).
   const byId = (id) => msgs.find((x) => x.id === id) || extra.get(id) || null;
-  const snip = (m) => (plain(m.body).replace(/\s+/g, " ").slice(0, 90) || "") + (m.image_path ? (m.body ? " · " : "") + "Gambar" : "");
+  const snip = (m) => (plain(m.body).replace(/\s+/g, " ").slice(0, 160) || "") + (m.image_path ? (m.body ? " · " : "") + "Gambar" : "");
   const quote = (m, small) => {
     const p = byId(m.reply_to);
     if (!m.reply_to) return "";
     if (!p) return `<span class="m-q gone${small ? " sm" : ""}">${icon("reply", 12, 2.2)}<span class="mu">Pesan yang dibalas sudah dihapus</span></span>`;
-    return `<button class="m-q${small ? " sm" : ""}${p.user_id === me ? " me" : ""}" data-c="jump" data-id="${p.id}"><b>${esc(p.user_id === me ? "Kamu" : p.name)}</b><span>${p.image_path ? icon("img", 12) : ""}${esc(snip(p) || "Pesan")}</span></button>`;
+    return `<button class="m-q${small ? " sm" : ""}${p.user_id === me ? " me" : ""}" data-c="jump" data-id="${p.id}"><b>${esc(p.user_id === me ? "Kamu" : p.name)}</b><span class="q-t">${p.image_path ? icon("img", 11) : ""}${esc(snip(p) || "Pesan")}</span></button>`;
   };
   let prev = null;
   const one = (m, o = {}) => {
