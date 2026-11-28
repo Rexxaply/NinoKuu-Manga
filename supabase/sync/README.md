@@ -38,3 +38,17 @@ CLOUD_PGPASSWORD='kata-sandi-database-cloud'
 CLOUD_URL=https://ocersqyrztzegwzjvvoh.supabase.co
 CLOUD_SECRET_KEY='sb_secret_...'           # Cloud → Settings → API Keys (untuk salin berkas gambar)
 ```
+
+## Pemasangan (sekali; juga saat pindah ke Mini PC)
+
+1. Backup lokal (`~/backup-supabase.sh`).
+2. Cloud (SQL Editor): `sync-schema.sql`, lalu `cloud-offset.sql`.
+3. Lokal: `sync-schema.sql`, lalu isi ulang data dari Cloud (data-only `public` tanpa `fallback_log`
+   + `auth.users`/`auth.identities`) dalam SATU transaksi dengan `session_replication_role=replica`.
+4. **Wajib:** kembalikan urutan id lokal ke bawah 1.000.000.000 (dump Cloud ikut membawa `setval` 1 miliar):
+   untuk tiap kolom identity di `public`, `setval(seq, max(id where id < 1000000000) + 1, false)`.
+5. `echo 0 > ~/.sync/local_seq; echo 0 > ~/.sync/cloud_seq`, lalu `~/sync.sh --dry` (harus lokal→Cloud 0), lalu `~/sync.sh`.
+6. Cron: `*/10 * * * * ~/sync.sh >/dev/null 2>>~/sync.log`.
+
+Pindah server (Mini PC): cukup pindahkan seluruh isi lokal (backup/restore volume) + `~/.sync/`, `~/.sync-cloud.env`,
+`~/sync.sh`; cursor ikut, tidak perlu mengulang langkah 2–4.
