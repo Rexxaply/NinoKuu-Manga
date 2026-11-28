@@ -267,9 +267,6 @@ body[data-screen="reader"] { background: #0A0A0A; overflow: hidden; }
   background: linear-gradient(180deg, rgba(0, 0, 0, .78), rgba(0, 0, 0, .45) 45%, rgba(0, 0, 0, .12) 80%, transparent);
   transition: transform .4s cubic-bezier(.32, .72, 0, 1); }
 .reader:not(.ui)::before { transform: translateY(-100%); }
-/* mode fullscreen, bilah status ditarik tanpa menu: pita gelap transparan setinggi bilah status (seperti bawaan Android) */
-body.nk-sb::before { content: ""; position: fixed; left: 0; right: 0; top: 0; height: var(--sat); z-index: 60; pointer-events: none; background: rgba(0, 0, 0, .38); animation: fadein .2s ease-out; }
-@keyframes fadein { from { opacity: 0; } }
 /* baru masuk pembaca: bar & gradasi mulai dari luar layar, lalu meluncur masuk (kelas "enter" dilepas 2 frame kemudian) */
 .reader.enter .r-top > * { transform: translateY(calc(-100% - 20px - var(--sat))); transition: none; }
 .reader.enter .r-seek, .reader.enter .r-btns > * { transform: translateY(calc(140px + env(safe-area-inset-bottom))); transition: none; }
