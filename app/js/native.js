@@ -629,6 +629,9 @@ export async function setFullscreen(on, overlay = on) {
   if (sb) {
     try {
       if (overlay && !wasOv) await sb.setOverlaysWebView?.({ overlay: true });
+      // jarak aman atas dikunci setinggi bilah status selama fullscreen: tidak bergeser saat bilah muncul/hilang
+      if (overlay && !wasOv) { try { const r = await cachePlugin()?.insets?.(); if (r?.top > 0 && ovOn) document.body.style.setProperty("--sat", r.top + "px"); } catch {} }
+      if (!overlay && wasOv) document.body.style.removeProperty("--sat");
       // bilah status: lewat plugin Ninokuu (perilaku "sementara": ditarik → muncul transparan lalu hilang sendiri);
       // APK lama tanpa method ini memakai StatusBar bawaan
       if (on !== wasOn) {

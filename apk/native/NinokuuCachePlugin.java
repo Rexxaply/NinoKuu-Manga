@@ -145,6 +145,23 @@ public class NinokuuCachePlugin extends Plugin {
         });
     }
 
+    // Tinggi bilah status (px CSS), tetap sama walau bilah sedang disembunyikan. Dipakai halaman sebagai jarak aman atas
+    // selama mode fullscreen, supaya tata letak tidak bergeser saat bilah dimunculkan/disembunyikan.
+    @PluginMethod
+    public void insets(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            try {
+                WindowInsetsCompat ri = androidx.core.view.ViewCompat.getRootWindowInsets(getActivity().getWindow().getDecorView());
+                float dp = getContext().getResources().getDisplayMetrics().density;
+                JSObject r = new JSObject();
+                r.put("top", ri == null ? 0 : Math.round(ri.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.statusBars()).top / dp));
+                call.resolve(r);
+            } catch (Exception e) {
+                call.reject(e.getMessage());
+            }
+        });
+    }
+
     // Cek chapter baru di latar belakang (lihat NinokuuBgWorker): simpan alamat server & kunci, lalu jadwalkan
     // ±tiap 30 menit saat ada internet. Dipanggil ulang tidak menggandakan jadwal (KEEP).
     @PluginMethod
